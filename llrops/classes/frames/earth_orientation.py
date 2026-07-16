@@ -1,0 +1,451 @@
+"""Explicit Earth-orientation data sources used by ERFA frame transforms."""
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal, Sequence
+
+import numpy as np
+
+from llrops.base.epoch import Epoch, TimeScale
+
+
+@dataclass(frozen=True, slots=True)
+class PolarMotion:
+    xp_arcsec: float
+    yp_arcsec: float
+
+
+@dataclass(frozen=True, slots=True)
+class EarthOrientationSample:
+    mjd_utc: float
+    xp_arcsec: float
+    yp_arcsec: float
+    ut1_minus_utc_sec: float
+
+
+DuplicateMjdPolicy = Literal["error", "first", "last", "mean"]
+
+
+def _normalise_duplicate_mjd_policy(value: str | None) -> str:
+    policy = str(value or "error").strip().lower()
+    if policy not in {"error", "first", "last", "mean"}:
+        raise ValueError(
+            "duplicateMjdPolicy must be one of 'error', 'first', 'last', or 'mean', "
+            f"got {value!r}."
+        )
+    return policy
+
+
+def _deduplicate_samples(
+    ordered: Sequence[EarthOrientationSample],
+    *,
+    policy: DuplicateMjdPolicy,
+) -> tuple[EarthOrientationSample, ...]:
+    if policy == "error":
+        mjd = np.array([sample.mjd_utc for sample in ordered], dtype=float)
+        if np.unique(mjd).size != mjd.size:
+            duplicate_values = sorted({float(value) for value in mjd if np.count_nonzero(mjd == value) > 1})
+            preview = ", ".join(f"{value:.1f}" for value in duplicate_values[:10])
+            suffix = "" if len(duplicate_values) <= 10 else f", ... ({len(duplicate_values)} duplicate MJDs)"
+            raise ValueError(
+                "EOP table contains duplicate MJD values. "
+                "Set earthRotation.duplicateMjdPolicy explicitly to 'first', 'last', or 'mean' "
+                f"if this is an intentional concatenated C04 file. Duplicate MJD(s): {preview}{suffix}"
+            )
+        return tuple(ordered)
+
+    grouped: dict[float, list[EarthOrientationSample]] = {}
+    for sample in ordered:
+        grouped.setdefault(float(sample.mjd_utc), []).append(sample)
+
+    result: list[EarthOrientationSample] = []
+    for mjd in sorted(grouped):
+        samples = grouped[mjd]
+        if len(samples) == 1:
+            result.append(samples[0])
+        elif policy == "first":
+            result.append(samples[0])
+        elif policy == "last":
+            result.append(samples[-1])
+        elif policy == "mean":
+            result.append(
+                EarthOrientationSample(
+                    mjd_utc=mjd,
+                    xp_arcsec=float(np.mean([sample.xp_arcsec for sample in samples])),
+                    yp_arcsec=float(np.mean([sample.yp_arcsec for sample in samples])),
+                    ut1_minus_utc_sec=float(np.mean([sample.ut1_minus_utc_sec for sample in samples])),
+                )
+            )
+        else:  # pragma: no cover - guarded by _normalise_duplicate_mjd_policy
+            raise AssertionError(policy)
+    return tuple(result)
+
+
+class EarthOrientation(ABC):
+    """Typed access to the Earth-orientation quantities used by LLROPS."""
+
+    @property
+    @abstractmethod
+    def source_file(self) -> Path | None:
+        ...
+
+    @abstractmethod
+    def polar_motion(self, epoch_utc: Epoch) -> PolarMotion:
+        ...
+
+    @abstractmethod
+    def ut1_minus_utc_sec(self, epoch_utc: Epoch) -> float:
+        ...
+
+    def close(self) -> None:
+        pass
+
+
+class C04EarthOrientation(EarthOrientation):
+    """Linearly interpolated IERS C04/eopc04 Earth-orientation table."""
+
+    __slots__ = ("_source_file", "_duplicate_mjd_policy", "_mjd", "_xp_arcsec", "_yp_arcsec", "_dut1_sec")
+
+    def __init__(
+        self,
+        samples: Sequence[EarthOrientationSample],
+        *,
+        source_file: str | Path | None = None,
+        duplicate_mjd_policy: DuplicateMjdPolicy = "error",
+    ) -> None:
+        if not samples:
+            raise ValueError("EarthOrientation requires at least one EOP sample.")
+        policy = _normalise_duplicate_mjd_policy(duplicate_mjd_policy)
+        ordered = _deduplicate_samples(sorted(samples, key=lambda item: item.mjd_utc), policy=policy)
+        mjd = np.array([sample.mjd_utc for sample in ordered], dtype=float)
+        self._mjd = mjd
+        self._xp_arcsec = np.array([sample.xp_arcsec for sample in ordered], dtype=float)
+        self._yp_arcsec = np.array([sample.yp_arcsec for sample in ordered], dtype=float)
+        self._dut1_sec = np.array([sample.ut1_minus_utc_sec for sample in ordered], dtype=float)
+        for name in ("_mjd", "_xp_arcsec", "_yp_arcsec", "_dut1_sec"):
+            values = getattr(self, name)
+            if not np.all(np.isfinite(values)):
+                raise ValueError(f"EOP column {name} contains non-finite values.")
+            values.setflags(write=False)
+        self._source_file = Path(source_file).expanduser() if source_file else None
+        self._duplicate_mjd_policy = policy
+
+    @classmethod
+    def from_arrays(
+        cls,
+        mjd_utc,
+        xp_arcsec,
+        yp_arcsec,
+        ut1_minus_utc_sec,
+        *,
+        source_file: str | Path | None = None,
+        duplicate_mjd_policy: DuplicateMjdPolicy = "error",
+    ) -> "C04EarthOrientation":
+        """Construct directly from already parsed EOP columns.
+
+        This path is used by MPI workers after rank 0 broadcasts the parsed
+        columns.  It deliberately avoids rebuilding thousands of
+        :class:`EarthOrientationSample` objects or reparsing the text file.
+        The broadcast payload must already be sorted and deduplicated.
+        """
+        policy = _normalise_duplicate_mjd_policy(duplicate_mjd_policy)
+        columns = [
+            np.asarray(mjd_utc, dtype=float),
+            np.asarray(xp_arcsec, dtype=float),
+            np.asarray(yp_arcsec, dtype=float),
+            np.asarray(ut1_minus_utc_sec, dtype=float),
+        ]
+        if any(values.ndim != 1 for values in columns):
+            raise ValueError("Broadcast EOP columns must be one-dimensional arrays.")
+        sizes = {int(values.size) for values in columns}
+        if len(sizes) != 1 or not sizes or next(iter(sizes)) == 0:
+            raise ValueError("Broadcast EOP columns must have the same non-zero length.")
+        if any(not np.all(np.isfinite(values)) for values in columns):
+            raise ValueError("Broadcast EOP columns contain non-finite values.")
+        if np.any(np.diff(columns[0]) <= 0.0):
+            raise ValueError(
+                "Broadcast EOP MJD values must be strictly increasing after "
+                "rank-0 duplicate handling."
+            )
+
+        self = cls.__new__(cls)
+        names = ("_mjd", "_xp_arcsec", "_yp_arcsec", "_dut1_sec")
+        for name, values in zip(names, columns):
+            copied = np.array(values, dtype=float, copy=True, order="C")
+            copied.setflags(write=False)
+            setattr(self, name, copied)
+        self._source_file = Path(source_file).expanduser() if source_file else None
+        self._duplicate_mjd_policy = policy
+        return self
+
+    def to_mpi_payload(self) -> dict:
+        """Return the compact, picklable columns broadcast to worker ranks."""
+        return {
+            "kind": "iersC04Arrays",
+            "sourceFile": None if self.source_file is None else str(self.source_file),
+            "duplicateMjdPolicy": self.duplicate_mjd_policy,
+            "mjdUtc": self._mjd,
+            "xpArcsec": self._xp_arcsec,
+            "ypArcsec": self._yp_arcsec,
+            "ut1MinusUtcSec": self._dut1_sec,
+        }
+
+    @classmethod
+    def from_mpi_payload(cls, payload: dict) -> "C04EarthOrientation":
+        if not isinstance(payload, dict) or payload.get("kind") != "iersC04Arrays":
+            raise ValueError("Invalid MPI Earth-orientation payload.")
+        return cls.from_arrays(
+            payload["mjdUtc"],
+            payload["xpArcsec"],
+            payload["ypArcsec"],
+            payload["ut1MinusUtcSec"],
+            source_file=payload.get("sourceFile"),
+            duplicate_mjd_policy=payload.get("duplicateMjdPolicy", "error"),
+        )
+
+    @property
+    def source_file(self) -> Path | None:
+        return self._source_file
+
+    @property
+    def duplicate_mjd_policy(self) -> str:
+        return self._duplicate_mjd_policy
+
+    @property
+    def mjd_range(self) -> tuple[float, float]:
+        return float(self._mjd[0]), float(self._mjd[-1])
+
+    @property
+    def samples(self) -> tuple[EarthOrientationSample, ...]:
+        return tuple(
+            EarthOrientationSample(float(mjd), float(xp), float(yp), float(dut1))
+            for mjd, xp, yp, dut1 in zip(
+                self._mjd,
+                self._xp_arcsec,
+                self._yp_arcsec,
+                self._dut1_sec,
+            )
+        )
+
+    @staticmethod
+    def _mjd_utc(value: Epoch) -> float:
+        if not isinstance(value, Epoch):
+            raise TypeError("Earth-orientation queries require an Epoch.")
+        value.require_scale(TimeScale.UTC, name="epoch_utc")
+        return float(value.mjd)
+
+    def _interp(self, values: np.ndarray, epoch_utc: Epoch, *, name: str) -> float:
+        mjd = self._mjd_utc(epoch_utc)
+        start, end = self.mjd_range
+        if mjd < start or mjd > end:
+            raise ValueError(
+                f"EOP {name} interpolation requested MJD {mjd:.6f}, outside "
+                f"loaded range [{start:.6f}, {end:.6f}]."
+            )
+        return float(np.interp(mjd, self._mjd, values))
+
+    def polar_motion(self, epoch_utc: Epoch) -> PolarMotion:
+        return PolarMotion(
+            xp_arcsec=self._interp(self._xp_arcsec, epoch_utc, name="xp"),
+            yp_arcsec=self._interp(self._yp_arcsec, epoch_utc, name="yp"),
+        )
+
+    def ut1_minus_utc_sec(self, epoch_utc: Epoch) -> float:
+        return self._interp(self._dut1_sec, epoch_utc, name="UT1-UTC")
+
+
+def _float_or_none(value: str) -> float | None:
+    try:
+        return float(value.replace("D", "E").replace("d", "e"))
+    except ValueError:
+        return None
+
+
+def _is_int_token(value: str) -> bool:
+    return value.lstrip("+-").isdigit()
+
+
+def _is_mjd(value: float | None) -> bool:
+    return value is not None and 15_000.0 < value < 90_000.0
+
+
+def _sample_if_plausible(mjd: float, xp: float, yp: float, dut1: float) -> EarthOrientationSample | None:
+    # Polar motion is in arcseconds and UT1-UTC is in seconds.  These generous
+    # bounds reject obvious mis-parses such as choosing x-error as y-pole while
+    # still covering historical and prediction rows.
+    if abs(xp) > 5.0 or abs(yp) > 5.0 or abs(dut1) > 5.0:
+        return None
+    return EarthOrientationSample(mjd, xp, yp, dut1)
+
+
+def _first_numeric_after(parts: list[str], start: int) -> tuple[int, float] | None:
+    for index in range(start, len(parts)):
+        value = _float_or_none(parts[index])
+        if value is not None:
+            return index, value
+    return None
+
+
+def _parse_finals_row(parts: list[str], mjd_index: int, mjd: float) -> EarthOrientationSample | None:
+    """Parse IERS finals.all/finals2000A style rows.
+
+    Split rows are typically::
+
+        YY MM DD MJD I x x_err y y_err I UT1-UTC UT1_err ...
+
+    Some derived files omit the flags but keep the error columns::
+
+        YY MM DD MJD x x_err y y_err UT1-UTC UT1_err ...
+
+    The parser intentionally uses known column positions instead of simply
+    taking the first three numeric values after MJD, because those rows interleave
+    values and formal errors.
+    """
+    # Flagged finals.all / finals2000A layout.
+    if len(parts) > mjd_index + 10 and _float_or_none(parts[mjd_index + 1]) is None:
+        xp = _float_or_none(parts[mjd_index + 2])
+        yp = _float_or_none(parts[mjd_index + 4])
+        dut1 = None
+        # UT1-UTC is the first numeric token after the next non-numeric flag.
+        for index in range(mjd_index + 5, len(parts)):
+            if _float_or_none(parts[index]) is None:
+                found = _first_numeric_after(parts, index + 1)
+                if found is not None:
+                    dut1 = found[1]
+                    break
+        if xp is not None and yp is not None and dut1 is not None:
+            sample = _sample_if_plausible(mjd, xp, yp, dut1)
+            if sample is not None:
+                return sample
+
+    numeric_after = [(index, value) for index in range(mjd_index + 1, len(parts)) if (value := _float_or_none(parts[index])) is not None]
+
+    # Unflagged finals-style layout with interleaved errors.
+    if len(numeric_after) >= 5:
+        xp = numeric_after[0][1]
+        yp = numeric_after[2][1]
+        dut1 = numeric_after[4][1]
+        sample = _sample_if_plausible(mjd, xp, yp, dut1)
+        if sample is not None:
+            return sample
+
+    return None
+
+
+def _parse_c04_line(line: str) -> EarthOrientationSample | None:
+    stripped = line.strip()
+    if not stripped or stripped.startswith(("#", "%")):
+        return None
+    parts = stripped.split()
+    if len(parts) < 4:
+        return None
+
+    # Common eopc04 layout: year month day MJD xp yp UT1-UTC ...
+    if len(parts) >= 7 and all(_is_int_token(parts[i]) for i in range(3)):
+        mjd = _float_or_none(parts[3])
+        if _is_mjd(mjd):
+            xp = _float_or_none(parts[4])
+            yp = _float_or_none(parts[5])
+            dut1 = _float_or_none(parts[6])
+            if xp is not None and yp is not None and dut1 is not None:
+                sample = _sample_if_plausible(mjd, xp, yp, dut1)
+                if sample is not None:
+                    return sample
+            sample = _parse_finals_row(parts, 3, mjd)
+            if sample is not None:
+                return sample
+
+    # C04 variants with an hour column: year month day hour MJD xp yp UT1-UTC ...
+    if len(parts) >= 8 and all(_is_int_token(parts[i]) for i in range(4)):
+        mjd = _float_or_none(parts[4])
+        if _is_mjd(mjd):
+            xp = _float_or_none(parts[5])
+            yp = _float_or_none(parts[6])
+            dut1 = _float_or_none(parts[7])
+            if xp is not None and yp is not None and dut1 is not None:
+                sample = _sample_if_plausible(mjd, xp, yp, dut1)
+                if sample is not None:
+                    return sample
+            sample = _parse_finals_row(parts, 4, mjd)
+            if sample is not None:
+                return sample
+
+    # Compact numeric layout: MJD xp yp UT1-UTC ...
+    mjd = _float_or_none(parts[0])
+    if _is_mjd(mjd) and len(parts) >= 4:
+        xp = _float_or_none(parts[1])
+        yp = _float_or_none(parts[2])
+        dut1 = _float_or_none(parts[3])
+        if xp is not None and yp is not None and dut1 is not None:
+            sample = _sample_if_plausible(mjd, xp, yp, dut1)
+            if sample is not None:
+                return sample
+
+    # Last-resort MJD discovery for whitespace-separated derived tables.  This
+    # handles files that prepend a label or version column before the MJD.
+    numeric = [(index, value) for index, part in enumerate(parts) if (value := _float_or_none(part)) is not None]
+    for index, value in numeric:
+        if _is_mjd(value):
+            if index + 3 < len(parts):
+                xp = _float_or_none(parts[index + 1])
+                yp = _float_or_none(parts[index + 2])
+                dut1 = _float_or_none(parts[index + 3])
+                if xp is not None and yp is not None and dut1 is not None:
+                    sample = _sample_if_plausible(value, xp, yp, dut1)
+                    if sample is not None:
+                        return sample
+            sample = _parse_finals_row(parts, index, value)
+            if sample is not None:
+                return sample
+
+    return None
+
+
+def read_iers_c04(file: str | Path) -> tuple[EarthOrientationSample, ...]:
+    path = Path(file).expanduser()
+    if not path.is_file():
+        raise FileNotFoundError(f"IERS C04/EOP file not found: {path}")
+    lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    samples = [sample for line in lines if (sample := _parse_c04_line(line)) is not None]
+    if not samples:
+        preview_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped and not stripped.startswith(("#", "%")):
+                preview_lines.append(stripped[:180])
+            if len(preview_lines) >= 5:
+                break
+        preview = "\n".join(f"  {line}" for line in preview_lines) or "  <no non-comment text rows>"
+        raise ValueError(
+            f"Could not read EOP samples from {path}. Expected IERS C04 rows "
+            "(year month day MJD xp yp UT1-UTC), compact rows "
+            "(MJD xp yp UT1-UTC), or finals.all/finals2000A rows with I/P flags. "
+            f"First non-comment rows seen:\n{preview}"
+        )
+    return tuple(samples)
+
+
+def load_iers_c04(
+    file: str | Path,
+    *,
+    duplicate_mjd_policy: DuplicateMjdPolicy = "error",
+) -> C04EarthOrientation:
+    path = Path(file).expanduser()
+    return C04EarthOrientation(
+        read_iers_c04(path),
+        source_file=path,
+        duplicate_mjd_policy=duplicate_mjd_policy,
+    )
+
+
+__all__ = [
+    "C04EarthOrientation",
+    "EarthOrientation",
+    "DuplicateMjdPolicy",
+    "EarthOrientationSample",
+    "PolarMotion",
+    "load_iers_c04",
+    "read_iers_c04",
+]

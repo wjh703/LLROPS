@@ -1,0 +1,27 @@
+# Python bytecode and tooling caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local environments and build artifacts
+.venv/
+venv/
+env/
+build/
+dist/
+wheels/
+*.egg-info/
+
+# Generated LLR products and local diagnostics
+output/
+*.log
+*.bak_*
+
+# Editor and operating-system files
+.DS_Store
+.idea/
+.vscode/

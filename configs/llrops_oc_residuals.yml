@@ -1,0 +1,90 @@
+# Compute LLR O-C residuals with llrops v33.
+#
+# Run serial, single process:
+#   python -m llrops run llrops_oc_residuals.yml
+#
+# Run with MPI:
+#   mpirun -n 16 python -m llrops run llrops_oc_residuals.yml --mpi
+#   # or: srun python -m llrops run llrops_oc_residuals.yml --mpi
+#
+# Notes:
+# - The serial ProcessPoolExecutor/local parallel path has been removed.
+# - For MPI, only mpi.chunksize is used.
+# - Change dataDir / inputNormalPoints / output paths before running.
+# - Time/Earth-rotation transforms now use ERFA + explicit IERS C04 EOP; Astropy is not required.
+
+variables:
+  dataDir: ~/deploy_bundle/data
+  outputDir: ./output
+
+globals:
+  ephemerides:
+    type: calceph
+    file: "{dataDir}/kernels/inpop21a_TDB_m100_p100_tt.dat"
+    longitudeLibrationCorrection: inpop21a
+
+  earthRotation:
+    # Explicit IERS C04 EOP file used by the ERFA ITRS<->GCRS transform.
+    # No process-global Astropy EOP table is installed or modified.
+    type: iersC04
+    file: "{dataDir}/auxiliary/eopc04.1962-now.txt"
+    # Some concatenated C04 files contain repeated boundary days.
+    # This is explicit so duplicate EOP rows are never silently resolved.
+    duplicateMjdPolicy: last
+
+  troposphere: mendesPavlis
+  relativity: iersShapiro
+
+  stationDisplacement:
+    type: sum
+    components:
+      - type: iers2010SolidEarthTide
+      - type: iers2010PoleTide
+      - type: iers2010OceanPoleTide
+        coefficientFile: "{dataDir}/auxiliary/opoleloadcoefcmcor.txt"
+
+  reflectorDisplacement: lunarSolidTide
+
+  # Fixed forward-model O-C range-bias correction.
+  # Use {type: none} if you want raw model residuals without this correction.
+  rangeBias:
+    type: inpop21
+
+  uncertaintyModel:
+    type: wrms-table
+    model: default
+
+  stationCatalog: builtin
+  reflectorCatalog: builtin
+
+programs:
+  - program: LlrResiduals
+
+    # MINI, CRD/FRD, or LLROPS .llnpt/.llrops.jsonl files and directories.
+    # Directories are expanded by llrops input handling.
+    inputNormalPoints:
+      - "{dataDir}/polac/TOTALOBS6924.DAT"
+
+    miniIoLog: "{outputDir}/mini_io_log.txt"
+
+    combineInputs: false
+    startTime: null
+    endTime: null
+
+    # wrms-table uses the configured station WRMS uncertainty table;
+    # mini uses the uncertainty contained in each normal point record.
+    uncertainty: wrms-table
+
+    # standard = compact O-C table; full = more diagnostics.
+    # Both levels include troposphere elevation clamp diagnostics.
+    outputLevel: standard
+
+    minElevationDeg: 0.0
+    showProgress: true
+
+    # MPI task granularity. Ignored in normal serial execution.
+    mpi:
+      chunksize: 8
+
+    outputCsv: "{outputDir}/oc_residuals.csv"
+    outputJson: null
