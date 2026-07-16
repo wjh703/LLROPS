@@ -188,3 +188,43 @@ def test_prefit_gross_rejection_never_reenters():
     assert result.gross_rejected_keys == {"gross": 1}
     assert result.rejected_keys == {"gross": 1}
 
+
+from dataclasses import replace
+
+
+def test_extended_vce_groups_cover_mcdonald_1969_and_current_meo():
+    groups = (
+        VceGroup.from_config(
+            {
+                "id": "MCDONALD_1969_1985",
+                "station_system": "MCDONALD",
+                "station_aliases": ["MCDONALD"],
+                "start": "1969-01-01",
+                "end_exclusive": "1986-01-01",
+            }
+        ),
+        VceGroup.from_config(
+            {
+                "id": "CERGA_MEO_2009_PRESENT",
+                "station_system": "CERGA_MEO",
+                "station_aliases": ["GRASSE"],
+                "start": "2009-01-01",
+                "end_exclusive": None,
+                "wavelength_max_nm": 700.0,
+            }
+        ),
+    )
+    mcdonald = replace(
+        _equation("mcdonald-1969", 0.0, "MCDONALD", 694.3),
+        epoch=Epoch.from_isot("1969-08-20T00:00:00", scale=TimeScale.UTC),
+    )
+    meo = replace(
+        _equation("meo-2024", 0.0, "GRASSE", 532.1),
+        epoch=Epoch.from_isot("2024-12-21T00:00:00", scale=TimeScale.UTC),
+    )
+
+    assert assign_vce_groups([mcdonald, meo], groups) == {
+        "mcdonald-1969": "MCDONALD_1969_1985",
+        "meo-2024": "CERGA_MEO_2009_PRESENT",
+    }
+

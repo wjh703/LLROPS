@@ -31,7 +31,7 @@
 3. 不估计观测夜公共相关误差；
 4. NP 正式精度 $\sigma_{i,\mathrm{NP}}$ 用于构造组内相对权；
 5. VCE 分组采用 EPM2023a 结果表中的测站和系统划分；
-6. 原表中截至 2023 年的分组扩展至 `present`；
+6. 为覆盖当前输入，Apache、CERGA MeO/IR、Matera 和 Wettzell 分组均扩展至 `present`；
 7. Bias 区间采用给定的 28 个区间，并新增 Wettzell 2018-01-01 至今的全时段 Bias；
 8. Bias 区间允许重叠，重叠 Bias 按加法叠加；
 9. 抗差估计采用 IGGⅢ 等价权函数；
@@ -254,13 +254,13 @@ sigma_np is finite
 
 | VCE 组 ID | 测站/系统 | 时间范围 | 程序区间 |
 |---|---|---|---|
-| `MCDONALD_1970_1985` | McDonald | 1970–1985 | `[1970-01-01, 1986-01-01)` |
+| `MCDONALD_1969_1985` | McDonald | 1969–1985 | `[1969-01-01, 1986-01-01)` |
 | `MLRS1_1983_1988` | MLRS1 | 1983–1988 | `[1983-01-01, 1989-01-01)` |
 | `MLRS2_1988_2015` | MLRS2 | 1988–2015 | `[1988-01-01, 2016-01-01)` |
 | `HALEAKALA_1984_1990` | Haleakala | 1984–1990 | `[1984-01-01, 1991-01-01)` |
 | `CERGA_RUBY_1984_1986` | CERGA Ruby | 1984–1986 | `[1984-01-01, 1987-01-01)` |
 | `CERGA_YAG_1987_2005` | CERGA YAG | 1987–2005 | `[1987-01-01, 2006-01-01)` |
-| `CERGA_MEO_2009_2022` | CERGA MeO | 2009–2022 | `[2009-01-01, 2023-01-01)` |
+| `CERGA_MEO_2009_PRESENT` | CERGA MeO | 2009–present | `[2009-01-01, +∞)` |
 | `CERGA_IR_2015_PRESENT` | CERGA IR | 2015–present | `[2015-01-01, +∞)` |
 | `APACHE_2006_PRESENT` | Apache | 2006–present | `[2006-01-01, +∞)` |
 | `MATERA_2003_PRESENT` | Matera | 2003–present | `[2003-01-01, +∞)` |
@@ -274,7 +274,7 @@ VCE 分组不能只依据日期。
 
 - McDonald 与 MLRS1；
 - MLRS1 与 MLRS2 的 1988 年；
-- CERGA MeO 与 CERGA IR 的 2015–2022 年。
+- CERGA MeO 与 CERGA IR 的 2015 年至今。
 
 分组键必须优先使用：
 
@@ -306,9 +306,9 @@ CERGA MeO 和 CERGA IR 必须依靠系统配置、波长或数据产品中的明
 
 ```yaml
 vce_groups:
-  - id: MCDONALD_1970_1985
+  - id: MCDONALD_1969_1985
     station_system: MCDONALD
-    start: 1970-01-01
+    start: 1969-01-01
     end_exclusive: 1986-01-01
 
   - id: MLRS1_1983_1988
@@ -336,10 +336,10 @@ vce_groups:
     start: 1987-01-01
     end_exclusive: 2006-01-01
 
-  - id: CERGA_MEO_2009_2022
+  - id: CERGA_MEO_2009_PRESENT
     station_system: CERGA_MEO
     start: 2009-01-01
-    end_exclusive: 2023-01-01
+    end_exclusive: null
 
   - id: CERGA_IR_2015_PRESENT
     station_system: CERGA_IR
@@ -362,11 +362,11 @@ vce_groups:
     end_exclusive: null
 ```
 
-### 6.4 已知边界问题
+### 6.4 全观测覆盖
 
-Bias 表中的 McDonald 长期区间从 1969-01-01 开始，而 VCE 分组从 1970-01-01 开始。
+McDonald VCE 组从 1969-01-01 开始，与其长期 Bias 区间保持一致，因此当前输入中的 1969 年观测参与 `MCDONALD_1969_1985` 组。
 
-如果数据集中实际包含 1969 年 McDonald 观测，严格分组会将其标记为未分组。当前版本不自动扩展 McDonald VCE 组，程序必须输出明确错误或预处理报告，不能静默忽略。
+当前输入还包含 2023 年后的 532.1 nm CERGA 观测。它们由波长明确识别为 MeO，因此 `CERGA_MEO_2009_PRESENT` 保持开放结束端点；CERGA IR 同样保持开放端点。两组仍必须按系统配置、波长或明确模式字段区分，禁止只按日期猜测。
 
 ### 6.5 未分组处理
 
@@ -2020,10 +2020,10 @@ $$
 
 - CERGA MeO/IR 重叠年份正确区分；
 - MLRS1/MLRS2 的 1988 年正确区分；
-- Apache、Matera、CERGA IR、Wettzell 的 `present` 无上界；
+- Apache、Matera、CERGA MeO/IR、Wettzell 的 `present` 无上界；
 - 一条观测零命中时报错；
 - 一条观测多命中时报错；
-- 1969 McDonald 数据触发明确未分组诊断。
+- 1969 McDonald 数据正确命中 `MCDONALD_1969_1985`。
 
 ### 21.3 Bias 测试
 
@@ -2188,11 +2188,10 @@ u = numerical_rank(normal_matrix)
 4. 观测夜公共误差；
 5. 非对角时间相关模型；
 6. 方差分量先验和平滑；
-7. 自动把 1969 McDonald 数据并入 1970–1985 VCE 组；
-8. 根据残差自动改变 CERGA MeO/IR 分类；
-9. 把论文表中的 WRMS 直接作为先验权；
-10. 完整稳健 M 估计协方差理论；
-11. VCE 方差分量不确定度向最终物理参数协方差的完整传播。
+7. 根据残差自动改变 CERGA MeO/IR 分类；
+8. 把论文表中的 WRMS 直接作为先验权；
+9. 完整稳健 M 估计协方差理论；
+10. VCE 方差分量不确定度向最终物理参数协方差的完整传播。
 
 ---
 
@@ -2292,5 +2291,5 @@ $$
 ## 26. 参考依据
 
 1. 秦显平、杨元喜，《随机模型对解算西安流动 SLR 站坐标的影响》，武汉大学学报·信息科学版，2019。本文采用其中的 IGGⅢ 等价权函数形式以及 $k_0=1.5,\ k_1=6.0$ 的参数设置。
-2. EPM2023a LLR 处理结果表。本文采用其中的测站、设备或系统时期作为 VCE 分组基础，并将原表截至 2023 年的 Apache、CERGA IR、Matera 和 Wettzell 分组扩展至 `present`。
+2. EPM2023a LLR 处理结果表。本文采用其中的测站、设备或系统时期作为 VCE 分组基础，并为覆盖当前输入将 Apache、CERGA MeO/IR、Matera 和 Wettzell 分组扩展至 `present`。
 3. LLR Bias 区间表。本文保留原 28 个区间，并新增 Wettzell 2018-01-01 至今的全时段 Bias。

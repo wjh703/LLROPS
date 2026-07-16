@@ -296,15 +296,15 @@ programs:
     # Exactly one group must match each retained observation. CERGA MeO/IR
     # overlap is separated by laser wavelength; do not replace it with dates.
     vce_groups:
-      - {id: MCDONALD_1970_1985, station_system: MCDONALD, station_aliases: [MCDONALD], start: 1970-01-01, end_exclusive: 1986-01-01}
+      - {id: MCDONALD_1969_1985, station_system: MCDONALD, station_aliases: [MCDONALD], start: 1969-01-01, end_exclusive: 1986-01-01}
       - {id: MLRS1_1983_1988, station_system: MLRS1, station_aliases: [MLRS1], start: 1983-01-01, end_exclusive: 1989-01-01}
       - {id: MLRS2_1988_2015, station_system: MLRS2, station_aliases: [MLRS2], start: 1988-01-01, end_exclusive: 2016-01-01}
       - {id: HALEAKALA_1984_1990, station_system: HALEAKALA, station_aliases: [HALEAKALA], start: 1984-01-01, end_exclusive: 1991-01-01}
       - {id: CERGA_RUBY_1984_1986, station_system: CERGA_RUBY, station_aliases: [GRASSE, CERGA], start: 1984-01-01, end_exclusive: 1987-01-01}
       - {id: CERGA_YAG_1987_2005, station_system: CERGA_YAG, station_aliases: [GRASSE, CERGA], start: 1987-01-01, end_exclusive: 2006-01-01}
-      - {id: CERGA_MEO_2009_2022, station_system: CERGA_MEO, station_aliases: [GRASSE, CERGA], start: 2009-01-01, end_exclusive: 2023-01-01, wavelength_max_nm: 700.0}
+      - {id: CERGA_MEO_2009_PRESENT, station_system: CERGA_MEO, station_aliases: [GRASSE, CERGA], start: 2009-01-01, end_exclusive: null, wavelength_max_nm: 700.0}
       - {id: CERGA_IR_2015_PRESENT, station_system: CERGA_IR, station_aliases: [GRASSE, CERGA], start: 2015-01-01, end_exclusive: null, wavelength_min_nm: 700.0}
-      - {id: APACHE_2006_PRESENT, station_system: APACHE, station_aliases: [APOLLO, APACHE], start: 2006-01-01, end_exclusive: null}
+      - {id: APACHE_2006_PRESENT, station_system: APACHE, station_aliases: [APOLLO, APACHE, APOL], start: 2006-01-01, end_exclusive: null}
       - {id: MATERA_2003_PRESENT, station_system: MATERA, station_aliases: [MATERA], start: 2003-01-01, end_exclusive: null}
       - {id: WETTZELL_2018_PRESENT, station_system: WETTZELL, station_aliases: [WETTZELL], start: 2018-01-01, end_exclusive: null}
 
