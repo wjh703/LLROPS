@@ -152,6 +152,88 @@ def llr_adjustment(config: dict, context: RunContext):
     return result
 
 
+@program("LlrGroupedVceAdjustment")
+def llr_grouped_vce_adjustment(config: dict, context: RunContext):
+    """Run the grouped VCE, interval-bias, and IGGIII joint adjustment."""
+    from llrops.estimation.grouped_vce import (
+        GroupedVceAdjustment,
+        GroupedVceOptions,
+        VceGroup,
+    )
+
+    datasets = load_datasets(config, context)
+    processor = build_processor(config, context)
+    parametrization = _build_parametrization(config, context)
+    adjustment = config.get("adjustment") or {}
+    initialization = config.get("initialization") or {}
+    robust = config.get("robust_estimation") or config.get("robustEstimation") or {}
+    vce = config.get("vce") or {}
+    groups_config = config.get("vce_groups") or config.get("vceGroups") or []
+    groups = tuple(VceGroup.from_config(item) for item in groups_config)
+    options = GroupedVceOptions(
+        groups=groups,
+        prefit_gross_threshold_m=adjustment.get("prefitGrossThresholdM", 20.0),
+        prefit_gross_threshold_by_station_m=adjustment.get("prefitGrossThresholdByStationM"),
+        function_max_iterations=int(adjustment.get("maxIterations", 20)),
+        function_damping=float(adjustment.get("damping", 1.0)),
+        update_tolerance_m=float(adjustment.get("updateToleranceM", 1.0e-3)),
+        wrms_tolerance_m=float(adjustment.get("wrmsToleranceM", 1.0e-4)),
+        maximum_stochastic_iterations=int(vce.get("maximum_iterations", vce.get("maximumIterations", 20))),
+        k0=float(robust.get("k0", 1.5)),
+        k1=float(robust.get("k1", 6.0)),
+        minimum_one_minus_leverage=float(
+            robust.get("minimum_one_minus_leverage", robust.get("minimumOneMinusLeverage", 1.0e-8))
+        ),
+        minimum_nonzero_robust_factor=float(
+            robust.get("minimum_nonzero_robust_factor", robust.get("minimumNonzeroRobustFactor", 1.0e-12))
+        ),
+        minimum_mad_count=int(initialization.get("minimum_mad_count", initialization.get("minimumMadCount", 10))),
+        minimum_initial_scale=float(
+            initialization.get("minimum_initial_scale", initialization.get("minimumInitialScale", 1.0))
+        ),
+        bias_weight_cap=float(initialization.get("bias_weight_cap", initialization.get("biasWeightCap", 1.0e12))),
+        bias_maximum_iterations=int(
+            initialization.get("bias_maximum_iterations", initialization.get("biasMaximumIterations", 30))
+        ),
+        vce_damping=float(vce.get("damping", 0.5)),
+        minimum_effective_redundancy=float(
+            vce.get("minimum_effective_redundancy", vce.get("minimumEffectiveRedundancy", 20.0))
+        ),
+        scale_log_tolerance=float(vce.get("scale_log_tolerance", vce.get("scaleLogTolerance", 1.0e-3))),
+        robust_weight_tolerance=float(
+            vce.get("robust_weight_tolerance", vce.get("robustWeightTolerance", 1.0e-3))
+        ),
+        minimum_variance_ratio_per_iteration=float(
+            vce.get("minimum_variance_ratio_per_iteration", vce.get("minimumVarianceRatioPerIteration", 0.25))
+        ),
+        maximum_variance_ratio_per_iteration=float(
+            vce.get("maximum_variance_ratio_per_iteration", vce.get("maximumVarianceRatioPerIteration", 4.0))
+        ),
+    )
+
+    try:
+        result = GroupedVceAdjustment(
+            equation_source=_build_equation_source(config, context, datasets, processor),
+            parametrization=parametrization,
+            options=options,
+            context=context,
+        ).run()
+    finally:
+        processor.close()
+
+    if config.get("outputJson"):
+        path = context.resolve_path(config["outputJson"])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(result.to_dict(), indent=2, default=str), encoding="utf-8")
+    if config.get("outputNormals") and result.normals is not None:
+        result.normals.save(context.resolve_path(config["outputNormals"]))
+    print(
+        f"[LlrGroupedVceAdjustment] converged={result.converged} "
+        f"outerIterations={len(result.iterations)} groups={len(result.scales)}"
+    )
+    return result
+
+
 @program("LlrNormalEquations")
 def llr_normal_equations(config: dict, context: RunContext):
     from llrops.estimation.normal_equation_engine import build_normal_equations_streaming

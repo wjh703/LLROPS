@@ -50,12 +50,26 @@ class NormalEquations:
             meta=dict(meta),
         )
 
-    def accumulate_sparse_row(self, entries, l: float, sigma: float) -> None:
-        """Accumulate one row from sparse ``(column, value)`` design entries."""
-        sigma = float(sigma)
-        if not np.isfinite(sigma) or sigma <= 0.0:
-            raise ValueError(f"Observation sigma must be positive and finite, got {sigma!r}.")
-        p_i = 1.0 / (sigma * sigma)
+    def accumulate_sparse_row(self, entries, l: float, sigma: Optional[float] = None, *, weight: Optional[float] = None) -> None:
+        """Accumulate one row from sparse ``(column, value)`` design entries.
+
+        ``sigma`` keeps the historical convenience API. Stochastic-model
+        solvers pass ``weight`` explicitly so supplied formal uncertainties
+        remain immutable while equivalent weights change between iterations.
+        """
+        if weight is None:
+            if sigma is None:
+                raise ValueError("Either sigma or weight is required.")
+            sigma = float(sigma)
+            if not np.isfinite(sigma) or sigma <= 0.0:
+                raise ValueError(f"Observation sigma must be positive and finite, got {sigma!r}.")
+            p_i = 1.0 / (sigma * sigma)
+        else:
+            if sigma is not None:
+                raise ValueError("Specify either sigma or weight, not both.")
+            p_i = float(weight)
+            if not np.isfinite(p_i) or p_i < 0.0:
+                raise ValueError(f"Observation weight must be finite and non-negative, got {p_i!r}.")
         l_i = float(l)
 
         coalesced: dict[int, float] = {}

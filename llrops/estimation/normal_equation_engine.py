@@ -14,7 +14,7 @@ weighted contribution and added directly to ``N, W, lPl``.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Iterator, Optional, Sequence
+from typing import Callable, Iterable, Iterator, Optional, Sequence
 
 import numpy as np
 
@@ -54,6 +54,7 @@ def build_normal_equations_streaming(
     parametrization: ParametrizationList,
     *,
     parameter_names: Optional[Sequence[ParameterName]] = None,
+    weight_for: Optional[Callable[[ObservationEquation], float]] = None,
     **meta,
 ) -> NormalEquations:
     """Build normal equations by streaming over observation equations.
@@ -74,11 +75,12 @@ def build_normal_equations_streaming(
     names = list(parameter_names if parameter_names is not None else parametrization.parameter_names())
     normals = NormalEquations.zeros(names, **meta)
     for eq in equations:
-        normals.accumulate_sparse_row(
-            parametrization.design_entries(eq),
-            parametrization.reduced_observation(eq),
-            eq.sigma_m,
-        )
+        entries = parametrization.design_entries(eq)
+        reduced = parametrization.reduced_observation(eq)
+        if weight_for is None:
+            normals.accumulate_sparse_row(entries, reduced, eq.sigma_m)
+        else:
+            normals.accumulate_sparse_row(entries, reduced, weight=float(weight_for(eq)))
     return normals
 
 

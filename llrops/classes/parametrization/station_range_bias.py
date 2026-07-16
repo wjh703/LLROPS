@@ -57,12 +57,13 @@ def _canonical_station_or_text(value: object) -> str:
 class StationBiasInterval:
     station: str
     start: str
-    end: str
+    end_exclusive: Optional[str]
     name: Optional[str] = None
 
     @property
     def key(self) -> str:
-        return str(self.name or f"{self.station}_{self.start}_{self.end}")
+        end = self.end_exclusive or "present"
+        return str(self.name or f"{self.station}_{self.start}_{end}")
 
     def active_at(self, epoch: Epoch) -> bool:
         if not isinstance(epoch, Epoch):
@@ -70,8 +71,8 @@ class StationBiasInterval:
         epoch.require_scale(TimeScale.UTC, name="epoch")
         date_text = epoch.date_iso()
         start = str(self.start).replace("/", "-")[:10]
-        end = str(self.end).replace("/", "-")[:10]
-        return start <= date_text < end
+        end = None if self.end_exclusive is None else str(self.end_exclusive).replace("/", "-")[:10]
+        return start <= date_text and (end is None or date_text < end)
 
 
 def _parse_interval_value(station: str, value: object) -> StationBiasInterval:
@@ -79,20 +80,24 @@ def _parse_interval_value(station: str, value: object) -> StationBiasInterval:
         if "/" not in value:
             raise ValueError(f"stationRangeBias interval string must be 'start/end', got {value!r}")
         start, end = [part.strip() for part in value.split("/", 1)]
-        return StationBiasInterval(station=station, start=start, end=end)
+        return StationBiasInterval(station=station, start=start, end_exclusive=end)
     if isinstance(value, Mapping):
         start = value.get("start") or value.get("from") or value.get("begin")
-        end = value.get("end") or value.get("to") or value.get("until")
-        if not start or not end:
+        has_end_exclusive = "end_exclusive" in value
+        if has_end_exclusive:
+            end = value.get("end_exclusive")
+        else:
+            end = value.get("end") or value.get("to") or value.get("until")
+        if not start or (not has_end_exclusive and not end):
             raise ValueError(f"stationRangeBias interval mapping needs start/end, got {value!r}")
         return StationBiasInterval(
             station=station,
             start=str(start),
-            end=str(end),
+            end_exclusive=None if end is None else str(end),
             name=None if value.get("name") is None else str(value.get("name")),
         )
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) and len(value) >= 2:
-        return StationBiasInterval(station=station, start=str(value[0]), end=str(value[1]))
+        return StationBiasInterval(station=station, start=str(value[0]), end_exclusive=str(value[1]))
     raise ValueError(f"Unsupported stationRangeBias interval item: {value!r}")
 
 
@@ -275,7 +280,8 @@ class StationRangeBiasParametrization(Parametrization):
         for key in self.keys:
             interval = interval_by_key.get(key)
             if interval is not None:
-                names.append(ParameterName(interval.station, "rangeBias", "interval", f"{interval.start}/{interval.end}"))
+                end = interval.end_exclusive or "present"
+                names.append(ParameterName(interval.station, "rangeBias", "interval", f"{interval.start}/{end}"))
             else:
                 names.append(ParameterName(key, "rangeBias", "interval"))
         return names
@@ -315,7 +321,7 @@ class StationRangeBiasParametrization(Parametrization):
                 {
                     "station": interval.station,
                     "start": interval.start,
-                    "end": interval.end,
+                    "end_exclusive": interval.end_exclusive,
                     "name": interval.name,
                 }
                 for interval in self.intervals

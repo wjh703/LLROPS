@@ -111,7 +111,7 @@ programs:
   # ---------------------------------------------------------------------------
   # Main nonlinear adjustment
   # ---------------------------------------------------------------------------
-  - program: LlrAdjustment
+  - program: LlrGroupedVceAdjustment
     enabled: true
 
     # MINI, CRD/FRD, or LLROPS .llnpt/.llrops.jsonl files and directories.
@@ -213,86 +213,104 @@ programs:
       - type: stationRangeBias
         per: station+interval
         intervals:
-          # APOLLO / APOLLO Apache Point examples from the built-in INPOP21a table.
-          - {station: APOLLO, start: 2006-04-07, end: 2010-11-01, name: APOLLO_20060407_20101101}
-          - {station: APOLLO, start: 2007-12-15, end: 2008-06-30, name: APOLLO_20071215_20080630}
-          - {station: APOLLO, start: 2008-09-20, end: 2009-06-20, name: APOLLO_20080920_20090620}
-          - {station: APOLLO, start: 2010-11-01, end: 2012-04-07, name: APOLLO_20101101_20120407}
-          - {station: APOLLO, start: 2012-04-07, end: 2013-09-02, name: APOLLO_20120407_20130902}
-
-          # GRASSE examples.
-          - {station: GRASSE, start: 1984-06-01, end: 1986-06-13, name: GRASSE_19840601_19860613}
-          - {station: GRASSE, start: 1987-10-01, end: 2005-08-01, name: GRASSE_19871001_20050801}
-          - {station: GRASSE, start: 1993-03-01, end: 1996-10-01, name: GRASSE_19930301_19961001}
-          - {station: GRASSE, start: 1996-12-10, end: 1997-01-18, name: GRASSE_19961210_19970118}
-          - {station: GRASSE, start: 1997-02-08, end: 1998-06-24, name: GRASSE_19970208_19980624}
-          - {station: GRASSE, start: 2004-12-04, end: 2004-12-07, name: GRASSE_20041204_20041207}
-          - {station: GRASSE, start: 2005-01-03, end: 2005-01-06, name: GRASSE_20050103_20050106}
-          - {station: GRASSE, start: 2009-11-01, end: 2014-01-01, name: GRASSE_20091101_20140101}
-          - {station: GRASSE, start: 2015-12-20, end: 2015-12-21, name: GRASSE_20151220_20151221}
-
-          # Other station examples.
-          - {station: HALEAKALA, start: 1984-11-01, end: 1990-09-01, name: HALEAKALA_19841101_19900901}
-          - {station: HALEAKALA, start: 1984-11-01, end: 1986-04-01, name: HALEAKALA_19841101_19860401}
-          - {station: HALEAKALA, start: 1986-04-02, end: 1987-07-30, name: HALEAKALA_19860402_19870730}
-          - {station: HALEAKALA, start: 1987-07-31, end: 1987-08-14, name: HALEAKALA_19870731_19870814}
-          - {station: HALEAKALA, start: 1985-06-09, end: 1985-06-10, name: HALEAKALA_19850609_19850610}
-          - {station: HALEAKALA, start: 1987-11-10, end: 1988-02-18, name: HALEAKALA_19871110_19880218}
-          - {station: HALEAKALA, start: 1990-02-06, end: 1990-09-01, name: HALEAKALA_19900206_19900901}
-          - {station: MATERA, start: 2003-01-01, end: 2016-01-01, name: MATERA_20030101_20160101}
-          - {station: MCDONALD, start: 1969-01-01, end: 1985-07-01, name: MCDONALD_19690101_19850701}
-          - {station: MCDONALD, start: 1971-12-01, end: 1972-12-05, name: MCDONALD_19711201_19721205}
-          - {station: MCDONALD, start: 1972-04-21, end: 1972-04-27, name: MCDONALD_19720421_19720427}
-          - {station: MCDONALD, start: 1974-08-18, end: 1974-10-16, name: MCDONALD_19740818_19741016}
-          - {station: MCDONALD, start: 1975-10-05, end: 1976-03-01, name: MCDONALD_19751005_19760301}
-          - {station: MCDONALD, start: 1983-12-01, end: 1984-01-17, name: MCDONALD_19831201_19840117}
-          - {station: MLRS1, start: 1983-08-01, end: 1988-01-28, name: MLRS1_19830801_19880128}
-          - {station: WETTZELL, start: 2018-01-01, end: 2025-01-01, name: WETTZELL_20180101_20250101}
+          # The original table's inclusive dates are represented as
+          # [start, end_exclusive). Overlaps remain additive.
+          - {station: APOLLO, start: 2006-04-07, end_exclusive: 2010-11-02, name: APOLLO_20060407_20101101}
+          - {station: APOLLO, start: 2007-12-15, end_exclusive: 2008-07-01, name: APOLLO_20071215_20080630}
+          - {station: APOLLO, start: 2008-09-20, end_exclusive: 2009-06-21, name: APOLLO_20080920_20090620}
+          - {station: APOLLO, start: 2010-11-01, end_exclusive: 2012-04-08, name: APOLLO_20101101_20120407}
+          - {station: APOLLO, start: 2012-04-07, end_exclusive: 2013-09-03, name: APOLLO_20120407_20130902}
+          - {station: GRASSE, start: 1984-06-01, end_exclusive: 1986-06-14, name: GRASSE_19840601_19860613}
+          - {station: GRASSE, start: 1987-10-01, end_exclusive: 2005-08-02, name: GRASSE_19871001_20050801}
+          - {station: GRASSE, start: 1996-12-10, end_exclusive: 1997-01-19, name: GRASSE_19961210_19970118}
+          - {station: GRASSE, start: 1997-02-08, end_exclusive: 1998-06-25, name: GRASSE_19970208_19980624}
+          - {station: GRASSE, start: 2004-12-04, end_exclusive: 2004-12-08, name: GRASSE_20041204_20041207}
+          - {station: GRASSE, start: 2005-01-03, end_exclusive: 2005-01-07, name: GRASSE_20050103_20050106}
+          - {station: GRASSE, start: 2009-11-01, end_exclusive: 2014-01-02, name: GRASSE_20091101_20140101}
+          - {station: HALEAKALA, start: 1984-11-01, end_exclusive: 1990-09-02, name: HALEAKALA_19841101_19900901}
+          - {station: HALEAKALA, start: 1984-11-01, end_exclusive: 1986-04-02, name: HALEAKALA_19841101_19860401}
+          - {station: HALEAKALA, start: 1986-04-02, end_exclusive: 1987-07-31, name: HALEAKALA_19860402_19870730}
+          - {station: HALEAKALA, start: 1987-07-31, end_exclusive: 1987-08-15, name: HALEAKALA_19870731_19870814}
+          - {station: HALEAKALA, start: 1985-06-09, end_exclusive: 1985-06-11, name: HALEAKALA_19850609_19850610}
+          - {station: HALEAKALA, start: 1989-01-28, end_exclusive: 1989-01-30, name: HALEAKALA_19890128_19890129}
+          - {station: HALEAKALA, start: 1989-08-23, end_exclusive: 1989-08-25, name: HALEAKALA_19890823_19890824}
+          - {station: HALEAKALA, start: 1990-02-06, end_exclusive: 1990-09-02, name: HALEAKALA_19900206_19900901}
+          - {station: MCDONALD, start: 1969-01-01, end_exclusive: 1985-07-02, name: MCDONALD_19690101_19850701}
+          - {station: MCDONALD, start: 1971-12-01, end_exclusive: 1972-12-06, name: MCDONALD_19711201_19721205}
+          - {station: MCDONALD, start: 1972-04-21, end_exclusive: 1972-04-28, name: MCDONALD_19720421_19720427}
+          - {station: MCDONALD, start: 1974-08-18, end_exclusive: 1974-10-17, name: MCDONALD_19740818_19741016}
+          - {station: MCDONALD, start: 1975-10-05, end_exclusive: 1976-03-02, name: MCDONALD_19751005_19760301}
+          - {station: MCDONALD, start: 1983-12-01, end_exclusive: 1984-01-18, name: MCDONALD_19831201_19840117}
+          - {station: MATERA, start: 2003-01-01, end_exclusive: 2016-01-02, name: MATERA_20030101_20160101}
+          - {station: MLRS1, start: 1983-08-01, end_exclusive: 1988-01-29, name: MLRS1_19830801_19880128}
+          - {station: WETTZELL, start: 2018-01-01, end_exclusive: null, name: WETTZELL_20180101_PRESENT}
 
     # -------------------------------------------------------------------------
-    # Nonlinear least-squares control
+    # Function model and irreversible prefit gross screening
     # -------------------------------------------------------------------------
     adjustment:
-      # Maximum Gauss-Newton iterations.
       maxIterations: 20
-
-      # Step length multiplier.
-      # 1.0 = full step; 0.5 = damped conservative step.
       damping: 1.0
-
-      # Convergence tolerance on max parameter-block update norm, metres.
       updateToleranceM: 1.0e-3
-
-      # Convergence tolerance on absolute WRMS change between iterations, metres.
       wrmsToleranceM: 1.0e-4
 
-      # First-pass gross rejection before the first solve.
-      # The test is abs(reduced observation) > threshold.
+      # Applied once before Bias initialization, MAD, VCE, or IGGIII.
+      # These observations never re-enter the solution.
       prefitGrossThresholdM: 20.0
-
-      # Station-specific overrides. Null disables prefit gross rejection for
-      # that station only. Matching tries station_key / station name / station code.
       prefitGrossThresholdByStationM:
         APOLLO: 0.5
         GRASSE: 1.0
         MATERA: 0.5
         WETTZELL: 0.5
         HALEAKALA: 1.5
-        MCDONALD: 2
+        MCDONALD: 2.0
         MLRS1: 1.5
         MLRS2: 1.5
 
-      # Post-fit outlier logic on linearized residual:
-      #   v_i = L_i - a_i @ delta
-      outlier:
-        enabled: true
-        sigmaFactor: 4.0
-        reentry: false
+    initialization:
+      bias_weight_cap: 1.0e12
+      bias_maximum_iterations: 30
+      minimum_mad_count: 10
+      minimum_initial_scale: 1.0
 
+    robust_estimation:
+      k0: 1.5
+      k1: 6.0
+      minimum_one_minus_leverage: 1.0e-8
+      minimum_nonzero_robust_factor: 1.0e-12
+
+    vce:
+      maximum_iterations: 20
+      damping: 0.5
+      minimum_effective_redundancy: 20.0
+      scale_log_tolerance: 1.0e-3
+      robust_weight_tolerance: 1.0e-3
+      minimum_variance_ratio_per_iteration: 0.25
+      maximum_variance_ratio_per_iteration: 4.0
+
+    group_assignment:
+      strict: true
+      unassigned_observation_policy: error
+      multiple_match_policy: error
+
+    # Exactly one group must match each retained observation. CERGA MeO/IR
+    # overlap is separated by laser wavelength; do not replace it with dates.
+    vce_groups:
+      - {id: MCDONALD_1970_1985, station_system: MCDONALD, station_aliases: [MCDONALD], start: 1970-01-01, end_exclusive: 1986-01-01}
+      - {id: MLRS1_1983_1988, station_system: MLRS1, station_aliases: [MLRS1], start: 1983-01-01, end_exclusive: 1989-01-01}
+      - {id: MLRS2_1988_2015, station_system: MLRS2, station_aliases: [MLRS2], start: 1988-01-01, end_exclusive: 2016-01-01}
+      - {id: HALEAKALA_1984_1990, station_system: HALEAKALA, station_aliases: [HALEAKALA], start: 1984-01-01, end_exclusive: 1991-01-01}
+      - {id: CERGA_RUBY_1984_1986, station_system: CERGA_RUBY, station_aliases: [GRASSE, CERGA], start: 1984-01-01, end_exclusive: 1987-01-01}
+      - {id: CERGA_YAG_1987_2005, station_system: CERGA_YAG, station_aliases: [GRASSE, CERGA], start: 1987-01-01, end_exclusive: 2006-01-01}
+      - {id: CERGA_MEO_2009_2022, station_system: CERGA_MEO, station_aliases: [GRASSE, CERGA], start: 2009-01-01, end_exclusive: 2023-01-01, wavelength_max_nm: 700.0}
+      - {id: CERGA_IR_2015_PRESENT, station_system: CERGA_IR, station_aliases: [GRASSE, CERGA], start: 2015-01-01, end_exclusive: null, wavelength_min_nm: 700.0}
+      - {id: APACHE_2006_PRESENT, station_system: APACHE, station_aliases: [APOLLO, APACHE], start: 2006-01-01, end_exclusive: null}
+      - {id: MATERA_2003_PRESENT, station_system: MATERA, station_aliases: [MATERA], start: 2003-01-01, end_exclusive: null}
+      - {id: WETTZELL_2018_PRESENT, station_system: WETTZELL, station_aliases: [WETTZELL], start: 2018-01-01, end_exclusive: null}
 
     # MPI task granularity; ignored in normal serial execution.
     mpi:
-      chunksize: 8
+      chunksize: 512
 
     # Output adjustment summary JSON.
     outputJson: "{outputDir}/reflector_bias_adjustment.json"
