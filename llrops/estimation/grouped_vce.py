@@ -368,11 +368,16 @@ class GroupedVceAdjustment:
     def _equations(self) -> list[ObservationEquation]:
         self._equation_iteration += 1
         equations = self.equation_source(self._equation_iteration)
-        return [eq for eq in equations if eq.converged and eq.identity not in self._gross_rejected]
+        active = [eq for eq in equations if eq.converged and eq.identity not in self._gross_rejected]
+        if self._assignments:
+            newly_converged = [eq for eq in active if eq.identity not in self._assignments]
+            if newly_converged:
+                self._assignments.update(assign_vce_groups(newly_converged, self.options.groups))
+        return active
 
     def _weight(self, scales: Mapping[str, float], factors: Mapping[ObsKey, float], equation: ObservationEquation) -> float:
         group = self._assignments[equation.identity]
-        return float(factors[equation.identity]) / (scales[group] * scales[group] * equation.sigma_m * equation.sigma_m)
+        return float(factors.get(equation.identity, 1.0)) / (scales[group] * scales[group] * equation.sigma_m * equation.sigma_m)
 
     def _inner_solve(
         self,
