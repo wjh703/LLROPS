@@ -609,6 +609,7 @@ class GroupedVceAdjustment:
             minimum_count=self.options.minimum_mad_count,
             minimum_scale=self.options.minimum_initial_scale,
         )
+        initial_scales = dict(scales)
         factors = {eq.identity: 1.0 for eq in active_initial}
         iterations: list[GroupedVceIteration] = []
         diagnostics: dict[str, dict[str, float]] = {}
@@ -688,7 +689,7 @@ class GroupedVceAdjustment:
                     "configured_start": group.start,
                     "configured_end": group.end_exclusive or "present",
                     "observation_count": len(group_equations),
-                    "initial_scale": None,
+                    "initial_scale": float(initial_scales[group.id]),
                     "final_scale": float(scales[group.id]),
                     "variance_component": float(scales[group.id] ** 2),
                     "residual_rms": float(np.sqrt(np.mean(residuals**2))) if len(residuals) else None,
