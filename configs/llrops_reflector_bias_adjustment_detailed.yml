@@ -251,7 +251,7 @@ programs:
     adjustment:
       # Full O-C/design recomputation limit. IGGIII/VCE iterations reuse the
       # current fixed linearization and do not consume this limit.
-      maxIterations: 20
+      maxIterations: 5
       damping: 1.0
       updateToleranceM: 1.0e-3
       # Retained for compatibility; convergence uses the parameter correction.
@@ -285,7 +285,7 @@ programs:
     vce:
       # Stochastic iteration limit at each fixed O-C/design linearization.
       # These iterations rebuild weighted normals but do not rerun the model.
-      maximum_iterations: 20
+      maximum_iterations: 10
       damping: 0.5
       minimum_effective_redundancy: 20.0
       scale_log_tolerance: 1.0e-3
