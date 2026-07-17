@@ -311,11 +311,20 @@ class GroupedVceIteration:
     total_effective_redundancy: float
     expected_total_redundancy: float
     normal_matrix_condition: Optional[float]
+    candidate_wrms_m: Optional[float]
+    maximum_candidate_parameter_update_m: float
+    candidate_update_by_block_m: dict[str, float]
+    scales: dict[str, float]
+    robust_factor_summary: dict[str, object]
+    groups: dict[str, dict[str, object]]
 
 
 @dataclass
 class GroupedVceResult:
     converged: bool
+    termination_reason: str
+    settings: dict[str, object]
+    equation_evaluations: list[dict[str, object]]
     parameter_names: list[ParameterName]
     state: dict[str, object]
     gross_rejected: dict[ObsKey, float]
@@ -323,6 +332,9 @@ class GroupedVceResult:
     robust_factors: dict[ObsKey, float]
     iterations: list[GroupedVceIteration]
     linearizations: list[dict[str, object]]
+    summary: dict[str, object]
+    parameters: list[dict[str, object]]
+    global_residuals: dict[str, object]
     groups: list[dict[str, object]]
     observations: list[dict[str, object]]
     normals: Optional[NormalEquations]
@@ -330,12 +342,18 @@ class GroupedVceResult:
     def to_dict(self) -> dict[str, object]:
         return {
             "converged": self.converged,
+            "termination_reason": self.termination_reason,
+            "settings": self.settings,
+            "equation_evaluations": self.equation_evaluations,
             "parameter_names": names_to_strings(self.parameter_names),
             "state": self.state,
             "gross_rejected_observations": {str(key): value for key, value in self.gross_rejected.items()},
             "scales": self.scales,
             "iterations": [asdict(item) for item in self.iterations],
             "linearizations": self.linearizations,
+            "summary": self.summary,
+            "parameters": self.parameters,
+            "global_residuals": self.global_residuals,
             "groups": self.groups,
             "observations": self.observations,
         }
@@ -370,6 +388,7 @@ class GroupedVceAdjustment:
         self._assignments: dict[ObsKey, str] = {}
         self._retained_keys: Optional[set[ObsKey]] = None
         self._names: list[ParameterName] = []
+        self._equation_evaluations: list[dict[str, object]] = []
 
     def _equations(self) -> list[ObservationEquation]:
         self._equation_iteration += 1
@@ -380,9 +399,22 @@ class GroupedVceAdjustment:
             raise ValueError(f"Observation identity {duplicate!r} is not unique.")
 
         active = [eq for eq in equations if eq.converged]
-        if self._retained_keys is None:
-            return active
-        return [eq for eq in active if eq.identity in self._retained_keys]
+        retained = (
+            active
+            if self._retained_keys is None
+            else [eq for eq in active if eq.identity in self._retained_keys]
+        )
+        self._equation_evaluations.append(
+            {
+                "linearization_iteration": self._equation_iteration,
+                "source_observation_count": len(equations),
+                "light_time_converged_count": len(active),
+                "light_time_nonconverged_count": len(equations) - len(active),
+                "fixed_domain_returned_count": len(retained),
+                "converged_but_outside_fixed_domain_count": len(active) - len(retained),
+            }
+        )
+        return retained
 
     def _weight(self, scales: Mapping[str, float], factors: Mapping[ObsKey, float], equation: ObservationEquation) -> float:
         group = self._assignments[equation.identity]
@@ -546,6 +578,159 @@ class GroupedVceAdjustment:
             )
         return updates, diagnostics, normals
 
+
+    def _block_update_norms(self, delta: np.ndarray) -> dict[str, float]:
+        return {
+            f"{index}:{type(block).__name__}": float(
+                block.max_update_norm(block_delta)
+            )
+            for index, (block, block_delta) in enumerate(
+                zip(
+                    self.parametrization.blocks,
+                    self.parametrization.split(delta),
+                )
+            )
+        }
+
+    def _robust_factor_summary(
+        self,
+        equations: Sequence[ObservationEquation],
+        factors: Mapping[ObsKey, float],
+    ) -> dict[str, object]:
+        values = np.asarray(
+            [factors[eq.identity] for eq in equations],
+            dtype=float,
+        )
+        if not len(values):
+            return {
+                "observation_count": 0,
+                "full_weight_count": 0,
+                "downweighted_count": 0,
+                "rejected_count": 0,
+            }
+        threshold = self.options.minimum_nonzero_robust_factor
+        active = values > threshold
+        full = values == 1.0
+        return {
+            "observation_count": int(len(values)),
+            "full_weight_count": int(np.count_nonzero(full)),
+            "downweighted_count": int(np.count_nonzero(active & ~full)),
+            "rejected_count": int(np.count_nonzero(~active)),
+            "minimum": float(np.min(values)),
+            "p05": float(np.quantile(values, 0.05)),
+            "median": float(np.median(values)),
+            "p95": float(np.quantile(values, 0.95)),
+            "maximum": float(np.max(values)),
+        }
+
+    @staticmethod
+    def _distribution_summary(values: np.ndarray) -> dict[str, object]:
+        values = np.asarray(values, dtype=float)
+        if not len(values):
+            return {"count": 0}
+        median = float(np.median(values))
+        absolute = np.abs(values)
+        return {
+            "count": int(len(values)),
+            "rms": float(np.sqrt(np.mean(values**2))),
+            "median": median,
+            "mad": 1.4826 * float(np.median(np.abs(values - median))),
+            "absolute_p50": float(np.quantile(absolute, 0.50)),
+            "absolute_p90": float(np.quantile(absolute, 0.90)),
+            "absolute_p95": float(np.quantile(absolute, 0.95)),
+            "absolute_p99": float(np.quantile(absolute, 0.99)),
+            "absolute_maximum": float(np.max(absolute)),
+        }
+
+    def _residual_summary(
+        self,
+        solution: _InnerSolution,
+        standardized: Mapping[ObsKey, float],
+        scales: Mapping[str, float],
+        factors: Mapping[ObsKey, float],
+    ) -> dict[str, object]:
+        equations = solution.equations
+        residuals = np.asarray(
+            [solution.residuals[eq.identity] for eq in equations],
+            dtype=float,
+        )
+        standards = np.asarray(
+            [standardized[eq.identity] for eq in equations],
+            dtype=float,
+        )
+        weights = np.asarray(
+            [self._weight(scales, factors, eq) for eq in equations],
+            dtype=float,
+        )
+        weight_sum = float(np.sum(weights))
+        return {
+            "residual_m": self._distribution_summary(residuals),
+            "standardized_residual": self._distribution_summary(standards),
+            "equivalent_weighted_rms_m": (
+                None
+                if weight_sum <= 0.0
+                else float(np.sqrt(np.sum(weights * residuals**2) / weight_sum))
+            ),
+            "robust_factors": self._robust_factor_summary(
+                equations, factors
+            ),
+        }
+
+    def _parameter_records(
+        self,
+        solution: _InnerSolution,
+    ) -> tuple[list[dict[str, object]], dict[str, object]]:
+        solved = solve_normal_equations(solution.normals)
+        covariance = solved.covariance
+        if covariance is None:
+            raise RuntimeError("Final parameter covariance is unavailable.")
+        diagonal = np.maximum(np.diag(covariance), 0.0)
+        cofactor_sigmas = np.sqrt(diagonal)
+        denominator = np.outer(cofactor_sigmas, cofactor_sigmas)
+        correlations = np.divide(
+            covariance,
+            denominator,
+            out=np.zeros_like(covariance),
+            where=denominator > 0.0,
+        )
+        records: list[dict[str, object]] = []
+        for index, name in enumerate(self._names):
+            candidates = np.abs(correlations[index]).copy()
+            candidates[index] = -1.0
+            correlated_index = (
+                int(np.argmax(candidates)) if len(candidates) > 1 else None
+            )
+            records.append(
+                {
+                    "name": str(name),
+                    "type": name.type,
+                    "final_linearized_correction_m": float(solution.delta[index]),
+                    "cofactor_sigma_m": float(cofactor_sigmas[index]),
+                    "formal_sigma_m": (
+                        None
+                        if solved.sigma0_post is None
+                        else float(solved.sigma0_post * cofactor_sigmas[index])
+                    ),
+                    "maximum_absolute_correlation": (
+                        None
+                        if correlated_index is None
+                        else float(abs(correlations[index, correlated_index]))
+                    ),
+                    "maximum_correlated_parameter": (
+                        None
+                        if correlated_index is None
+                        else str(self._names[correlated_index])
+                    ),
+                }
+            )
+        normal_summary = {
+            "observation_count": int(solution.normals.obs_count),
+            "parameter_count": len(self._names),
+            "rank": int(np.linalg.matrix_rank(solution.normals.N)),
+            "condition_number": normal_matrix_condition(solution.normals),
+            "sigma0_post": solved.sigma0_post,
+        }
+        return records, normal_summary
     def _observation_records(
         self,
         equations: Sequence[ObservationEquation],
@@ -630,6 +815,7 @@ class GroupedVceAdjustment:
         linearizations: list[dict[str, object]] = []
         diagnostics: dict[str, dict[str, float]] = {}
         converged = False
+        termination_reason = "PARAMETER_MODEL_NOT_CONVERGED"
         latest_normals: Optional[NormalEquations] = None
         final_solution: Optional[_InnerSolution] = None
         global_stochastic_iteration = 0
@@ -679,6 +865,19 @@ class GroupedVceAdjustment:
                 current_factor_values = [
                     next_factors[eq.identity] for eq in current_equations
                 ]
+                candidate_update_by_block = self._block_update_norms(
+                    robust_solution.delta
+                )
+                iteration_groups = {
+                    group.id: {
+                        **diagnostics[group.id],
+                        "scale_before": float(scales[group.id]),
+                        "scale_after": float(next_scales[group.id]),
+                        "variance_before": float(scales[group.id] ** 2),
+                        "variance_after": float(next_scales[group.id] ** 2),
+                    }
+                    for group in self.options.groups
+                }
                 global_stochastic_iteration += 1
                 stochastic_iterations_used = stochastic
                 iterations.append(
@@ -712,6 +911,19 @@ class GroupedVceAdjustment:
                         normal_matrix_condition=normal_matrix_condition(
                             latest_normals
                         ),
+                        candidate_wrms_m=robust_solution.wrms_m,
+                        maximum_candidate_parameter_update_m=max(
+                            candidate_update_by_block.values(), default=0.0
+                        ),
+                        candidate_update_by_block_m=candidate_update_by_block,
+                        scales={
+                            key: float(value)
+                            for key, value in next_scales.items()
+                        },
+                        robust_factor_summary=self._robust_factor_summary(
+                            current_equations, next_factors
+                        ),
+                        groups=iteration_groups,
                     )
                 )
                 if self.iteration_callback is not None:
@@ -733,14 +945,10 @@ class GroupedVceAdjustment:
             final_solution = self._solve_linearized(
                 current_equations, scales, factors
             )
-            raw_update_norms = [
-                block.max_update_norm(block_delta)
-                for block, block_delta in zip(
-                    self.parametrization.blocks,
-                    self.parametrization.split(final_solution.delta),
-                )
-            ]
-            maximum_update = max(raw_update_norms, default=0.0)
+            candidate_update_by_block = self._block_update_norms(
+                final_solution.delta
+            )
+            maximum_update = max(candidate_update_by_block.values(), default=0.0)
             parameter_converged = (
                 stochastic_converged and maximum_update <= self.options.update_tolerance_m
             )
@@ -764,13 +972,36 @@ class GroupedVceAdjustment:
                     "parameter_converged": bool(parameter_converged),
                     "applied_update_by_block_m": applied_updates,
                     "wrms_m": final_solution.wrms_m,
+                    "equation_count": len(current_equations),
+                    "candidate_update_by_block_m": candidate_update_by_block,
+                    "candidate_parameter_corrections_m": {
+                        str(name): float(value)
+                        for name, value in zip(
+                            self._names, final_solution.delta
+                        )
+                    },
+                    "scales": {
+                        key: float(value) for key, value in scales.items()
+                    },
+                    "robust_factor_summary": self._robust_factor_summary(
+                        current_equations, factors
+                    ),
+                    "normal_matrix_rank": int(
+                        np.linalg.matrix_rank(final_solution.normals.N)
+                    ),
+                    "normal_matrix_condition": normal_matrix_condition(
+                        final_solution.normals
+                    ),
+                    "state_after_update": self.parametrization.state(),
                 }
             )
 
             if not stochastic_converged:
+                termination_reason = "STOCHASTIC_MODEL_NOT_CONVERGED"
                 break
             if parameter_converged:
                 converged = True
+                termination_reason = "CONVERGED"
                 break
             if linearization < self.options.function_max_iterations:
                 current_equations = self._equations()
@@ -784,6 +1015,52 @@ class GroupedVceAdjustment:
         _, diagnostics, latest_normals = self._update_scales(
             final_solution, scales, factors
         )
+        parameter_records, normal_summary = self._parameter_records(
+            final_solution
+        )
+        global_residuals = self._residual_summary(
+            final_solution, standardized, scales, factors
+        )
+        settings = {
+            "geometry_max_iterations": self.options.function_max_iterations,
+            "geometry_damping": self.options.function_damping,
+            "parameter_update_tolerance_m": self.options.update_tolerance_m,
+            "stochastic_max_iterations_per_linearization": (
+                self.options.maximum_stochastic_iterations
+            ),
+            "scale_log_tolerance": self.options.scale_log_tolerance,
+            "robust_factor_tolerance": self.options.robust_weight_tolerance,
+            "igg3_k0": self.options.k0,
+            "igg3_k1": self.options.k1,
+            "minimum_nonzero_robust_factor": (
+                self.options.minimum_nonzero_robust_factor
+            ),
+            "vce_damping": self.options.vce_damping,
+            "minimum_effective_redundancy": (
+                self.options.minimum_effective_redundancy
+            ),
+        }
+        first_evaluation = self._equation_evaluations[0]
+        summary = {
+            "converged": converged,
+            "termination_reason": termination_reason,
+            "source_observation_count": first_evaluation[
+                "source_observation_count"
+            ],
+            "initial_light_time_converged_count": first_evaluation[
+                "light_time_converged_count"
+            ],
+            "initial_light_time_nonconverged_count": first_evaluation[
+                "light_time_nonconverged_count"
+            ],
+            "gross_rejected_count": len(self._gross_rejected),
+            "retained_observation_count": len(self._retained_keys or ()),
+            "final_equation_count": len(final_solution.equations),
+            "equation_evaluation_count": len(self._equation_evaluations),
+            "linearization_count": len(linearizations),
+            "stochastic_iteration_count": len(iterations),
+            **normal_summary,
+        }
         group_records: list[dict[str, object]] = []
         for group in self.options.groups:
             group_equations = [
@@ -802,13 +1079,35 @@ class GroupedVceAdjustment:
                 [standardized[eq.identity] for eq in group_equations],
                 dtype=float,
             )
+            group_factors = self._robust_factor_summary(
+                group_equations, factors
+            )
+            group_weights = np.asarray(
+                [self._weight(scales, factors, eq) for eq in group_equations],
+                dtype=float,
+            )
+            group_weight_sum = float(np.sum(group_weights))
             item = dict(diagnostics.get(group.id, {}))
             item.update(
                 {
                     "group_id": group.id,
                     "configured_start": group.start,
                     "configured_end": group.end_exclusive or "present",
+                    "actual_start_epoch": (
+                        min(eq.epoch for eq in group_equations).isot()
+                        if group_equations
+                        else None
+                    ),
+                    "actual_end_epoch": (
+                        max(eq.epoch for eq in group_equations).isot()
+                        if group_equations
+                        else None
+                    ),
                     "observation_count": len(group_equations),
+                    "retained_observation_count": sum(
+                        assigned_group == group.id
+                        for assigned_group in self._assignments.values()
+                    ),
                     "initial_scale": float(initial_scales[group.id]),
                     "final_scale": float(scales[group.id]),
                     "variance_component": float(scales[group.id] ** 2),
@@ -827,12 +1126,23 @@ class GroupedVceAdjustment:
                         if len(standards)
                         else None
                     ),
+                    "mad_standardized_residual": self._distribution_summary(standards).get("mad"),
+                    "residual_wrms": None if group_weight_sum <= 0.0 else float(np.sqrt(np.sum(group_weights * residuals**2) / group_weight_sum)),
+                    "residual_summary_m": self._distribution_summary(residuals),
+                    "standardized_residual_summary": self._distribution_summary(standards),
+                    "robust_factor_summary": group_factors,
+                    "full_weight_count": group_factors["full_weight_count"],
+                    "downweighted_count": group_factors["downweighted_count"],
+                    "rejected_count": group_factors["rejected_count"],
                 }
             )
             group_records.append(item)
 
         return GroupedVceResult(
             converged=converged,
+            termination_reason=termination_reason,
+            settings=settings,
+            equation_evaluations=list(self._equation_evaluations),
             parameter_names=list(self._names),
             state=self.parametrization.state(),
             gross_rejected=dict(self._gross_rejected),
@@ -840,6 +1150,9 @@ class GroupedVceAdjustment:
             robust_factors=dict(factors),
             iterations=iterations,
             linearizations=linearizations,
+            summary=summary,
+            parameters=parameter_records,
+            global_residuals=global_residuals,
             groups=group_records,
             observations=self._observation_records(
                 final_solution.equations,

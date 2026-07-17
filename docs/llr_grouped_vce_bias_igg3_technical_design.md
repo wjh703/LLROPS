@@ -1694,7 +1694,26 @@ llr/
 
 ## 19. 输出与诊断
 
-### 19.1 每个 VCE 组
+### 19.1 总体结果与解算终止状态
+
+结果 JSON 顶层必须包含下列结构，使数值过程可以从最终文件完整追溯：
+
+| 字段 | 诊断用途 |
+|---|---|
+| `summary` | 汇总输入、光行时收敛、gross 剔除、固定域保留、方程重算、迭代、秩、条件数与验后单位权中误差 |
+| `termination_reason` | 区分正常收敛、随机模型未收敛和参数模型未收敛 |
+| `settings` | 固化本次几何、VCE 与 IGGIII 收敛阈值 |
+| `equation_evaluations` | 逐次记录前向模型输入数、光行时收敛数及固定观测域返回数 |
+| `linearizations` | 记录每个几何线性化点的候选参数改正、实际施加改正、状态、WRMS 和法方程状态 |
+| `iterations` | 记录固定线性化点内每次随机模型迭代的尺度、抗差因子、VCE 多余度和候选参数改正 |
+| `parameters` | 最终线性化改正、协因数标准差、验后形式标准差和最大参数相关性 |
+| `global_residuals` | 全局残差、标准化残差分位数、等价权 WRMS 与抗差状态计数 |
+| `groups` | 分组 VCE、残差分布、抗差状态和实际时间覆盖 |
+| `observations` | 保留逐观测后验残差、标准化残差、IGGIII 因子和等价权 |
+
+`termination_reason` 取 `CONVERGED`、`STOCHASTIC_MODEL_NOT_CONVERGED` 或 `PARAMETER_MODEL_NOT_CONVERGED`，不得只依靠布尔值判断失败阶段。
+
+### 19.2 每个 VCE 组
 
 | 字段 | 含义 |
 |---|---|
@@ -1720,7 +1739,7 @@ llr/
 | `mad_standardized_residual` | 标准化残差 MAD |
 | `update_status` | VCE 更新状态 |
 
-### 19.2 每个观测
+### 19.3 每个观测
 
 ```text
 observation_id
@@ -1741,26 +1760,27 @@ robust_status
 matched_bias_ids
 ```
 
-### 19.3 每个 Bias
+### 19.4 每个参数
 
 ```text
-bias_id
-station
-configured_from
-configured_to
-initial_value
-estimated_value
-formal_sigma
-observation_count
-correlation_with_station_radial
-maximum_parameter_correlation
+name
+type
+final_linearized_correction_m
+cofactor_sigma_m
+formal_sigma_m
+maximum_absolute_correlation
+maximum_correlated_parameter
 ```
 
-### 19.4 每轮迭代
+### 19.5 每轮迭代
 
 ```text
 iteration
-parameter_correction_norm
+linearization_iteration
+stochastic_iteration
+candidate_wrms_m
+maximum_candidate_parameter_update_m
+candidate_update_by_block_m
 maximum_scale_log_change
 maximum_robust_factor_change
 active_observation_count
@@ -1768,9 +1788,12 @@ rejected_observation_count
 total_effective_redundancy
 expected_total_redundancy
 normal_matrix_condition
+scales
+robust_factor_summary
+groups
 ```
 
-### 19.5 必须生成的图
+### 19.6 必须生成的图
 
 1. 各 VCE 组残差时间序列；
 2. 各组标准化残差时间序列；

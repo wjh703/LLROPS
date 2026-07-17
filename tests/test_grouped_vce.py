@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import pytest
 
@@ -146,6 +148,17 @@ def test_grouped_adjustment_runs_joint_vce_cycle():
     assert result.iterations[-1].total_effective_redundancy == pytest.approx(
         result.iterations[-1].expected_total_redundancy
     )
+    payload = result.to_dict()
+    json.dumps(payload)
+    assert payload["summary"]["source_observation_count"] == len(equations)
+    assert payload["summary"]["equation_evaluation_count"] == len(payload["equation_evaluations"])
+    assert payload["parameters"][0]["formal_sigma_m"] is not None
+    assert payload["global_residuals"]["residual_m"]["count"] == len(equations)
+    assert payload["groups"][0]["actual_start_epoch"] is not None
+    counts = ("full_weight_count", "downweighted_count", "rejected_count")
+    assert sum(payload["groups"][0][key] for key in counts) == payload["groups"][0]["observation_count"]
+    assert payload["iterations"][0]["candidate_update_by_block_m"]
+    assert payload["iterations"][0]["groups"]
 
 
 from llrops.classes.parametrization.station_range_bias import StationRangeBiasParametrization
@@ -272,6 +285,9 @@ def test_stochastic_iterations_do_not_recompute_observation_equations():
     assert len(result.iterations) > 1
     assert source_calls == [1]
     assert result.converged
+    assert result.termination_reason == "CONVERGED"
+    assert result.summary["equation_evaluation_count"] == 1
+    assert result.equation_evaluations[0]["fixed_domain_returned_count"] == 6
 
 
 def test_parameter_nonconvergence_triggers_one_new_linearization():
@@ -316,6 +332,8 @@ def test_parameter_nonconvergence_triggers_one_new_linearization():
 
     assert source_calls == [1, 2]
     assert len(result.linearizations) == 2
+    assert result.summary["equation_evaluation_count"] == 2
+    assert result.equation_evaluations[1]["fixed_domain_returned_count"] == 6
     assert result.converged
     assert block.value == pytest.approx(np.mean([0.7, 1.0, 1.2, 0.8, 1.1, 0.9]))
     assert "late" not in result.robust_factors
