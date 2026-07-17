@@ -42,7 +42,7 @@
 11. 正式抗差前，先用稳健 Bias 初值和 MAD 组尺度完成初始化；
 12. VCE 多余度采用 Helmert 迹公式，不采用“分数观测数”形式；
 13. IGGⅢ 严格零权观测不计入当前有效观测数；
-14. 随机模型收敛后，固定最终 $s_g^2$ 和 IGGⅢ 因子，再执行一次完整最终解算。
+14. 随机模型收敛后，固定最终 $s_g^2$ 和 IGGⅢ 因子，在当前线性化点执行一次最终参数解算。
 
 ---
 
@@ -1283,314 +1283,185 @@ maximum_variance_ratio_per_iteration: 4.0
 
 ---
 
-## 14. 完整联合迭代流程
+## 14. 固定线性化联合迭代流程
 
-### 14.1 两层迭代
+### 14.1 几何外循环
 
-#### 内层：函数模型迭代
+每个几何循环只执行一次完整 LLR 前向计算，生成当前状态处的 O-C、设计矩阵、光行时状态和观测元数据。
 
-固定当前：
+首轮前向计算后固定观测域：
 
-- $s_g^2$；
-- $\alpha_i$。
+1. 只保留光行时收敛的观测；
+2. 执行一次 pre-fit gross outlier 筛选；
+3. gross 剔除观测永久退出；
+4. 首轮未形成有效方程的观测不得在后续中途加入；
+5. 每条保留观测必须唯一命中一个 VCE 组。
 
-迭代轨道、月球转动、测站、反射器、Bias 等参数，直到函数模型线性化收敛。
+### 14.2 随机模型内循环
 
-#### 外层：随机模型迭代
-
-在内层收敛后：
-
-1. 计算 post-fit residual；
-2. 计算基础标准化残差；
-3. 更新 IGGⅢ 因子；
-4. 重新联合平差；
-5. 在等价权法方程下计算 Helmert 组多余度；
-6. 更新 $s_g^2$；
-7. 阻尼；
-8. 进入下一轮。
-
-### 14.2 推荐顺序
+在第 $j$ 个几何线性化点固定：
 
 $$
-\boxed{
-\begin{aligned}
-&\text{数据读取和校验}\\
-&\rightarrow\text{VCE 唯一分组}\\
-&\rightarrow\text{建立可重叠 Bias 矩阵}\\
-&\rightarrow\text{稳健 Bias 初值}\\
-&\rightarrow\text{去 Bias 后的 MAD 组尺度}\\
-&\rightarrow\text{第一次基础权平差}\\
-&\rightarrow\text{基础随机模型标准化残差}\\
-&\rightarrow\text{IGGⅢ 更新}\\
-&\rightarrow\text{等价权参数联合平差}\\
-&\rightarrow\text{Helmert 迹公式计算组多余度}\\
-&\rightarrow\text{稳健组尺度更新和阻尼}\\
-&\rightarrow\text{循环至收敛}\\
-&\rightarrow\text{固定最终随机模型再解算一次}.
-\end{aligned}
-}
+\boldsymbol l_j,\qquad \boldsymbol M_j.
 $$
 
-### 14.3 第一次平差
-
-初始化：
+随机模型迭代只改变 $s_g^2$、$\alpha_i$ 和等价权。候选参数改正始终相对于同一线性化点求解：
 
 $$
-\alpha_i^{(0)}=1,
-$$
-
-$$
-p_i^{(0)}
+\Delta\hat{\boldsymbol y}_{j,k}
 =
-\frac{1}{(s_{g(i)}^{(0)})^2\sigma_{i,\mathrm{NP}}^2}.
+(\boldsymbol M_j^T\bar{\boldsymbol P}^{(k)}\boldsymbol M_j)^{-1}
+\boldsymbol M_j^T\bar{\boldsymbol P}^{(k)}\boldsymbol l_j.
 $$
 
-第一次平差不使用尚未由 post-fit residual 计算的严格 IGGⅢ 剔除名单。
-
-### 14.4 外层第 $k$ 轮
-
-1. 由当前 $s_g^{2(k)}$ 构造基础权；
-2. 以内层非线性迭代求得参数和 residual；
-3. 用基础随机模型计算 $t_i^{(k)}$；
-4. 计算 $\alpha_i^{(k+1)}$；
-5. 用新等价权重新求解参数；
-6. 由等价权法方程计算 $r_g^{(k+1)}$；
-7. 计算 $s_{g,\mathrm{raw}}^{2(k+1)}$；
-8. 阻尼得到 $s_g^{2(k+1)}$；
-9. 检查收敛。
-
-### 14.5 收敛条件
-
-同时满足：
+对应线性 post-fit residual 为：
 
 $$
-\max_g
-\left|
-\ln
-\frac{s_g^{2(k+1)}}{s_g^{2(k)}}
-\right|
-<
-\varepsilon_s,
+\boldsymbol v_{j,k}
+=
+\boldsymbol l_j-
+\boldsymbol M_j\Delta\hat{\boldsymbol y}_{j,k}.
+$$
+
+内循环依次执行：
+
+1. 用当前尺度和抗差因子求候选参数解；
+2. 用基础随机模型计算标准化残差；
+3. 更新 IGGⅢ 因子；
+4. 用新等价权重新求候选参数解；
+5. 用 Helmert 迹公式更新组尺度；
+6. 检查尺度和抗差因子收敛。
+
+随机模型内循环禁止调用 `apply_update`，也禁止重新计算 O-C 和设计矩阵。
+
+### 14.3 随机模型收敛
+
+必须同时满足：
+
+$$
+\max_g\left|\ln\frac{s_g^{2(k+1)}}{s_g^{2(k)}}\right|
+<\varepsilon_s,
 $$
 
 $$
-\max_i
-\left|
-\alpha_i^{(k+1)}-\alpha_i^{(k)}
-\right|
-<
-\varepsilon_\alpha,
+\max_i|\alpha_i^{(k+1)}-\alpha_i^{(k)}|
+<\varepsilon_\alpha.
 $$
 
-且函数模型参数改正满足现有代码的收敛标准。
+若达到随机模型最大迭代数仍未收敛，不应用候选参数改正，返回非收敛状态并保留最后诊断。
 
-建议：
+### 14.4 参数收敛与重新线性化
+
+随机模型收敛后，固定最终 $s_g^2$ 和 $\alpha_i$ 再求解一次最终参数改正 $\Delta\hat{\boldsymbol y}_j$。
+
+若最大参数块改正满足：
+
+$$
+\max_b\|\Delta\hat{\boldsymbol y}_{j,b}\|
+\le\varepsilon_x,
+$$
+
+则完整应用该改正一次，接受当前线性 post-fit residual，并直接结束，不再额外执行前向计算。
+
+若参数改正不收敛，则只应用一次阻尼改正，在新参数状态重新计算一次 O-C 和设计矩阵，并重复随机模型内循环。是否重新线性化由最终联合参数改正决定，不单独根据反射器坐标改正触发。
+
+配置含义为：
 
 ```yaml
-scale_log_tolerance: 1.0e-3
-robust_weight_tolerance: 1.0e-3
-maximum_stochastic_iterations: 20
+adjustment:
+  maxIterations: 20       # 几何线性化循环上限
+  updateToleranceM: 1.0e-3
+vce:
+  maximum_iterations: 20  # 每个固定线性化点的随机模型循环上限
 ```
 
-达到最大迭代数仍未收敛时：
-
-- 返回非成功状态；
-- 保留最后一轮结果；
-- 输出未收敛的组、权和参数诊断。
+日志必须分别记录 `linearization_iteration` 和 `stochastic_iteration`。完整前向模型调用次数应等于实际几何线性化次数。
 
 ---
 
 ## 15. 核心伪代码
 
 ```python
-def solve_llr_grouped_vce_igg3(
-    observations,
-    initial_state,
-    config,
-):
-    validate_observations(observations)
+def solve_llr_grouped_vce_igg3(observations, state, config):
+    equations = compute_oc_and_design_once(observations, state)
+    usable = select_converged_equations(equations)
+    gross_rejected = prefit_gross_screen_once(usable, config.prefit_gross)
+    retained_ids = usable.ids - gross_rejected.ids
+    equations = usable.with_ids(retained_ids)
 
-    assign_unique_vce_groups(
-        observations=observations,
-        group_config=config.vce_groups,
-        strict=True,
-    )
+    assign_unique_vce_groups(equations, config.vce_groups)
+    setup_parameter_columns(equations)
+    apply_parameter_update_once(robust_initialize_bias(equations))
+    scales = initialize_group_scales_with_mad(equations)
+    robust_factors = ones_for(retained_ids)
 
-    bias_matrix = build_bias_design_matrix(
-        observations=observations,
-        bias_intervals=config.bias_intervals,
-        overlap_policy="additive",
-    )
-
-    prefit = compute_prefit_residuals(
-        observations=observations,
-        state=initial_state,
-    )
-
-    bias_initial = robust_initialize_bias(
-        residuals=prefit,
-        bias_matrix=bias_matrix,
-        sigma_np=observations.sigma_np,
-        config=config.bias_initialization,
-    )
-
-    residual_after_bias = (
-        prefit - bias_matrix @ bias_initial
-    )
-
-    scales = initialize_group_scales_with_mad(
-        residuals=residual_after_bias,
-        sigma_np=observations.sigma_np,
-        group_ids=observations.vce_group_id,
-        consistency_factor=1.4826,
-        minimum_initial_scale=1.0,
-        minimum_count=config.minimum_mad_count,
-    )
-
-    robust_factors = np.ones(observations.count)
-    state = initial_state
-    bias = bias_initial
-
-    for outer_iteration in range(
-        config.maximum_stochastic_iterations
-    ):
-        base_variance = (
-            scales[observations.vce_group_id] ** 2
-            * observations.sigma_np ** 2
-        )
-        base_weight = 1.0 / base_variance
-
-        equivalent_weight = (
-            robust_factors * base_weight
-        )
-
-        solution = solve_nonlinear_model(
-            observations=observations,
-            initial_state=state,
-            initial_bias=bias,
-            bias_matrix=bias_matrix,
-            weights=equivalent_weight,
-            convergence=config.function_model_convergence,
-        )
-
-        state = solution.state
-        bias = solution.bias
-        residuals = solution.residuals
-        design_matrix = solution.full_design_matrix
-
-        standardized_residuals = (
-            compute_base_standardized_residuals(
-                residuals=residuals,
-                design_matrix=design_matrix,
-                base_variance=base_variance,
-                base_weight=base_weight,
-                minimum_one_minus_leverage=(
-                    config.minimum_one_minus_leverage
-                ),
+    for linearization in range(config.adjustment.max_iterations):
+        stochastic_converged = False
+        for stochastic in range(config.vce.maximum_iterations):
+            # equations and parameter state remain fixed here
+            base_solution = solve_fixed_linearization(
+                equations, scales, robust_factors, apply_update=False
             )
-        )
-
-        new_robust_factors = igg3_factors(
-            standardized_residuals,
-            k0=1.5,
-            k1=6.0,
-        )
-
-        new_equivalent_weight = (
-            new_robust_factors * base_weight
-        )
-
-        robust_solution = solve_nonlinear_model(
-            observations=observations,
-            initial_state=state,
-            initial_bias=bias,
-            bias_matrix=bias_matrix,
-            weights=new_equivalent_weight,
-            convergence=config.function_model_convergence,
-        )
-
-        state = robust_solution.state
-        bias = robust_solution.bias
-        residuals = robust_solution.residuals
-        design_matrix = robust_solution.full_design_matrix
-
-        raw_scales, vce_diagnostics = (
-            estimate_group_scales_equivalent_helmert(
-                residuals=residuals,
-                design_matrix=design_matrix,
-                sigma_np=observations.sigma_np,
-                group_ids=observations.vce_group_id,
-                current_scales=scales,
-                robust_factors=new_robust_factors,
-                minimum_redundancy=(
-                    config.minimum_effective_redundancy
-                ),
-                alpha_zero_threshold=(
-                    config.minimum_nonzero_robust_factor
-                ),
+            standardized = compute_base_standardized_residuals(
+                base_solution.residuals,
+                equations.design_matrix,
+                scales,
             )
+            next_factors = igg3_factors(standardized, k0=1.5, k1=6.0)
+            robust_solution = solve_fixed_linearization(
+                equations, scales, next_factors, apply_update=False
+            )
+            next_scales, diagnostics = (
+                estimate_group_scales_equivalent_helmert(
+                    robust_solution, scales, next_factors
+                )
+            )
+            stochastic_converged = stochastic_model_converged(
+                scales, next_scales, robust_factors, next_factors
+            )
+            scales = next_scales
+            robust_factors = next_factors
+            write_stochastic_diagnostics(
+                linearization, stochastic, diagnostics
+            )
+            if stochastic_converged:
+                break
+
+        if not stochastic_converged:
+            return build_nonconverged_output(
+                reason="STOCHASTIC_MODEL_NOT_CONVERGED"
+            )
+
+        final_solution = solve_fixed_linearization(
+            equations, scales, robust_factors, apply_update=False
         )
-
-        new_scales = damp_scale_update(
-            old_scales=scales,
-            raw_scales=raw_scales,
-            damping=config.vce_damping,
-            minimum_ratio=(
-                config.minimum_variance_ratio_per_iteration
-            ),
-            maximum_ratio=(
-                config.maximum_variance_ratio_per_iteration
-            ),
+        maximum_update = maximum_parameter_block_norm(final_solution.delta)
+        parameter_converged = (
+            maximum_update <= config.adjustment.update_tolerance_m
         )
-
-        write_iteration_diagnostics(
-            iteration=outer_iteration,
-            state=state,
-            bias=bias,
-            residuals=residuals,
-            standardized_residuals=standardized_residuals,
-            robust_factors=new_robust_factors,
-            scales=new_scales,
-            vce_diagnostics=vce_diagnostics,
+        applied_delta = (
+            final_solution.delta
+            if parameter_converged
+            else config.adjustment.damping * final_solution.delta
         )
+        apply_parameter_update_once(applied_delta)
 
-        if stochastic_model_converged(
-            old_scales=scales,
-            new_scales=new_scales,
-            old_factors=robust_factors,
-            new_factors=new_robust_factors,
-            scale_tolerance=config.scale_log_tolerance,
-            weight_tolerance=config.robust_weight_tolerance,
-        ):
-            scales = new_scales
-            robust_factors = new_robust_factors
-            break
+        if parameter_converged:
+            return build_converged_output(
+                solution=final_solution,
+                scales=scales,
+                robust_factors=robust_factors,
+            )
 
-        scales = new_scales
-        robust_factors = new_robust_factors
+        equations = compute_oc_and_design_once(
+            observations, current_state()
+        ).with_ids(retained_ids)
 
-    final_variance = (
-        scales[observations.vce_group_id] ** 2
-        * observations.sigma_np ** 2
-    )
-    final_weight = robust_factors / final_variance
-
-    final_solution = solve_nonlinear_model(
-        observations=observations,
-        initial_state=state,
-        initial_bias=bias,
-        bias_matrix=bias_matrix,
-        weights=final_weight,
-        convergence=config.function_model_convergence,
-    )
-
-    return build_final_output(
-        solution=final_solution,
-        scales=scales,
-        robust_factors=robust_factors,
-        observations=observations,
+    return build_nonconverged_output(
+        reason="PARAMETER_MODEL_NOT_CONVERGED"
     )
 ```
+
 
 ---
 

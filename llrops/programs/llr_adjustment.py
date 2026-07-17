@@ -59,6 +59,11 @@ def _build_equation_source(config, context, datasets, processor):
     """
     options = make_processing_options(config, include_design=True)
     runtime = context.shared.get("mpi")
+    progress_prefix = (
+        "linearization"
+        if config.get("program") == "LlrGroupedVceAdjustment"
+        else "adjustment iter"
+    )
     use_mpi = runtime is not None and runtime.has_workers
     if use_mpi:
         from llrops.parallel.mpi import make_observation_spec, mpi_observation_results, snapshot_catalog_state
@@ -75,11 +80,11 @@ def _build_equation_source(config, context, datasets, processor):
                 options,
                 chunksize=chunksize,
                 catalog_state=snapshot_catalog_state(context),
-                progress_desc=f"adjustment iter {iteration}",
+                progress_desc=f"{progress_prefix} {iteration}",
                 quiet=not bool(config.get("showProgress", True)),
             )
         else:
-            iteration_options = options.with_progress(f"adjustment iter {iteration}")
+            iteration_options = options.with_progress(f"{progress_prefix} {iteration}")
             results_by_source = {
                 source_name: processor.process(
                     dataset, source_name=source_name, options=iteration_options
@@ -211,12 +216,29 @@ def llr_grouped_vce_adjustment(config: dict, context: RunContext):
         ),
     )
 
+    def report_iteration(item):
+        print(
+            "[GroupedVCE] "
+            f"linearization={item.linearization_iteration} "
+            f"stochastic={item.stochastic_iteration} "
+            f"scaleLogChange={item.maximum_scale_log_change:.3e} "
+            f"factorChange={item.maximum_robust_factor_change:.3e} "
+            f"active={item.active_observation_count} "
+            f"rejected={item.rejected_observation_count}",
+            flush=True,
+        )
+
     try:
         result = GroupedVceAdjustment(
             equation_source=_build_equation_source(config, context, datasets, processor),
             parametrization=parametrization,
             options=options,
             context=context,
+            iteration_callback=(
+                report_iteration
+                if bool(config.get("showProgress", True))
+                else None
+            ),
         ).run()
     finally:
         processor.close()
@@ -229,7 +251,8 @@ def llr_grouped_vce_adjustment(config: dict, context: RunContext):
         result.normals.save(context.resolve_path(config["outputNormals"]))
     print(
         f"[LlrGroupedVceAdjustment] converged={result.converged} "
-        f"outerIterations={len(result.iterations)} groups={len(result.scales)}"
+        f"linearizations={len(result.linearizations)} "
+        f"stochasticIterations={len(result.iterations)} groups={len(result.scales)}"
     )
     return result
 

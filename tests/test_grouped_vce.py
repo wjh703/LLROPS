@@ -228,3 +228,95 @@ def test_extended_vce_groups_cover_mcdonald_1969_and_current_meo():
         "meo-2024": "CERGA_MEO_2009_PRESENT",
     }
 
+
+
+def test_stochastic_iterations_do_not_recompute_observation_equations():
+    equations = [
+        _equation(index, value, "STA_A")
+        for index, value in enumerate([0.0, 0.0, 0.0, 0.0, 0.0, 20.0])
+    ]
+    groups = (
+        VceGroup.from_config(
+            {
+                "id": "A",
+                "station_system": "A",
+                "station_aliases": ["STA_A"],
+                "start": "2010-01-01",
+                "end_exclusive": None,
+            }
+        ),
+    )
+    source_calls = []
+
+    def source(iteration):
+        source_calls.append(iteration)
+        return equations
+
+    result = GroupedVceAdjustment(
+        equation_source=source,
+        parametrization=ParametrizationList([OffsetParametrization()]),
+        options=GroupedVceOptions(
+            groups=groups,
+            prefit_gross_threshold_m=None,
+            function_max_iterations=2,
+            maximum_stochastic_iterations=4,
+            update_tolerance_m=10.0,
+            minimum_mad_count=2,
+            minimum_effective_redundancy=1.0,
+            vce_damping=0.0,
+            scale_log_tolerance=0.0,
+            robust_weight_tolerance=0.0,
+        ),
+    ).run()
+
+    assert len(result.iterations) > 1
+    assert source_calls == [1]
+    assert result.converged
+
+
+def test_parameter_nonconvergence_triggers_one_new_linearization():
+    equations = [
+        _equation(index, value, "STA_A")
+        for index, value in enumerate([0.7, 1.0, 1.2, 0.8, 1.1, 0.9])
+    ]
+    late = _equation("late", 100.0, "STA_A")
+    groups = (
+        VceGroup.from_config(
+            {
+                "id": "A",
+                "station_system": "A",
+                "station_aliases": ["STA_A"],
+                "start": "2010-01-01",
+                "end_exclusive": None,
+            }
+        ),
+    )
+    source_calls = []
+
+    def source(iteration):
+        source_calls.append(iteration)
+        return equations + [replace(late, converged=iteration > 1)]
+
+    block = OffsetParametrization()
+    result = GroupedVceAdjustment(
+        equation_source=source,
+        parametrization=ParametrizationList([block]),
+        options=GroupedVceOptions(
+            groups=groups,
+            prefit_gross_threshold_m=None,
+            function_max_iterations=4,
+            maximum_stochastic_iterations=2,
+            update_tolerance_m=1.0e-6,
+            minimum_mad_count=2,
+            minimum_effective_redundancy=1.0,
+            scale_log_tolerance=10.0,
+            robust_weight_tolerance=10.0,
+        ),
+    ).run()
+
+    assert source_calls == [1, 2]
+    assert len(result.linearizations) == 2
+    assert result.converged
+    assert block.value == pytest.approx(np.mean([0.7, 1.0, 1.2, 0.8, 1.1, 0.9]))
+    assert "late" not in result.robust_factors
+    assert all(item["observation_id"] != "late" for item in result.observations)

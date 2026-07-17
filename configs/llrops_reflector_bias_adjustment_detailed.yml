@@ -246,12 +246,15 @@ programs:
           - {station: WETTZELL, start: 2018-01-01, end_exclusive: null, name: WETTZELL_20180101_PRESENT}
 
     # -------------------------------------------------------------------------
-    # Function model and irreversible prefit gross screening
+    # Geometry linearization and irreversible prefit gross screening
     # -------------------------------------------------------------------------
     adjustment:
+      # Full O-C/design recomputation limit. IGGIII/VCE iterations reuse the
+      # current fixed linearization and do not consume this limit.
       maxIterations: 20
       damping: 1.0
       updateToleranceM: 1.0e-3
+      # Retained for compatibility; convergence uses the parameter correction.
       wrmsToleranceM: 1.0e-4
 
       # Applied once before Bias initialization, MAD, VCE, or IGGIII.
@@ -280,6 +283,8 @@ programs:
       minimum_nonzero_robust_factor: 1.0e-12
 
     vce:
+      # Stochastic iteration limit at each fixed O-C/design linearization.
+      # These iterations rebuild weighted normals but do not rerun the model.
       maximum_iterations: 20
       damping: 0.5
       minimum_effective_redundancy: 20.0
@@ -310,7 +315,7 @@ programs:
 
     # MPI task granularity; ignored in normal serial execution.
     mpi:
-      chunksize: 512
+      chunksize: 32
 
     # Output adjustment summary JSON.
     outputJson: "{outputDir}/reflector_bias_adjustment.json"
