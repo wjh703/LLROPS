@@ -335,10 +335,12 @@ def test_llr_adjustment_runs_joint_helmert_vce_cycle():
     assert len(result.observations) == len(equations)
     for item in result.observations:
         base_sigma = item["base_scale"] * item["sigma_np"]
-        assert "leverage" not in item
-        assert item["residual_sigma"] == pytest.approx(base_sigma)
+        assert 0.0 <= item["leverage"] < 1.0
+        assert item["residual_sigma"] == pytest.approx(
+            base_sigma * np.sqrt(1.0 - item["leverage"])
+        )
         assert item["standardized_residual"] == pytest.approx(
-            item["postfit_residual"] / base_sigma
+            item["postfit_residual"] / item["residual_sigma"]
         )
     assert all(0.0 <= factor <= 1.0 for factor in result.robust_factors.values())
     assert result.iterations[-1].total_effective_redundancy == pytest.approx(

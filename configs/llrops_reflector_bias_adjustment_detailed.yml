@@ -260,7 +260,7 @@ programs:
         StationRangeBiasParametrization: 2.0e-3
       # Require two successive outer iterations with a stable stochastic model
       # and sub-millimetre parameter corrections.
-      requiredConsecutiveConvergedLinearizations: 2
+      requiredConsecutiveConvergedLinearizations: 1
 
       # GROOPS-style staged parameter processing. Each stage reuses the
       # parameter objects updated by the previous stage as its new a priori state.
@@ -304,6 +304,8 @@ programs:
     robust_estimation:
       k0: 1.5
       k1: 6.0
+      # Studentized residual correction for observations with high adjustment leverage.
+      minimum_one_minus_leverage: 1.0e-8
       minimum_nonzero_robust_factor: 1.0e-12
       # Zero IGGIII targets are rejected immediately. Changes wholly below this
       # floor are ignored for convergence; near-full factors snap to 1.

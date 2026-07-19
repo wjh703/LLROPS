@@ -214,6 +214,12 @@ def llr_adjustment(config: dict, context: RunContext):
         ),
         k0=float(robust.get("k0", 1.5)),
         k1=float(robust.get("k1", 6.0)),
+        minimum_one_minus_leverage=float(
+            robust.get(
+                "minimum_one_minus_leverage",
+                robust.get("minimumOneMinusLeverage", 1.0e-8),
+            )
+        ),
         minimum_nonzero_robust_factor=float(
             robust.get(
                 "minimum_nonzero_robust_factor",

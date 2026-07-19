@@ -1,8 +1,8 @@
 #!/bin/bash
 
 #SBATCH --job-name=llrops
-#SBATCH --nodes=1
-#SBATCH --ntasks=32
+#SBATCH --nodes=3
+#SBATCH --ntasks=96
 #SBATCH --time=24:00:00
 #SBATCH --output=logs/llrops_%j.out
 #SBATCH --error=logs/llrops_%j.err
@@ -17,6 +17,6 @@ echo "Tasks: $SLURM_NTASKS"
 echo "Start time: $(date)"
 echo "Working directory: $(pwd)"
 
-uv run mpirun -n 32 python -m llrops run configs/llrops_reflector_bias_adjustment_detailed.yml --mpi
+uv run mpirun -n 96 python -m llrops run configs/llrops_reflector_bias_adjustment_detailed.yml --mpi
 
 echo "End time: $(date)"

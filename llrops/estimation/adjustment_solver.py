@@ -189,6 +189,7 @@ class LlrAdjustmentOptions:
     maximum_stochastic_iterations: int = 20
     k0: float = 1.5
     k1: float = 6.0
+    minimum_one_minus_leverage: float = 1.0e-8
     minimum_nonzero_robust_factor: float = 1.0e-12
     minimum_robust_factor_for_convergence: float = 1.0e-3
     minimum_mad_count: int = 10
@@ -222,6 +223,8 @@ class LlrAdjustmentOptions:
             raise ValueError("Stochastic convergence tolerances must be non-negative.")
         if self.active_set_change_tolerance < 0.0:
             raise ValueError("Active-set change tolerance must be non-negative.")
+        if not 0.0 < self.minimum_one_minus_leverage <= 1.0:
+            raise ValueError("Minimum one-minus-leverage must be in (0, 1].")
         if not (
             0.0 < self.minimum_variance_ratio_per_iteration
             <= self.maximum_variance_ratio_per_iteration
@@ -437,11 +440,43 @@ class LlrAdjustmentSolver:
         solution: _InnerSolution,
         scales: Mapping[str, float],
     ) -> tuple[dict[ObsKey, float], dict[ObsKey, float]]:
+        base_weights = {
+            eq.identity: 1.0
+            / (
+                scales[self._assignments[eq.identity]] ** 2
+                * eq.sigma_m**2
+            )
+            for eq in solution.equations
+        }
+        base_normals = build_normal_equations_streaming(
+            solution.equations,
+            self.parametrization,
+            parameter_names=self._names,
+            weight_for=lambda eq: base_weights[eq.identity],
+        )
+        covariance = solve_normal_equations(base_normals).covariance
+        if covariance is None:
+            raise RuntimeError("Base normal equation covariance is unavailable.")
+
         standardized: dict[ObsKey, float] = {}
         residual_sigmas: dict[ObsKey, float] = {}
         for equation in solution.equations:
+            row = self.parametrization.design_row(equation)
+            leverage = base_weights[equation.identity] * float(
+                row @ covariance @ row
+            )
+            if not np.isfinite(leverage):
+                raise RuntimeError(
+                    f"Invalid leverage for observation {equation.identity!r}: "
+                    f"{leverage!r}."
+                )
+            one_minus_leverage = max(
+                1.0 - leverage,
+                self.options.minimum_one_minus_leverage,
+            )
             component_id = self._assignments[equation.identity]
-            sigma_v = float(scales[component_id] * equation.sigma_m)
+            base_variance = scales[component_id] ** 2 * equation.sigma_m**2
+            sigma_v = float(np.sqrt(base_variance * one_minus_leverage))
             if not np.isfinite(sigma_v) or sigma_v <= 0.0:
                 raise RuntimeError(
                     "Invalid residual standard deviation for "
@@ -657,6 +692,11 @@ class LlrAdjustmentSolver:
                     "base_weight": float(1.0 / (scales[component_id] ** 2 * equation.sigma_m**2)),
                     "postfit_residual": float(residuals[equation.identity]),
                     "residual_sigma": float(residual_sigmas[equation.identity]),
+                    "leverage": float(
+                        1.0
+                        - residual_sigmas[equation.identity] ** 2
+                        / (scales[component_id] ** 2 * equation.sigma_m**2)
+                    ),
                     "standardized_residual": float(standardized[equation.identity]),
                     "igg3_factor": factor,
                     "equivalent_weight": float(factor / (scales[component_id] ** 2 * equation.sigma_m**2)),
@@ -994,6 +1034,7 @@ class LlrAdjustmentSolver:
             ),
             "igg3_k0": self.options.k0,
             "igg3_k1": self.options.k1,
+            "minimum_one_minus_leverage": self.options.minimum_one_minus_leverage,
             "minimum_nonzero_robust_factor": (
                 self.options.minimum_nonzero_robust_factor
             ),
