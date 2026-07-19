@@ -2,6 +2,7 @@
 
 from .earth_orientation import (
     C04EarthOrientation,
+    CelestialPoleOffsets,
     EarthOrientation,
     EarthOrientationSample,
     PolarMotion,
@@ -14,6 +15,7 @@ from .terrestrial import TerrestrialFrameTransform
 
 __all__ = [
     "C04EarthOrientation",
+    "CelestialPoleOffsets",
     "EarthOrientation",
     "EarthOrientationSample",
     "LunarFrameTransform",
