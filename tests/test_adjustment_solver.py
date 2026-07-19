@@ -11,14 +11,12 @@ from llrops.estimation.convergence import ParameterConvergencePolicy
 from llrops.estimation.adjustment_solver import (
     LlrAdjustmentOptions,
     LlrAdjustmentSolver,
-    _AdaptiveDamping,
 )
 from llrops.estimation.robust_weights import (
     Igg3WeightModel,
     active_set_change_fraction,
     igg3_factors,
     maximum_robust_factor_change,
-    relax_robust_factors,
     robust_factor_change_quantile,
 )
 from llrops.estimation.variance_components import (
@@ -174,7 +172,7 @@ def test_factor_change_quantile_ignores_one_chattering_observation():
     ) == pytest.approx(0.001)
 
 
-def testactive_set_change_fraction_counts_membership_only():
+def test_active_set_change_fraction_counts_membership_only():
     old = {"stable": 1.0, "removed": 0.5, "added": 0.0}
     new = {"stable": 0.2, "removed": 0.0, "added": 0.3}
 
@@ -193,52 +191,25 @@ def test_igg3_update_accepts_observation_missing_from_previous_targets():
         {"stable": 1.0, "reentered": 1.0},
         {"stable": 1.0},
         ["stable", "reentered"],
-        damping=0.5,
     )
 
     assert update.target_factors == {"stable": 1.0, "reentered": 1.0}
     assert update.active_set_change_fraction == 0.0
 
 
-def test_zero_target_is_rejected_immediately_but_reentry_is_damped():
-    factors = relax_robust_factors(
-        {
-            "reject": 1.0,
-            "reenter": 0.0,
-            "downweight": 0.8,
-        },
-        {
-            "reject": 0.0,
-            "reenter": 1.0,
-            "downweight": 0.4,
-        },
-        ["reject", "reenter", "downweight"],
-        damping=0.25,
-        snap_tolerance=1.0e-3,
+def test_igg3_targets_are_applied_without_damping():
+    model = Igg3WeightModel(k0=1.5, k1=6.0)
+    update = model.update(
+        {"full": 0.0, "downweighted": 3.0, "rejected": 7.0},
+        {"full": 0.2, "downweighted": 0.8, "rejected": 1.0},
+        {"full": 1.0, "downweighted": 1.0, "rejected": 1.0},
+        ["full", "downweighted", "rejected"],
     )
 
-    assert factors["reject"] == 0.0
-    assert factors["reenter"] == pytest.approx(0.25)
-    assert factors["downweight"] == pytest.approx(0.7)
-
-
-def test_adaptive_damping_reduces_after_stagnation():
-    damping = _AdaptiveDamping(
-        value=1.0,
-        minimum=0.25,
-        reduction_factor=0.5,
-        stagnation_ratio=0.98,
-        stagnation_iterations=2,
-    )
-
-    damping.observe(10.0)
-    damping.observe(9.9)
-    assert damping.value == 1.0
-    damping.observe(9.85)
-    assert damping.value == 0.5
-    damping.observe(9.8)
-    damping.observe(9.75)
-    assert damping.value == 0.25
+    assert update.applied_factors == update.target_factors
+    assert update.applied_factors["full"] == 1.0
+    assert 0.0 < update.applied_factors["downweighted"] < 1.0
+    assert update.applied_factors["rejected"] == 0.0
 
 
 def test_factor_change_ignores_insignificant_boundary_crossings():
@@ -261,7 +232,7 @@ def test_factor_change_ignores_insignificant_boundary_crossings():
     ) == 0.0
 
 
-def test_vce_log_update_respects_variance_ratio_limit():
+def test_vce_direct_update_respects_variance_ratio_limit():
     equations = [
         _equation(index, value, "STA_A")
         for index, value in enumerate([0.0, 100.0, 200.0])
@@ -349,12 +320,10 @@ def test_llr_adjustment_runs_joint_helmert_vce_cycle():
     assert len(result.observations) == len(equations)
     for item in result.observations:
         base_sigma = item["base_scale"] * item["sigma_np"]
-        assert 0.0 <= item["leverage"] < 1.0
-        assert item["residual_sigma"] == pytest.approx(
-            base_sigma * np.sqrt(1.0 - item["leverage"])
-        )
+        assert "leverage" not in item
+        assert item["residual_sigma"] == pytest.approx(base_sigma)
         assert item["standardized_residual"] == pytest.approx(
-            item["postfit_residual"] / item["residual_sigma"]
+            item["postfit_residual"] / base_sigma
         )
     assert all(0.0 <= factor <= 1.0 for factor in result.robust_factors.values())
     assert result.iterations[-1].total_effective_redundancy == pytest.approx(
@@ -381,7 +350,7 @@ def test_llr_adjustment_runs_joint_helmert_vce_cycle():
     assert "robust_factor_target_change_quantile" in payload["iterations"][0]
     assert "active_set_change_fraction" in payload["iterations"][0]
     assert "target_rejected_observation_count" in payload["iterations"][0]
-    assert "final_factor_damping" in payload["settings"]
+    assert not any("damping" in key for key in payload["settings"])
 
 
 from llrops.classes.parametrization.station_range_bias import StationRangeBiasParametrization

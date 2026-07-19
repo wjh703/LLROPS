@@ -89,35 +89,9 @@ from llrops.estimation.robust_weights import (
     active_set_change_fraction,
     igg3_factors,
     maximum_robust_factor_change,
-    relax_robust_factors,
     robust_factor_change_quantile,
 )
 
-
-@dataclass
-class _AdaptiveDamping:
-    value: float
-    minimum: float
-    reduction_factor: float
-    stagnation_ratio: float
-    stagnation_iterations: int
-    previous_residual: Optional[float] = None
-    stagnant_iterations: int = 0
-
-    def observe(self, residual: float) -> None:
-        residual = float(residual)
-        if self.previous_residual is not None:
-            if residual >= self.stagnation_ratio * self.previous_residual:
-                self.stagnant_iterations += 1
-            else:
-                self.stagnant_iterations = 0
-            if self.stagnant_iterations >= self.stagnation_iterations:
-                self.value = max(
-                    self.minimum,
-                    self.value * self.reduction_factor,
-                )
-                self.stagnant_iterations = 0
-        self.previous_residual = residual
 
 
 def _bias_indices(names: Sequence[ParameterName]) -> np.ndarray:
@@ -215,7 +189,6 @@ class LlrAdjustmentOptions:
     maximum_stochastic_iterations: int = 20
     k0: float = 1.5
     k1: float = 6.0
-    minimum_one_minus_leverage: float = 1.0e-8
     minimum_nonzero_robust_factor: float = 1.0e-12
     minimum_robust_factor_for_convergence: float = 1.0e-3
     minimum_mad_count: int = 10
@@ -227,12 +200,6 @@ class LlrAdjustmentOptions:
     robust_factor_change_tolerance: float = 2.0e-2
     robust_factor_change_quantile: float = 0.999
     active_set_change_tolerance: float = 1.0e-3
-    initial_variance_damping: float = 1.0
-    initial_factor_damping: float = 0.5
-    minimum_adaptive_damping: float = 0.25
-    damping_reduction_factor: float = 0.5
-    damping_stagnation_ratio: float = 0.98
-    damping_stagnation_iterations: int = 2
     minimum_variance_ratio_per_iteration: float = 0.25
     maximum_variance_ratio_per_iteration: float = 4.0
     variance_component_method: str = "helmert"
@@ -255,24 +222,6 @@ class LlrAdjustmentOptions:
             raise ValueError("Stochastic convergence tolerances must be non-negative.")
         if self.active_set_change_tolerance < 0.0:
             raise ValueError("Active-set change tolerance must be non-negative.")
-        if not 0.0 < self.minimum_one_minus_leverage <= 1.0:
-            raise ValueError("Minimum one-minus-leverage must be in (0, 1].")
-        if not 0.0 < self.minimum_adaptive_damping <= 1.0:
-            raise ValueError("Minimum adaptive damping must be in (0, 1].")
-        for name, value in (
-            ("initial variance damping", self.initial_variance_damping),
-            ("initial factor damping", self.initial_factor_damping),
-        ):
-            if not self.minimum_adaptive_damping <= value <= 1.0:
-                raise ValueError(
-                    f"{name.capitalize()} must be between minimum damping and 1."
-                )
-        if not 0.0 < self.damping_reduction_factor < 1.0:
-            raise ValueError("Damping reduction factor must be in (0, 1).")
-        if not 0.0 < self.damping_stagnation_ratio <= 1.0:
-            raise ValueError("Damping stagnation ratio must be in (0, 1].")
-        if self.damping_stagnation_iterations < 1:
-            raise ValueError("Damping stagnation iterations must be positive.")
         if not (
             0.0 < self.minimum_variance_ratio_per_iteration
             <= self.maximum_variance_ratio_per_iteration
@@ -290,8 +239,6 @@ class LlrAdjustmentIteration:
     maximum_scale_log_target_change: float
     robust_factor_target_change_quantile: float
     active_set_change_fraction: float
-    variance_damping: float
-    factor_damping: float
     stochastic_converged: bool
     target_rejected_observation_count: int
     active_observation_count: int
@@ -490,43 +437,11 @@ class LlrAdjustmentSolver:
         solution: _InnerSolution,
         scales: Mapping[str, float],
     ) -> tuple[dict[ObsKey, float], dict[ObsKey, float]]:
-        base_weights = {
-            eq.identity: 1.0
-            / (
-                scales[self._assignments[eq.identity]] ** 2
-                * eq.sigma_m**2
-            )
-            for eq in solution.equations
-        }
-        base_normals = build_normal_equations_streaming(
-            solution.equations,
-            self.parametrization,
-            parameter_names=self._names,
-            weight_for=lambda eq: base_weights[eq.identity],
-        )
-        covariance = solve_normal_equations(base_normals).covariance
-        if covariance is None:
-            raise RuntimeError("Base normal equation covariance is unavailable.")
-
         standardized: dict[ObsKey, float] = {}
         residual_sigmas: dict[ObsKey, float] = {}
         for equation in solution.equations:
-            row = self.parametrization.design_row(equation)
-            leverage = base_weights[equation.identity] * float(
-                row @ covariance @ row
-            )
-            if not np.isfinite(leverage):
-                raise RuntimeError(
-                    f"Invalid leverage for observation {equation.identity!r}: "
-                    f"{leverage!r}."
-                )
-            one_minus_leverage = max(
-                1.0 - leverage,
-                self.options.minimum_one_minus_leverage,
-            )
             component_id = self._assignments[equation.identity]
-            base_variance = scales[component_id] ** 2 * equation.sigma_m**2
-            sigma_v = float(np.sqrt(base_variance * one_minus_leverage))
+            sigma_v = float(scales[component_id] * equation.sigma_m)
             if not np.isfinite(sigma_v) or sigma_v <= 0.0:
                 raise RuntimeError(
                     "Invalid residual standard deviation for "
@@ -543,8 +458,6 @@ class LlrAdjustmentSolver:
         solution: _InnerSolution,
         scales: Mapping[str, float],
         factors: Mapping[ObsKey, float],
-        *,
-        variance_damping: float,
     ) -> tuple[dict[str, float], dict[str, dict[str, object]], NormalEquations]:
         estimate = self.vce_estimator.estimate(
             equations=solution.equations,
@@ -555,7 +468,6 @@ class LlrAdjustmentSolver:
             assignments=self._assignments,
             factors=factors,
             scales=scales,
-            variance_damping=variance_damping,
         )
         return estimate.scales, estimate.diagnostics, estimate.normals
 
@@ -745,11 +657,6 @@ class LlrAdjustmentSolver:
                     "base_weight": float(1.0 / (scales[component_id] ** 2 * equation.sigma_m**2)),
                     "postfit_residual": float(residuals[equation.identity]),
                     "residual_sigma": float(residual_sigmas[equation.identity]),
-                    "leverage": float(
-                        1.0
-                        - residual_sigmas[equation.identity] ** 2
-                        / (scales[component_id] ** 2 * equation.sigma_m**2)
-                    ),
                     "standardized_residual": float(standardized[equation.identity]),
                     "igg3_factor": factor,
                     "equivalent_weight": float(factor / (scales[component_id] ** 2 * equation.sigma_m**2)),
@@ -806,20 +713,7 @@ class LlrAdjustmentSolver:
         final_solution: Optional[_InnerSolution] = None
         global_stochastic_iteration = 0
         consecutive_converged_linearizations = 0
-        variance_damping = _AdaptiveDamping(
-            value=self.options.initial_variance_damping,
-            minimum=self.options.minimum_adaptive_damping,
-            reduction_factor=self.options.damping_reduction_factor,
-            stagnation_ratio=self.options.damping_stagnation_ratio,
-            stagnation_iterations=self.options.damping_stagnation_iterations,
-        )
-        factor_damping = _AdaptiveDamping(
-            value=self.options.initial_factor_damping,
-            minimum=self.options.minimum_adaptive_damping,
-            reduction_factor=self.options.damping_reduction_factor,
-            stagnation_ratio=self.options.damping_stagnation_ratio,
-            stagnation_iterations=self.options.damping_stagnation_iterations,
-        )
+
 
         for linearization in range(1, self.options.function_max_iterations + 1):
             stochastic_converged = False
@@ -827,8 +721,6 @@ class LlrAdjustmentSolver:
 
             for stochastic in range(1, self.options.maximum_stochastic_iterations + 1):
                 keys = [eq.identity for eq in current_equations]
-                used_variance_damping = variance_damping.value
-                used_factor_damping = factor_damping.value
                 base_solution = self._solve_linearized(
                     current_equations,
                     scales,
@@ -843,7 +735,6 @@ class LlrAdjustmentSolver:
                     factors,
                     target_factors,
                     keys,
-                    damping=used_factor_damping,
                 )
                 next_target_factors = dict(target_factors)
                 next_target_factors.update(robust_update.target_factors)
@@ -859,7 +750,6 @@ class LlrAdjustmentSolver:
                     robust_solution,
                     scales,
                     next_factors,
-                    variance_damping=used_variance_damping,
                 )
                 variance_ratio_change = max(
                     abs(
@@ -921,8 +811,6 @@ class LlrAdjustmentSolver:
                             factor_target_change
                         ),
                         active_set_change_fraction=float(active_set_change),
-                        variance_damping=float(used_variance_damping),
-                        factor_damping=float(used_factor_damping),
                         stochastic_converged=bool(stochastic_converged),
                         target_rejected_observation_count=sum(
                             next_target_factors[key]
@@ -980,24 +868,6 @@ class LlrAdjustmentSolver:
                 if stochastic_converged:
                     break
 
-                scale_residual = scale_log_target_change / max(
-                    self.options.scale_log_tolerance,
-                    np.finfo(float).eps,
-                )
-                factor_residual = max(
-                    factor_target_change
-                    / max(
-                        self.options.robust_factor_change_tolerance,
-                        np.finfo(float).eps,
-                    ),
-                    active_set_change
-                    / max(
-                        self.options.active_set_change_tolerance,
-                        np.finfo(float).eps,
-                    ),
-                )
-                variance_damping.observe(scale_residual)
-                factor_damping.observe(factor_residual)
 
             if final_solution is None:
                 raise RuntimeError("Stochastic model produced no linearized solution.")
@@ -1093,7 +963,6 @@ class LlrAdjustmentSolver:
             final_solution,
             scales,
             factors,
-            variance_damping=1.0,
         )
         parameter_records, normal_summary = self._parameter_records(
             final_solution
@@ -1124,32 +993,11 @@ class LlrAdjustmentSolver:
             ),
             "igg3_k0": self.options.k0,
             "igg3_k1": self.options.k1,
-            "minimum_one_minus_leverage": (
-                self.options.minimum_one_minus_leverage
-            ),
             "minimum_nonzero_robust_factor": (
                 self.options.minimum_nonzero_robust_factor
             ),
             "minimum_robust_factor_for_convergence": (
                 self.options.minimum_robust_factor_for_convergence
-            ),
-            "initial_variance_damping": (
-                self.options.initial_variance_damping
-            ),
-            "initial_factor_damping": self.options.initial_factor_damping,
-            "final_variance_damping": variance_damping.value,
-            "final_factor_damping": factor_damping.value,
-            "minimum_adaptive_damping": (
-                self.options.minimum_adaptive_damping
-            ),
-            "damping_reduction_factor": (
-                self.options.damping_reduction_factor
-            ),
-            "damping_stagnation_ratio": (
-                self.options.damping_stagnation_ratio
-            ),
-            "damping_stagnation_iterations": (
-                self.options.damping_stagnation_iterations
             ),
             "minimum_variance_ratio_per_iteration": (
                 self.options.minimum_variance_ratio_per_iteration

@@ -729,32 +729,17 @@ MAD 只用于启动，不是最终 VCE 结果。
 
 ### 10.1 标准化残差
 
-正式抗差统计量使用基础随机模型下、包含参数估计杠杆效应的残差标准差。令
-
-$$
-P_i=\frac{1}{s_{g(i)}^2\sigma_{i,\mathrm{NP}}^2},
-\qquad
-N_{\mathrm{base}}=M^T P M,
-$$
-
-则基础杠杆值与标准化残差为
+IGGIII 直接使用当前方差分量尺度与 NP 正式精度构造无量纲统计量：
 
 $$
 \boxed{
-h_i=P_i\,m_i^T N_{\mathrm{base}}^{-1}m_i,
-\qquad
-\sigma_{v_i}=s_{g(i)}\sigma_{i,\mathrm{NP}}
-\sqrt{\max(1-h_i,\varepsilon_h)},
+\sigma_{v_i}=s_{g(i)}\sigma_{i,\mathrm{NP}},
 \qquad
 t_i=\frac{v_i}{\sigma_{v_i}}.
 }
 $$
 
-基础法方程不包含 IGGIII 因子，避免异常点因自身降权而放大标准化分母。数值保护配置为：
-
-```yaml
-minimum_one_minus_leverage: 1.0e-8
-```
+不计算参数估计杠杆值，也不使用 $1-h_i$ 修正残差标准差。
 
 ### 10.2 残差标准差与输出
 
@@ -762,12 +747,11 @@ minimum_one_minus_leverage: 1.0e-8
 
 ```text
 base_variance = base_scale**2 * sigma_np**2
-leverage = 1 - residual_sigma**2 / base_variance
-residual_sigma = sqrt(base_variance * max(1-leverage, epsilon_h))
+residual_sigma = base_scale * sigma_np
 standardized_residual = postfit_residual / residual_sigma
 ```
 
-杠杆或残差标准差非有限时直接报错，不通过静默限幅掩盖异常。
+残差标准差非有限或非正时直接报错。
 
 ### 10.3 为什么不使用等价权方差
 
@@ -1172,41 +1156,33 @@ minimum_effective_redundancy: 20.0
 
 ---
 
-## 13. VCE 与 IGGIII 自适应阻尼
+## 13. VCE 与 IGGIII 直接更新
 
-有效多余度满足阈值时，先计算未阻尼 Helmert 方差目标：
+有效多余度满足阈值时计算 Helmert 方差目标：
 
 $$
 \lambda_g^*
 =\frac{\sum_{i\in g}\alpha_i v_i^2/\sigma_{i,\mathrm{NP}}^2}{r_g}.
 $$
 
-令 $q_g=\lambda_g^*/\lambda_g$，单轮倍率先限制为
-$\tilde q_g=\operatorname{clip}(q_g,q_{\min},q_{\max})$，随后在对数域更新：
+令 $q_g=\lambda_g^*/\lambda_g$，仅对单轮倍率作数值范围保护：
 
 $$
 \boxed{
-\log\lambda_g^{(k+1)}
-=\log\lambda_g^{(k)}+\rho_k\log\tilde q_g.
+\lambda_g^{(k+1)}
+=\lambda_g^{(k)}\operatorname{clip}(q_g,q_{\min},q_{\max}).
 }
 $$
 
-IGGIII 原始目标为 $\alpha_i^*=w_{\mathrm{IGGIII}}(t_i)$。零目标当轮直接拒绝；非零目标使用线性松弛：
+IGGIII 原始目标 $\alpha_i^*=w_{\mathrm{IGGIII}}(t_i)$ 当轮直接应用：
 
 $$
-\boxed{
-\alpha_i^{(k+1)}=
-\begin{cases}
-0, & \alpha_i^*=0,\\[0.8ex]
-\alpha_i^{(k)}+\mu_k(\alpha_i^*-\alpha_i^{(k)}),
-& \alpha_i^*>0.
-\end{cases}
-}
+\boxed{\alpha_i^{(k+1)}=\alpha_i^*.}
 $$
 
-因此确定异常点不会以小权重拖延多个外层；零权观测重新进入时仍按 $\mu_k$ 渐进恢复。默认 $\rho_0=1$、$\mu_0=0.5$。任一目标残差连续两轮改善不足 2% 时，对应阻尼减半，最低为 0.25。接近满权的因子按配置阈值吸附到 1。
-
-收敛检查使用未阻尼目标 $\lambda_g^*$ 和 $\alpha_i^*$，而不是较小的已应用步长，因此减小阻尼本身不会伪造收敛。当 $r_g<r_{\min}$ 时保留当前尺度并标记 `INSUFFICIENT_REDUNDANCY`。
+算法不使用方差阻尼、因子阻尼或自适应阻尼状态。收敛检查直接使用
+$\lambda_g^*$、$\alpha_i^*$ 和活跃集变化。当 $r_g<r_{\min}$ 时保留当前尺度并标记
+`INSUFFICIENT_REDUNDANCY`。
 
 ## 14. 固定线性化联合迭代流程
 
@@ -1277,7 +1253,7 @@ vce:
   active_set_change_tolerance: 1.0e-3
 ```
 
-日志分别记录几何线性化、随机模型迭代、三个目标残差、当前方差/因子阻尼，并同时报告原始零目标数 `targetRejected` 和实际零权数 `rejected`。
+日志分别记录几何线性化、随机模型迭代、三个目标残差，并同时报告原始零目标数 `targetRejected` 和实际零权数 `rejected`。
 
 ---
 
@@ -1289,29 +1265,22 @@ def solve_llr_adjustment(observations, state, config):
     scales = initialize_group_scales_with_mad(equations)
     factors = target_factors = ones(equations)
     consecutive_outer_convergence = 0
-    variance_damping = adaptive_damping(initial=1.0, minimum=0.25)
-    factor_damping = adaptive_damping(initial=0.5, minimum=0.25)
-
     for linearization in range(config.adjustment.max_iterations):
         stochastic_converged = False
         for stochastic in range(config.vce.maximum_iterations):
             base_solution = solve_fixed(equations, scales, factors)
-            leverage = compute_base_leverage(equations, scales)
-            standardized = leverage_standardize(base_solution, scales, leverage)
+            standardized = standardize_without_leverage(base_solution, scales)
 
             next_targets = igg3_factors(standardized, k0=1.5, k1=6.0)
             factor_target_q = quantile_999(abs(next_targets - factors))
             active_set_change = membership_change(target_factors, next_targets)
-            next_factors = relax_nonzero_targets_and_reject_zeros(
-                factors, next_targets, factor_damping.value
-            )
+            next_factors = next_targets
 
             robust_solution = solve_fixed(equations, scales, next_factors)
             raw_variances = estimate_group_variances_single_pass(robust_solution)
             scale_log_target = max_abs_log_ratio(raw_variances, scales**2)
-            next_scales = log_damped_update(
-                scales, raw_variances, variance_damping.value,
-                ratio_limits=(0.25, 4.0),
+            next_scales = direct_bounded_update(
+                scales, raw_variances, ratio_limits=(0.25, 4.0)
             )
 
             stochastic_converged = all_targets_within_tolerance(
@@ -1322,8 +1291,6 @@ def solve_llr_adjustment(observations, state, config):
             )
             if stochastic_converged:
                 break
-            variance_damping.observe(scale_log_target)
-            factor_damping.observe(max(factor_target_q, active_set_change))
 
         final_solution = solve_fixed(equations, scales, factors)
         update_small = maximum_parameter_block_norm(final_solution.delta) <= 1e-3
@@ -1490,7 +1457,6 @@ adjustment:
 robust_estimation:
   k0: 1.5
   k1: 6.0
-  minimum_one_minus_leverage: 1.0e-8
   minimum_nonzero_robust_factor: 1.0e-12
   minimum_robust_factor_for_convergence: 1.0e-3
 
@@ -1507,12 +1473,6 @@ vce:
   robust_factor_change_tolerance: 2.0e-2
   robust_factor_change_quantile: 0.999
   active_set_change_tolerance: 1.0e-3
-  initial_variance_damping: 1.0
-  initial_factor_damping: 0.5
-  minimum_adaptive_damping: 0.25
-  damping_reduction_factor: 0.5
-  damping_stagnation_ratio: 0.98
-  damping_stagnation_iterations: 2
   minimum_variance_ratio_per_iteration: 0.25
   maximum_variance_ratio_per_iteration: 4.0
 ```

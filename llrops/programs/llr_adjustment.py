@@ -214,12 +214,6 @@ def llr_adjustment(config: dict, context: RunContext):
         ),
         k0=float(robust.get("k0", 1.5)),
         k1=float(robust.get("k1", 6.0)),
-        minimum_one_minus_leverage=float(
-            robust.get(
-                "minimum_one_minus_leverage",
-                robust.get("minimumOneMinusLeverage", 1.0e-8),
-            )
-        ),
         minimum_nonzero_robust_factor=float(
             robust.get(
                 "minimum_nonzero_robust_factor",
@@ -298,45 +292,6 @@ def llr_adjustment(config: dict, context: RunContext):
                 vce.get("activeSetChangeTolerance", 1.0e-3),
             )
         ),
-        initial_variance_damping=float(
-            vce.get(
-                "initial_variance_damping",
-                vce.get(
-                    "initialVarianceDamping",
-                    vce.get("damping", 1.0),
-                ),
-            )
-        ),
-        initial_factor_damping=float(
-            vce.get(
-                "initial_factor_damping",
-                vce.get("initialFactorDamping", 0.5),
-            )
-        ),
-        minimum_adaptive_damping=float(
-            vce.get(
-                "minimum_adaptive_damping",
-                vce.get("minimumAdaptiveDamping", 0.25),
-            )
-        ),
-        damping_reduction_factor=float(
-            vce.get(
-                "damping_reduction_factor",
-                vce.get("dampingReductionFactor", 0.5),
-            )
-        ),
-        damping_stagnation_ratio=float(
-            vce.get(
-                "damping_stagnation_ratio",
-                vce.get("dampingStagnationRatio", 0.98),
-            )
-        ),
-        damping_stagnation_iterations=int(
-            vce.get(
-                "damping_stagnation_iterations",
-                vce.get("dampingStagnationIterations", 2),
-            )
-        ),
         minimum_variance_ratio_per_iteration=float(
             vce.get(
                 "minimum_variance_ratio_per_iteration",
@@ -363,7 +318,6 @@ def llr_adjustment(config: dict, context: RunContext):
             f"scaleLogTarget={item.maximum_scale_log_target_change:.3e} "
             f"factorTargetQ={item.robust_factor_target_change_quantile:.3e} "
             f"activeSetChange={item.active_set_change_fraction:.3e} "
-            f"damping={item.variance_damping:.2f}/{item.factor_damping:.2f} "
             f"targetRejected={item.target_rejected_observation_count} "
             f"active={item.active_observation_count} "
             f"rejected={item.rejected_observation_count} "

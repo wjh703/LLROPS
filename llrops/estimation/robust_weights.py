@@ -27,8 +27,6 @@ class RobustWeightModel(Protocol):
         current_factors: Mapping[ObsKey, float],
         previous_target_factors: Mapping[ObsKey, float],
         keys: Sequence[ObsKey],
-        *,
-        damping: float,
     ) -> RobustWeightUpdate: ...
 
 
@@ -68,17 +66,9 @@ class Igg3WeightModel:
         current_factors: Mapping[ObsKey, float],
         previous_target_factors: Mapping[ObsKey, float],
         keys: Sequence[ObsKey],
-        *,
-        damping: float,
     ) -> RobustWeightUpdate:
         targets = self.target_factors(standardized_residuals, keys)
-        applied = relax_robust_factors(
-            current_factors,
-            targets,
-            keys,
-            damping=damping,
-            snap_tolerance=self.convergence_floor,
-        )
+        applied = dict(targets)
         previous_targets = {
             key: previous_target_factors.get(key, current_factors.get(key, 1.0))
             for key in keys
@@ -139,23 +129,9 @@ def active_set_change_fraction(old_factors, new_factors, keys, *, active_thresho
     return float(changed / len(keys))
 
 
-def relax_robust_factors(old_factors, target_factors, keys, *, damping, snap_tolerance):
-    relaxed = dict(old_factors)
-    for key in keys:
-        target = float(target_factors[key])
-        if target == 0.0:
-            value = 0.0
-        else:
-            value = float(old_factors[key] + damping * (target - old_factors[key]))
-            if target == 1.0 and 1.0 - value <= snap_tolerance:
-                value = 1.0
-        relaxed[key] = float(np.clip(value, 0.0, 1.0))
-    return relaxed
-
-
 __all__ = [
     "Igg3WeightModel", "RobustWeightModel", "RobustWeightUpdate",
     "active_set_change_fraction", "igg3_factors",
-    "maximum_robust_factor_change", "relax_robust_factors",
+    "maximum_robust_factor_change",
     "robust_factor_change_quantile",
 ]

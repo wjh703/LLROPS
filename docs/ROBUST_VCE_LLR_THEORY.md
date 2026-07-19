@@ -361,12 +361,12 @@ for VCE outer iteration q:
 
     form LS-VCE equations from robust-preedited inliers
       or from consistency-corrected robust VCE scores
-    solve for gamma_g; enforce positivity and damp log(theta_g) update
+    solve for gamma_g; enforce positivity and apply the bounded theta_g update directly
     theta_g <- theta_g * gamma_g
     stop only when theta, x, b, w and group diagnostics jointly converge
 
 freeze the final stochastic model
-compute leverage-aware standardized residuals and final outlier flags
+compute standardized residuals without leverage correction and final outlier flags
 re-solve once after final, documented data decision
 ```
 

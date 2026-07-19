@@ -30,7 +30,7 @@ class VarianceComponentEstimator(ABC):
     method: str
 
     @abstractmethod
-    def estimate(self, *, equations: Sequence[ObservationEquation], residuals: Mapping[ObsKey, float], normals: NormalEquations, parametrization: ParametrizationList, parameter_names: Sequence[ParameterName], assignments: Mapping[ObsKey, str], factors: Mapping[ObsKey, float], scales: Mapping[str, float], variance_damping: float) -> VarianceComponentEstimate:
+    def estimate(self, *, equations: Sequence[ObservationEquation], residuals: Mapping[ObsKey, float], normals: NormalEquations, parametrization: ParametrizationList, parameter_names: Sequence[ParameterName], assignments: Mapping[ObsKey, str], factors: Mapping[ObsKey, float], scales: Mapping[str, float]) -> VarianceComponentEstimate:
         raise NotImplementedError
 
 
@@ -45,7 +45,7 @@ class HelmertVceEstimator(VarianceComponentEstimator):
     maximum_variance_ratio_per_iteration: float = 4.0
     method: str = "helmert"
 
-    def estimate(self, *, equations, residuals, normals, parametrization, parameter_names, assignments, factors, scales, variance_damping):
+    def estimate(self, *, equations, residuals, normals, parametrization, parameter_names, assignments, factors, scales):
         active = [eq for eq in equations if factors[eq.identity] > self.minimum_nonzero_factor]
         covariance = solve_normal_equations(normals).covariance
         if covariance is None:
@@ -79,7 +79,7 @@ class HelmertVceEstimator(VarianceComponentEstimator):
                     raise RuntimeError(f"Invalid Helmert VCE estimate for component {component.id!r}: {raw_variance!r}.")
                 raw_ratio = raw_variance / current_variance
                 limited_ratio = float(np.clip(raw_ratio, self.minimum_variance_ratio_per_iteration, self.maximum_variance_ratio_per_iteration))
-                next_variance = current_variance * float(np.exp(variance_damping * np.log(limited_ratio)))
+                next_variance = current_variance * limited_ratio
                 status = "UPDATED"
             updates[component.id] = float(np.sqrt(next_variance))
             diagnostics[component.id] = {
@@ -88,7 +88,7 @@ class HelmertVceEstimator(VarianceComponentEstimator):
                 "raw_variance": float(raw_variance), "raw_variance_ratio": float(raw_ratio),
                 "limited_variance_ratio": float(limited_ratio),
                 "target_scale_log_change": float(abs(np.log(raw_ratio))),
-                "variance_damping": float(variance_damping), "variance_after": float(next_variance),
+                "variance_after": float(next_variance),
                 "variance_ratio": float(next_variance / current_variance), "update_status": status,
             }
         expected = float(len(active) - np.linalg.matrix_rank(normals.N))

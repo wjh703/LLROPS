@@ -304,8 +304,6 @@ programs:
     robust_estimation:
       k0: 1.5
       k1: 6.0
-      # Leverage-aware residual variance uses max(1-h, this value).
-      minimum_one_minus_leverage: 1.0e-8
       minimum_nonzero_robust_factor: 1.0e-12
       # Zero IGGIII targets are rejected immediately. Changes wholly below this
       # floor are ignored for convergence; near-full factors snap to 1.
@@ -327,15 +325,7 @@ programs:
       robust_factor_change_quantile: 0.999
       active_set_change_tolerance: 1.0e-3
 
-      # Variances are updated in log space; IGGIII factors are relaxed linearly.
-      # Each damping is halved after two stagnant iterations, down to 0.25.
-      initial_variance_damping: 1.0
-      initial_factor_damping: 0.5
-      minimum_adaptive_damping: 0.25
-      damping_reduction_factor: 0.5
-      damping_stagnation_ratio: 0.98
-      damping_stagnation_iterations: 2
-
+      # IGGIII factors and bounded Helmert variance targets are applied directly.
       # Protect a single VCE update from an extreme raw component variance.
       minimum_variance_ratio_per_iteration: 0.25
       maximum_variance_ratio_per_iteration: 4.0
