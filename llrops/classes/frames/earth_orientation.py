@@ -1,13 +1,16 @@
 """Explicit Earth-orientation data sources used by ERFA frame transforms."""
 from __future__ import annotations
 
+import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Sequence
 
+import erfa
 import numpy as np
 
+from llrops.base.constants import SECONDS_PER_DAY
 from llrops.base.epoch import Epoch, TimeScale
 
 
@@ -18,11 +21,19 @@ class PolarMotion:
 
 
 @dataclass(frozen=True, slots=True)
+class CelestialPoleOffsets:
+    dx_arcsec: float
+    dy_arcsec: float
+
+
+@dataclass(frozen=True, slots=True)
 class EarthOrientationSample:
     mjd_utc: float
     xp_arcsec: float
     yp_arcsec: float
     ut1_minus_utc_sec: float
+    dx_arcsec: float = 0.0
+    dy_arcsec: float = 0.0
 
 
 DuplicateMjdPolicy = Literal["error", "first", "last", "mean"]
@@ -76,6 +87,8 @@ def _deduplicate_samples(
                     xp_arcsec=float(np.mean([sample.xp_arcsec for sample in samples])),
                     yp_arcsec=float(np.mean([sample.yp_arcsec for sample in samples])),
                     ut1_minus_utc_sec=float(np.mean([sample.ut1_minus_utc_sec for sample in samples])),
+                    dx_arcsec=float(np.mean([sample.dx_arcsec for sample in samples])),
+                    dy_arcsec=float(np.mean([sample.dy_arcsec for sample in samples])),
                 )
             )
         else:  # pragma: no cover - guarded by _normalise_duplicate_mjd_policy
@@ -95,6 +108,12 @@ class EarthOrientation(ABC):
     def polar_motion(self, epoch_utc: Epoch) -> PolarMotion:
         ...
 
+    def celestial_pole_offsets(self, epoch_utc: Epoch) -> CelestialPoleOffsets:
+        if not isinstance(epoch_utc, Epoch):
+            raise TypeError("Earth-orientation queries require an Epoch.")
+        epoch_utc.require_scale(TimeScale.UTC, name="epoch_utc")
+        return CelestialPoleOffsets(0.0, 0.0)
+
     @abstractmethod
     def ut1_minus_utc_sec(self, epoch_utc: Epoch) -> float:
         ...
@@ -106,7 +125,16 @@ class EarthOrientation(ABC):
 class C04EarthOrientation(EarthOrientation):
     """Linearly interpolated IERS C04/eopc04 Earth-orientation table."""
 
-    __slots__ = ("_source_file", "_duplicate_mjd_policy", "_mjd", "_xp_arcsec", "_yp_arcsec", "_dut1_sec")
+    __slots__ = (
+        "_source_file",
+        "_duplicate_mjd_policy",
+        "_mjd",
+        "_xp_arcsec",
+        "_yp_arcsec",
+        "_ut1_minus_tai_sec",
+        "_dx_arcsec",
+        "_dy_arcsec",
+    )
 
     def __init__(
         self,
@@ -123,8 +151,18 @@ class C04EarthOrientation(EarthOrientation):
         self._mjd = mjd
         self._xp_arcsec = np.array([sample.xp_arcsec for sample in ordered], dtype=float)
         self._yp_arcsec = np.array([sample.yp_arcsec for sample in ordered], dtype=float)
-        self._dut1_sec = np.array([sample.ut1_minus_utc_sec for sample in ordered], dtype=float)
-        for name in ("_mjd", "_xp_arcsec", "_yp_arcsec", "_dut1_sec"):
+        dut1_sec = np.array([sample.ut1_minus_utc_sec for sample in ordered], dtype=float)
+        self._ut1_minus_tai_sec = dut1_sec - self._tai_minus_utc_at_mjd(mjd)
+        self._dx_arcsec = np.array([sample.dx_arcsec for sample in ordered], dtype=float)
+        self._dy_arcsec = np.array([sample.dy_arcsec for sample in ordered], dtype=float)
+        for name in (
+            "_mjd",
+            "_xp_arcsec",
+            "_yp_arcsec",
+            "_ut1_minus_tai_sec",
+            "_dx_arcsec",
+            "_dy_arcsec",
+        ):
             values = getattr(self, name)
             if not np.all(np.isfinite(values)):
                 raise ValueError(f"EOP column {name} contains non-finite values.")
@@ -139,6 +177,8 @@ class C04EarthOrientation(EarthOrientation):
         xp_arcsec,
         yp_arcsec,
         ut1_minus_utc_sec,
+        dx_arcsec=None,
+        dy_arcsec=None,
         *,
         source_file: str | Path | None = None,
         duplicate_mjd_policy: DuplicateMjdPolicy = "error",
@@ -162,6 +202,14 @@ class C04EarthOrientation(EarthOrientation):
         sizes = {int(values.size) for values in columns}
         if len(sizes) != 1 or not sizes or next(iter(sizes)) == 0:
             raise ValueError("Broadcast EOP columns must have the same non-zero length.")
+        size = next(iter(sizes))
+        optional_columns = [
+            np.zeros(size, dtype=float) if dx_arcsec is None else np.asarray(dx_arcsec, dtype=float),
+            np.zeros(size, dtype=float) if dy_arcsec is None else np.asarray(dy_arcsec, dtype=float),
+        ]
+        if any(values.ndim != 1 or values.size != size for values in optional_columns):
+            raise ValueError("Broadcast dX/dY columns must match the EOP column length.")
+        columns.extend(optional_columns)
         if any(not np.all(np.isfinite(values)) for values in columns):
             raise ValueError("Broadcast EOP columns contain non-finite values.")
         if np.any(np.diff(columns[0]) <= 0.0):
@@ -171,8 +219,13 @@ class C04EarthOrientation(EarthOrientation):
             )
 
         self = cls.__new__(cls)
-        names = ("_mjd", "_xp_arcsec", "_yp_arcsec", "_dut1_sec")
-        for name, values in zip(names, columns):
+        for name, values in zip(("_mjd", "_xp_arcsec", "_yp_arcsec"), columns[:3]):
+            copied = np.array(values, dtype=float, copy=True, order="C")
+            copied.setflags(write=False)
+            setattr(self, name, copied)
+        ut1_minus_tai = columns[3] - self._tai_minus_utc_at_mjd(columns[0])
+        stored = (ut1_minus_tai, columns[4], columns[5])
+        for name, values in zip(("_ut1_minus_tai_sec", "_dx_arcsec", "_dy_arcsec"), stored):
             copied = np.array(values, dtype=float, copy=True, order="C")
             copied.setflags(write=False)
             setattr(self, name, copied)
@@ -189,7 +242,9 @@ class C04EarthOrientation(EarthOrientation):
             "mjdUtc": self._mjd,
             "xpArcsec": self._xp_arcsec,
             "ypArcsec": self._yp_arcsec,
-            "ut1MinusUtcSec": self._dut1_sec,
+            "ut1MinusUtcSec": self._ut1_minus_tai_sec + self._tai_minus_utc_at_mjd(self._mjd),
+            "dxArcsec": self._dx_arcsec,
+            "dyArcsec": self._dy_arcsec,
         }
 
     @classmethod
@@ -201,6 +256,8 @@ class C04EarthOrientation(EarthOrientation):
             payload["xpArcsec"],
             payload["ypArcsec"],
             payload["ut1MinusUtcSec"],
+            payload.get("dxArcsec"),
+            payload.get("dyArcsec"),
             source_file=payload.get("sourceFile"),
             duplicate_mjd_policy=payload.get("duplicateMjdPolicy", "error"),
         )
@@ -220,14 +277,33 @@ class C04EarthOrientation(EarthOrientation):
     @property
     def samples(self) -> tuple[EarthOrientationSample, ...]:
         return tuple(
-            EarthOrientationSample(float(mjd), float(xp), float(yp), float(dut1))
-            for mjd, xp, yp, dut1 in zip(
+            EarthOrientationSample(float(mjd), float(xp), float(yp), float(dut1), float(dx), float(dy))
+            for mjd, xp, yp, dut1, dx, dy in zip(
                 self._mjd,
                 self._xp_arcsec,
                 self._yp_arcsec,
-                self._dut1_sec,
+                self._ut1_minus_tai_sec + self._tai_minus_utc_at_mjd(self._mjd),
+                self._dx_arcsec,
+                self._dy_arcsec,
             )
         )
+
+    @staticmethod
+    def _tai_minus_utc_at_mjd(mjd_utc) -> np.ndarray:
+        values = np.asarray(mjd_utc, dtype=float)
+        year, month, day, fraction = erfa.jd2cal(2_400_000.5, values)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", erfa.ErfaWarning)
+            return np.asarray(erfa.dat(year, month, day, fraction), dtype=float)
+
+    @staticmethod
+    def _tai_minus_utc_at_epoch(epoch_utc: Epoch) -> float:
+        year, month, day, fields = erfa.d2dtf("UTC", 9, epoch_utc.jd1, epoch_utc.jd2)
+        seconds = fields["h"] * 3600.0 + fields["m"] * 60.0 + fields["s"] + fields["f"] * 1.0e-9
+        fraction = min(seconds / SECONDS_PER_DAY, np.nextafter(1.0, 0.0))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", erfa.ErfaWarning)
+            return float(erfa.dat(year, month, day, fraction))
 
     @staticmethod
     def _mjd_utc(value: Epoch) -> float:
@@ -253,7 +329,14 @@ class C04EarthOrientation(EarthOrientation):
         )
 
     def ut1_minus_utc_sec(self, epoch_utc: Epoch) -> float:
-        return self._interp(self._dut1_sec, epoch_utc, name="UT1-UTC")
+        ut1_minus_tai = self._interp(self._ut1_minus_tai_sec, epoch_utc, name="UT1-TAI")
+        return ut1_minus_tai + self._tai_minus_utc_at_epoch(epoch_utc)
+
+    def celestial_pole_offsets(self, epoch_utc: Epoch) -> CelestialPoleOffsets:
+        return CelestialPoleOffsets(
+            dx_arcsec=self._interp(self._dx_arcsec, epoch_utc, name="dX"),
+            dy_arcsec=self._interp(self._dy_arcsec, epoch_utc, name="dY"),
+        )
 
 
 def _float_or_none(value: str) -> float | None:
@@ -271,13 +354,20 @@ def _is_mjd(value: float | None) -> bool:
     return value is not None and 15_000.0 < value < 90_000.0
 
 
-def _sample_if_plausible(mjd: float, xp: float, yp: float, dut1: float) -> EarthOrientationSample | None:
+def _sample_if_plausible(
+    mjd: float,
+    xp: float,
+    yp: float,
+    dut1: float,
+    dx: float = 0.0,
+    dy: float = 0.0,
+) -> EarthOrientationSample | None:
     # Polar motion is in arcseconds and UT1-UTC is in seconds.  These generous
     # bounds reject obvious mis-parses such as choosing x-error as y-pole while
     # still covering historical and prediction rows.
-    if abs(xp) > 5.0 or abs(yp) > 5.0 or abs(dut1) > 5.0:
+    if abs(xp) > 5.0 or abs(yp) > 5.0 or abs(dut1) > 5.0 or abs(dx) > 5.0 or abs(dy) > 5.0:
         return None
-    return EarthOrientationSample(mjd, xp, yp, dut1)
+    return EarthOrientationSample(mjd, xp, yp, dut1, dx, dy)
 
 
 def _first_numeric_after(parts: list[str], start: int) -> tuple[int, float] | None:
@@ -349,8 +439,10 @@ def _parse_c04_line(line: str) -> EarthOrientationSample | None:
             xp = _float_or_none(parts[4])
             yp = _float_or_none(parts[5])
             dut1 = _float_or_none(parts[6])
+            dx = _float_or_none(parts[8]) if len(parts) > 9 else 0.0
+            dy = _float_or_none(parts[9]) if len(parts) > 9 else 0.0
             if xp is not None and yp is not None and dut1 is not None:
-                sample = _sample_if_plausible(mjd, xp, yp, dut1)
+                sample = _sample_if_plausible(mjd, xp, yp, dut1, dx or 0.0, dy or 0.0)
                 if sample is not None:
                     return sample
             sample = _parse_finals_row(parts, 3, mjd)
@@ -364,8 +456,10 @@ def _parse_c04_line(line: str) -> EarthOrientationSample | None:
             xp = _float_or_none(parts[5])
             yp = _float_or_none(parts[6])
             dut1 = _float_or_none(parts[7])
+            dx = _float_or_none(parts[8]) if len(parts) > 9 else 0.0
+            dy = _float_or_none(parts[9]) if len(parts) > 9 else 0.0
             if xp is not None and yp is not None and dut1 is not None:
-                sample = _sample_if_plausible(mjd, xp, yp, dut1)
+                sample = _sample_if_plausible(mjd, xp, yp, dut1, dx or 0.0, dy or 0.0)
                 if sample is not None:
                     return sample
             sample = _parse_finals_row(parts, 4, mjd)
@@ -442,6 +536,7 @@ def load_iers_c04(
 
 __all__ = [
     "C04EarthOrientation",
+    "CelestialPoleOffsets",
     "EarthOrientation",
     "DuplicateMjdPolicy",
     "EarthOrientationSample",

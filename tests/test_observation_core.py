@@ -97,3 +97,23 @@ def test_result_is_pickle_safe_for_mpi_transport():
     assert restored.epoch == _UTC_EPOCH
     assert restored.values["normal_point_index"] == 1
     assert np.allclose(restored.partials["station_range_bias"], [1.0])
+
+
+def test_standard_output_schema_contains_only_per_record_oc_fields():
+    from llrops.classes.observation.results import STANDARD_OUTPUT_FIELDS
+
+    assert STANDARD_OUTPUT_FIELDS == (
+        "obs_time_utc",
+        "normal_point_index",
+        "station_id",
+        "station_name",
+        "reflector_id",
+        "reflector_name",
+        "observed_rtt_s",
+        "computed_rtt_s",
+        "oc_one_way_m",
+        "fit_sigma_one_way_m",
+        "elevation_up_deg",
+        "converged",
+        "status",
+    )

@@ -92,6 +92,7 @@ class AdjustmentResult:
     state: Dict[str, object]                # final parameter values per block
     normals: Optional[NormalEquations]      # last-iteration normal equations
     rejected_keys: Dict[ObsKey, int]
+    gross_rejected_keys: Dict[ObsKey, int]
     equations: List[ObservationEquation]    # last-iteration equations (all rows)
 
     def to_dict(self) -> dict:
@@ -101,6 +102,7 @@ class AdjustmentResult:
             "state": self.state,
             "iterations": [vars(it) for it in self.iterations],
             "rejected_observations": {str(k): it for k, it in self.rejected_keys.items()},
+            "gross_rejected_observations": {str(k): it for k, it in self.gross_rejected_keys.items()},
         }
 
 
@@ -170,6 +172,7 @@ class LeastSquaresAdjustment:
     def run(self) -> AdjustmentResult:
         opt = self.options
         rejected: Dict[ObsKey, int] = {}
+        gross_rejected: Dict[ObsKey, int] = {}
         iterations: List[AdjustmentIteration] = []
         converged = False
         previous_wrms: Optional[float] = None
@@ -189,7 +192,8 @@ class LeastSquaresAdjustment:
                     if threshold is None:
                         continue
                     if abs(self.parametrization.reduced_observation(eq)) > threshold:
-                        rejected[eq.identity] = iteration
+                        gross_rejected[eq.identity] = iteration
+                rejected = dict(gross_rejected)
 
             used = [eq for eq in equations if eq.identity not in rejected]
             if len(used) < len(names):
@@ -223,19 +227,25 @@ class LeastSquaresAdjustment:
             # linearization points.
             active_set_changed = False
             if opt.enable_outlier_rejection:
-                test_pool = equations if opt.allow_outlier_reentry else used
-                new_rejected: Dict[ObsKey, int] = {}
+                # Gross rejections are a preprocessing decision. They have no
+                # value for later fits and must never re-enter.
+                test_pool = (
+                    [eq for eq in equations if eq.identity not in gross_rejected]
+                    if opt.allow_outlier_reentry
+                    else used
+                )
+                new_dynamic_rejected: Dict[ObsKey, int] = {}
                 for residual in postfit_residuals_streaming(test_pool, self.parametrization, delta):
                     threshold = opt.outlier_sigma_factor * residual.sigma_m
                     if abs(residual.residual_m) > threshold:
-                        new_rejected[residual.equation.identity] = iteration
+                        new_dynamic_rejected[residual.equation.identity] = iteration
 
                 old_rejected_keys = set(rejected)
                 if opt.allow_outlier_reentry:
-                    active_set_changed = set(new_rejected) != old_rejected_keys
-                    rejected = new_rejected
+                    rejected = {**gross_rejected, **new_dynamic_rejected}
+                    active_set_changed = set(rejected) != old_rejected_keys
                 else:
-                    rejected.update(new_rejected)
+                    rejected.update(new_dynamic_rejected)
                     active_set_changed = len(set(rejected) - old_rejected_keys) > 0
 
             max_updates = self.parametrization.apply_update(delta)
@@ -287,5 +297,6 @@ class LeastSquaresAdjustment:
             state=self.parametrization.state(),
             normals=last["normals"],
             rejected_keys=rejected,
+            gross_rejected_keys=gross_rejected,
             equations=last["equations"],
         )

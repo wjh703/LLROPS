@@ -10,7 +10,7 @@
       stationName: null                         # catalog override
       reflectorName: null
       uncertainty: wrms-table | mini
-      outputLevel: standard | full
+      outputLevel: standard | full             # compact O-C table | diagnostics
       includeReflectorDesign: false
       minElevationDeg: 0.0
       showProgress: true
