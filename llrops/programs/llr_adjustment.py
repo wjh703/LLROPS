@@ -11,7 +11,7 @@
         #         {type: lunarLoveNumbers}, {type: lunarOrbitState}
       adjustment:
         maxIterations: 20
-        damping: 1.0
+        geometryUpdateFactor: 1.0
         updateToleranceM: 1.0e-3
         wrmsToleranceM: 1.0e-4
         prefitGrossThresholdM: 20.0
@@ -190,6 +190,9 @@ def llr_adjustment(config: dict, context: RunContext):
             adjustment.get("prefit_gross_threshold_by_station_m"),
         ),
         function_max_iterations=int(adjustment.get("maxIterations", 20)),
+        geometry_update_factor=float(
+            adjustment.get("geometryUpdateFactor", 1.0)
+        ),
         update_tolerance_m=float(
             adjustment.get("updateToleranceM", 1.0e-3)
         ),
@@ -348,6 +351,11 @@ def llr_adjustment(config: dict, context: RunContext):
                 options,
                 function_max_iterations=int(
                     stage.get("maxIterations", options.function_max_iterations)
+                ),
+                geometry_update_factor=float(
+                    stage.get(
+                        "geometryUpdateFactor", options.geometry_update_factor
+                    )
                 ),
                 update_tolerance_m=float(
                     stage.get("updateToleranceM", options.update_tolerance_m)

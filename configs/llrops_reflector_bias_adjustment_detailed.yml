@@ -279,6 +279,10 @@ programs:
           parametrizations:
             - ReflectorPositionParametrization
             - StationRangeBiasParametrization
+          # Half-step geometry updates suppress the observed Apollo 15 y/z
+          # sign-alternating joint oscillation. Convergence is still tested
+          # against the full, undamped candidate correction.
+          geometryUpdateFactor: 0.5
           maxIterations: 10
           updateToleranceM: 2.0e-3
 

@@ -182,6 +182,7 @@ class LlrAdjustmentOptions:
     prefit_gross_threshold_m: Optional[float] = 20.0
     prefit_gross_threshold_by_station_m: Optional[Mapping[str, Optional[float]]] = None
     function_max_iterations: int = 20
+    geometry_update_factor: float = 1.0
     update_tolerance_m: float = 1.0e-3
     update_tolerance_by_block_m: Mapping[str, float] = None
     required_consecutive_converged_linearizations: int = 2
@@ -208,6 +209,8 @@ class LlrAdjustmentOptions:
     def __post_init__(self) -> None:
         if self.function_max_iterations < 1:
             raise ValueError("Geometry maximum iterations must be positive.")
+        if not 0.0 < self.geometry_update_factor <= 1.0:
+            raise ValueError("Geometry update factor must be in (0, 1].")
         if self.maximum_stochastic_iterations < 1:
             raise ValueError("Stochastic maximum iterations must be positive.")
         if self.required_consecutive_converged_linearizations < 1:
@@ -938,8 +941,12 @@ class LlrAdjustmentSolver:
                 >= self.options.required_consecutive_converged_linearizations
             )
 
+            applied_delta = (
+                self.options.geometry_update_factor
+                * final_solution.delta
+            )
             applied_updates = self.parametrization.apply_update(
-                final_solution.delta
+                applied_delta
             )
             linearizations.append(
                 {
@@ -959,6 +966,9 @@ class LlrAdjustmentSolver:
                         consecutive_converged_linearizations
                     ),
                     "parameter_converged": bool(parameter_converged),
+                    "geometry_update_factor": (
+                        self.options.geometry_update_factor
+                    ),
                     "applied_update_by_block_m": applied_updates,
                     "wrms_m": final_solution.wrms_m,
                     "equation_count": len(current_equations),
@@ -1014,6 +1024,7 @@ class LlrAdjustmentSolver:
         settings = {
             "variance_component_method": self.options.variance_component_method,
             "geometry_max_iterations": self.options.function_max_iterations,
+            "geometry_update_factor": self.options.geometry_update_factor,
             "parameter_update_tolerance_m": self.options.update_tolerance_m,
             "parameter_update_tolerance_by_block_m": dict(self.options.update_tolerance_by_block_m or {}),
             "required_consecutive_converged_linearizations": (

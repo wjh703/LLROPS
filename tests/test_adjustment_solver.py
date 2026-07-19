@@ -531,6 +531,7 @@ def test_stochastic_iteration_limit_still_applies_parameter_update():
             components=components,
             prefit_gross_threshold_m=None,
             function_max_iterations=2,
+            geometry_update_factor=0.5,
             maximum_stochastic_iterations=1,
             update_tolerance_m=0.0,
             minimum_mad_count=2,
@@ -544,12 +545,23 @@ def test_stochastic_iteration_limit_still_applies_parameter_update():
     ).run()
 
     assert source_calls == [1, 2]
-    assert not result.linearizations[0]["stochastic_converged"]
-    assert result.linearizations[0]["stochastic_iteration_limit_reached"]
-    assert result.linearizations[0]["applied_update_by_block_m"][
-        "OffsetParametrization"
-    ] > 0.0
+    first = result.linearizations[0]
+    assert not first["stochastic_converged"]
+    assert first["stochastic_iteration_limit_reached"]
+    assert first["geometry_update_factor"] == 0.5
+    candidate = first["candidate_update_by_block_m"]["0:OffsetParametrization"]
+    assert first["maximum_parameter_update_m"] == pytest.approx(candidate)
+    applied = first["applied_update_by_block_m"]["OffsetParametrization"]
+    assert applied == pytest.approx(0.5 * candidate)
+    assert applied > 0.0
+    assert result.settings["geometry_update_factor"] == 0.5
     assert result.termination_reason == "MAXIMUM_GEOMETRY_ITERATIONS_REACHED"
+
+
+@pytest.mark.parametrize("factor", [0.0, -0.5, 1.01])
+def test_geometry_update_factor_must_be_in_unit_interval(factor):
+    with pytest.raises(ValueError, match="Geometry update factor"):
+        LlrAdjustmentOptions(components=(), geometry_update_factor=factor)
 
 
 def test_fixed_domain_observation_can_reenter_after_one_failed_linearization():
