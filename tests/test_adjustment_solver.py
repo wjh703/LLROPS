@@ -197,6 +197,21 @@ def test_igg3_update_accepts_observation_missing_from_previous_targets():
     assert update.active_set_change_fraction == 0.0
 
 
+def test_igg3_update_preserves_factor_for_temporarily_missing_observation():
+    model = Igg3WeightModel()
+    update = model.update(
+        {"present": 0.0},
+        {"present": 0.5, "temporarily_missing": 0.25},
+        {"present": 0.5, "temporarily_missing": 0.25},
+        ["present"],
+    )
+
+    assert update.applied_factors == {
+        "present": 1.0,
+        "temporarily_missing": 0.25,
+    }
+
+
 def test_igg3_targets_are_applied_without_damping():
     model = Igg3WeightModel(k0=1.5, k1=6.0)
     update = model.update(
@@ -533,6 +548,52 @@ def test_stochastic_iteration_limit_still_applies_parameter_update():
         "OffsetParametrization"
     ] > 0.0
     assert result.termination_reason == "MAXIMUM_GEOMETRY_ITERATIONS_REACHED"
+
+
+def test_fixed_domain_observation_can_reenter_after_one_failed_linearization():
+    equations = [
+        _equation(index, value, "STA_A")
+        for index, value in enumerate([0.7, 1.0, 1.2, 0.8, 1.1, 0.9])
+    ]
+    components = (
+        VarianceComponentDefinition.from_config(
+            {
+                "id": "A",
+                "station_system": "A",
+                "station_aliases": ["STA_A"],
+                "start": "2010-01-01",
+                "end_exclusive": None,
+            }
+        ),
+    )
+
+    def source(iteration):
+        return [
+            replace(equation, converged=not (iteration == 2 and index == 0))
+            for index, equation in enumerate(equations)
+        ]
+
+    result = LlrAdjustmentSolver(
+        equation_source=source,
+        parametrization=ParametrizationList([OffsetParametrization()]),
+        options=LlrAdjustmentOptions(
+            components=components,
+            prefit_gross_threshold_m=None,
+            function_max_iterations=3,
+            maximum_stochastic_iterations=1,
+            required_consecutive_converged_linearizations=99,
+            minimum_mad_count=2,
+            minimum_effective_redundancy=1.0,
+            k0=1.0e6,
+            k1=2.0e6,
+        ),
+    ).run()
+
+    assert [
+        item["fixed_domain_returned_count"]
+        for item in result.equation_evaluations
+    ] == [6, 5, 6]
+    assert set(result.robust_factors) == set(range(6))
 
 
 def test_parameter_convergence_requires_two_confirmation_linearizations():

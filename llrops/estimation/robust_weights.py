@@ -68,7 +68,8 @@ class Igg3WeightModel:
         keys: Sequence[ObsKey],
     ) -> RobustWeightUpdate:
         targets = self.target_factors(standardized_residuals, keys)
-        applied = dict(targets)
+        applied = dict(current_factors)
+        applied.update(targets)
         previous_targets = {
             key: previous_target_factors.get(key, current_factors.get(key, 1.0))
             for key in keys

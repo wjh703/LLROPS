@@ -738,7 +738,8 @@ class LlrAdjustmentSolver:
                 )
                 next_target_factors = dict(target_factors)
                 next_target_factors.update(robust_update.target_factors)
-                next_factors = robust_update.applied_factors
+                next_factors = dict(factors)
+                next_factors.update(robust_update.applied_factors)
                 factor_target_change = robust_update.target_change_quantile
                 active_set_change = robust_update.active_set_change_fraction
                 robust_solution = self._solve_linearized(
@@ -1151,4 +1152,3 @@ __all__ = [
     "initialize_mad_scales",
     "prefit_gross_rejections",
 ]
-
