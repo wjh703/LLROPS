@@ -101,7 +101,7 @@ def solve_normal_equations(normals: NormalEquations) -> NormalEquationSolution:
         delta=np.asarray(delta, dtype=float),
         covariance=Qxx,
         sigma0_post=sigma0,
-        method="solve",
+        method="cholesky",
         rank_deficient=False,
     )
 

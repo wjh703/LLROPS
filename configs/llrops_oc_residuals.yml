@@ -75,8 +75,9 @@ programs:
     # mini uses the uncertainty contained in each normal point record.
     uncertainty: wrms-table
 
-    # standard = compact O-C table; full = more diagnostics.
-    # Both levels include troposphere elevation clamp diagnostics.
+    # standard = the compact per-normal-point O-C table: identity, observed
+    # and computed RTT, O-C, fitted sigma, elevation, and processing status.
+    # full = all model, correction, and input diagnostics.
     outputLevel: standard
 
     minElevationDeg: 0.0

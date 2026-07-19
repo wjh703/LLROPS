@@ -1,5 +1,5 @@
 # ==============================================================================
-# LLROPS grouped VCE adjustment: reflector coordinates + station range bias
+# LLROPS nonlinear adjustment: reflector coordinates + station range bias
 # ==============================================================================
 #
 # Current code base:
@@ -20,7 +20,7 @@
 # - Do not use the old "parallel: {enabled, workers, chunksize}" block.
 # - In MPI mode, only the "mpi.chunksize" option below controls O-C task size.
 # - rangeBias is the forward-model range-bias class config.
-# - stationRangeBias per=station+interval requires explicit intervals/periods.
+# - stationRangeBias per=station+interval requires explicit w'pintervals/periods.
 # - Override variables.* when running with a different data or output directory.
 # - Time/Earth-rotation transforms now use ERFA + explicit IERS C04 EOP; Astropy is not required.
 
@@ -111,7 +111,7 @@ programs:
   # ---------------------------------------------------------------------------
   # Main nonlinear adjustment
   # ---------------------------------------------------------------------------
-  - program: LlrGroupedVceAdjustment
+  - program: LlrAdjustment
     enabled: true
 
     # MINI, CRD/FRD, or LLROPS .llnpt/.llrops.jsonl files and directories.
@@ -135,7 +135,7 @@ programs:
 
     # Observation uncertainty:
     #   wrms-table | mini
-    uncertainty: wrms-table
+    uncertainty: mini
 
     # LlrAdjustment needs reflector design partials. Keep this true.
     # If set false, reflectorPosition estimation will fail because the
@@ -147,7 +147,7 @@ programs:
     outputLevel: full
 
     # Horizon threshold is diagnostic only; rows are not filtered by it.
-    minElevationDeg: 0.0
+    minElevationDeg: 3.0
 
     showProgress: true
 
@@ -250,17 +250,41 @@ programs:
     # -------------------------------------------------------------------------
     adjustment:
       # Geometry outer-loop limit. Each outer loop computes O-C/design once,
-      # then holds them fixed throughout the IGGIII/VCE inner loop.
-      maxIterations: 5
-      damping: 1.0
-      # After the stochastic model converges, stop when every parameter block
-      # is below this threshold. Otherwise apply the damped correction and
-      # recompute O-C/design for the next geometry outer loop.
-      updateToleranceM: 1.0e-3
+      # performs a bounded IGGIII/VCE block, then always applies the parameter
+      # correction before the next linearization.
+      maxIterations: 10
+      # Default tolerance for parameter blocks without an explicit override.
+      updateToleranceM: 2.0e-3
+      updateToleranceByBlockM:
+        ReflectorPositionParametrization: 1.0e-3
+        StationRangeBiasParametrization: 2.0e-3
+      # Require two successive outer iterations with a stable stochastic model
+      # and sub-millimetre parameter corrections.
+      requiredConsecutiveConvergedLinearizations: 2
+
+      # GROOPS-style staged parameter processing. Each stage reuses the
+      # parameter objects updated by the previous stage as its new a priori state.
+      stages:
+        - name: reflector
+          parametrizations:
+            - ReflectorPositionParametrization
+          maxIterations: 8
+          updateToleranceM: 1.0e-3
+        - name: bias
+          parametrizations:
+            - StationRangeBiasParametrization
+          maxIterations: 8
+          updateToleranceM: 2.0e-3
+        - name: joint
+          parametrizations:
+            - ReflectorPositionParametrization
+            - StationRangeBiasParametrization
+          maxIterations: 10
+          updateToleranceM: 2.0e-3
 
       # Applied once before Bias initialization, MAD, VCE, or IGGIII.
       # These observations never re-enter the solution.
-      prefitGrossThresholdM: 20.0
+      prefitGrossThresholdM: 2
       prefitGrossThresholdByStationM:
         APOLLO: 0.5
         GRASSE: 1.0
@@ -280,36 +304,57 @@ programs:
     robust_estimation:
       k0: 1.5
       k1: 6.0
+      # Leverage-aware residual variance uses max(1-h, this value).
       minimum_one_minus_leverage: 1.0e-8
       minimum_nonzero_robust_factor: 1.0e-12
+      # Zero IGGIII targets are rejected immediately. Changes wholly below this
+      # floor are ignored for convergence; near-full factors snap to 1.
+      minimum_robust_factor_for_convergence: 1.0e-3
 
     vce:
-      # Inner-loop limit at each fixed O-C/design linearization. These
-      # iterations rebuild weighted normals and update IGGIII factors and
-      # group scales, but neither rerun the model nor apply parameter updates.
-      maximum_iterations: 10
-      damping: 0.5
+      method: helmert
+      # Bounded stochastic block per geometry linearization. Hitting this limit
+      # no longer aborts the adjustment; the current parameter correction is
+      # applied and O-C/design are recomputed.
+      maximum_iterations: 8
       minimum_effective_redundancy: 20.0
-      scale_log_tolerance: 1.0e-3
-      robust_weight_tolerance: 1.0e-3
+
+      # Convergence is evaluated on undamped fixed-point targets, not on the
+      # smaller applied step. A few threshold observations cannot dominate the
+      # decision, but active/rejected membership must remain stable.
+      scale_log_tolerance: 2.5e-2
+      robust_factor_change_tolerance: 2.0e-2
+      robust_factor_change_quantile: 0.999
+      active_set_change_tolerance: 1.0e-3
+
+      # Variances are updated in log space; IGGIII factors are relaxed linearly.
+      # Each damping is halved after two stagnant iterations, down to 0.25.
+      initial_variance_damping: 1.0
+      initial_factor_damping: 0.5
+      minimum_adaptive_damping: 0.25
+      damping_reduction_factor: 0.5
+      damping_stagnation_ratio: 0.98
+      damping_stagnation_iterations: 2
+
+      # Protect a single VCE update from an extreme raw component variance.
       minimum_variance_ratio_per_iteration: 0.25
       maximum_variance_ratio_per_iteration: 4.0
 
-    # Exactly one group must match each retained observation. CERGA MeO/IR
-    # overlap is separated by laser wavelength. This strict one-match rule is
-    # enforced directly by the current code and is not a configurable policy.
-    vce_groups:
-      - {id: MCDONALD_1969_1985, station_system: MCDONALD, station_aliases: [MCDONALD], start: 1969-01-01, end_exclusive: 1986-01-01}
-      - {id: MLRS1_1983_1988, station_system: MLRS1, station_aliases: [MLRS1], start: 1983-01-01, end_exclusive: 1989-01-01}
-      - {id: MLRS2_1988_2015, station_system: MLRS2, station_aliases: [MLRS2], start: 1988-01-01, end_exclusive: 2016-01-01}
-      - {id: HALEAKALA_1984_1990, station_system: HALEAKALA, station_aliases: [HALEAKALA], start: 1984-01-01, end_exclusive: 1991-01-01}
-      - {id: CERGA_RUBY_1984_1986, station_system: CERGA_RUBY, station_aliases: [GRASSE, CERGA], start: 1984-01-01, end_exclusive: 1987-01-01}
-      - {id: CERGA_YAG_1987_2005, station_system: CERGA_YAG, station_aliases: [GRASSE, CERGA], start: 1987-01-01, end_exclusive: 2006-01-01}
-      - {id: CERGA_MEO_2009_PRESENT, station_system: CERGA_MEO, station_aliases: [GRASSE, CERGA], start: 2009-01-01, end_exclusive: null, wavelength_max_nm: 700.0}
-      - {id: CERGA_IR_2015_PRESENT, station_system: CERGA_IR, station_aliases: [GRASSE, CERGA], start: 2015-01-01, end_exclusive: null, wavelength_min_nm: 700.0}
-      - {id: APACHE_2006_PRESENT, station_system: APACHE, station_aliases: [APOLLO, APACHE, APOL], start: 2006-01-01, end_exclusive: null}
-      - {id: MATERA_2003_PRESENT, station_system: MATERA, station_aliases: [MATERA], start: 2003-01-01, end_exclusive: null}
-      - {id: WETTZELL_2018_PRESENT, station_system: WETTZELL, station_aliases: [WETTZELL], start: 2018-01-01, end_exclusive: null}
+      # Exactly one component must match each retained observation.
+      # CERGA MeO/IR overlap is separated by laser wavelength. The strict one-match rule is
+      # enforced directly and is not a configurable policy.
+      components:
+        - {id: MCDONALD_1969_1985, station_system: MCDONALD, station_aliases: [MCDONALD], start: 1969-01-01, end_exclusive: 1986-01-01}
+        - {id: MLRS1_1983_1988, station_system: MLRS1, station_aliases: [MLRS1], start: 1983-01-01, end_exclusive: 1989-01-01}
+        - {id: MLRS2_1988_2015, station_system: MLRS2, station_aliases: [MLRS2], start: 1988-01-01, end_exclusive: 2016-01-01}
+        - {id: HALEAKALA_1984_1990, station_system: HALEAKALA, station_aliases: [HALEAKALA], start: 1984-01-01, end_exclusive: 1991-01-01}
+        - {id: CERGA_RUBY_1984_1986, station_system: CERGA_RUBY, station_aliases: [GRASSE, CERGA], start: 1984-01-01, end_exclusive: 1987-01-01}
+        - {id: CERGA_YAG_1987_2005, station_system: CERGA_YAG, station_aliases: [GRASSE, CERGA], start: 1987-01-01, end_exclusive: 2006-01-01}
+        - {id: CERGA_MEO_2009_PRESENT, station_system: CERGA_MEO, station_aliases: [GRASSE, CERGA], start: 2009-01-01, end_exclusive: null, wavelength_max_nm: 700.0}
+        - {id: CERGA_IR_2015_PRESENT, station_system: CERGA_IR, station_aliases: [GRASSE, CERGA], start: 2015-01-01, end_exclusive: null, wavelength_min_nm: 700.0}
+        - {id: APACHE_2006_PRESENT, station_system: APACHE, station_aliases: [APOLLO, APACHE, APOL], start: 2006-01-01, end_exclusive: null}
+        - {id: MATERA_2003_PRESENT, station_system: MATERA, station_aliases: [MATERA], start: 2003-01-01, end_exclusive: null}
+        - {id: WETTZELL_2018_PRESENT, station_system: WETTZELL, station_aliases: [WETTZELL], start: 2018-01-01, end_exclusive: null}
 
     # MPI task granularity; ignored in normal serial execution.
     mpi:
@@ -320,14 +365,14 @@ programs:
     # - equation_evaluations and geometry linearizations;
     # - fixed-linearization stochastic iterations;
     # - parameter precision/correlation diagnostics;
-    # - global and grouped residual/factor distributions.
-    outputJson: "{outputDir}/reflector_bias_adjustment.json"
+    # - global and component residual/factor distributions.
+    outputJson: "{outputDir}/reflector_bias_adjustment1.json"
 
     # Final weighted normal equations for independent inspection/re-solving.
     # writes:
     #   {outputNormals}.npz
     #   {outputNormals}.parameters.json
-    outputNormals: "{outputDir}/reflector_bias_adjustment_normals"
+    outputNormals: "{outputDir}/reflector_bias_adjustment_normals1"
 
   # ---------------------------------------------------------------------------
   # Optional fixed-linearization normal-equation split workflow.

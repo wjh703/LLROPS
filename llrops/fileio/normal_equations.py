@@ -151,7 +151,7 @@ class NormalEquations:
 
     # -- solving ---------------------------------------------------------------
     def solve(self):
-        """Solve ``N x = W`` with :func:`numpy.linalg.solve`.
+        """Solve ``N x = W`` by Cholesky factorization of the SPD normal matrix.
 
         ``N = A.T @ P @ A`` and ``W = A.T @ P @ L`` where
         ``P = diag(1 / sigma**2)``.  The covariance cofactor matrix is obtained
@@ -161,8 +161,13 @@ class NormalEquations:
         """
         N = np.asarray(self.N, dtype=float)
         W = np.asarray(self.W, dtype=float)
-        x = np.linalg.solve(N, W)
-        Qxx = np.linalg.solve(N, np.eye(N.shape[0]))
+        if not np.allclose(N, N.T, rtol=1.0e-12, atol=1.0e-14):
+            raise np.linalg.LinAlgError("Normal matrix is not symmetric.")
+        symmetric = 0.5 * (N + N.T)
+        lower = np.linalg.cholesky(symmetric)
+        x = np.linalg.solve(lower.T, np.linalg.solve(lower, W))
+        identity = np.eye(N.shape[0])
+        Qxx = np.linalg.solve(lower.T, np.linalg.solve(lower, identity))
         dof = max(self.obs_count - len(self.parameter_names), 1)
         vPv = max(self.lPl - float(W @ x), 0.0)
         sigma0 = float(np.sqrt(vPv / dof))

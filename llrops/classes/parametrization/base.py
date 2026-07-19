@@ -113,6 +113,23 @@ class ParametrizationList:
         self._ensure_layout()
         return list(self._parameter_names or [])
 
+    def select_blocks(self, selectors: Sequence[str]) -> "ParametrizationList":
+        """Return a view over selected parameter blocks, reusing block state.
+
+        Selectors are exact class names, for example
+        ``ReflectorPositionParametrization``. An empty selector list is invalid
+        so a processing step cannot silently solve a zero-parameter system.
+        """
+        requested = {str(value).strip() for value in selectors if str(value).strip()}
+        if not requested:
+            raise ValueError("At least one parametrization block selector is required.")
+        selected = [block for block in self.blocks if type(block).__name__ in requested]
+        found = {type(block).__name__ for block in selected}
+        missing = requested - found
+        if missing:
+            raise KeyError(f"Unknown parametrization block selector(s): {sorted(missing)}")
+        return ParametrizationList(selected)
+
     @property
     def parameter_count(self) -> int:
         self._ensure_layout()

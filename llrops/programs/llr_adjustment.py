@@ -39,6 +39,7 @@ solves them::
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from typing import Dict, List
 
 import numpy as np
@@ -61,7 +62,7 @@ def _build_equation_source(config, context, datasets, processor):
     runtime = context.shared.get("mpi")
     progress_prefix = (
         "linearization"
-        if config.get("program") == "LlrGroupedVceAdjustment"
+        if config.get("program") == "LlrAdjustment"
         else "adjustment iter"
     )
     use_mpi = runtime is not None and runtime.has_workers
@@ -111,8 +112,8 @@ def _build_parametrization(config: dict, context: RunContext):
     return ParametrizationList(blocks)
 
 
-@program("LlrAdjustment")
-def llr_adjustment(config: dict, context: RunContext):
+@program("LlrLeastSquaresAdjustment")
+def llr_least_squares_adjustment(config: dict, context: RunContext):
     from llrops.estimation.adjustment import AdjustmentOptions, LeastSquaresAdjustment
 
     datasets = load_datasets(config, context)
@@ -151,20 +152,20 @@ def llr_adjustment(config: dict, context: RunContext):
     if config.get("outputNormals") and result.normals is not None:
         result.normals.save(context.resolve_path(config["outputNormals"]))
     print(
-        f"[LlrAdjustment] converged={result.converged} "
+        f"[LlrLeastSquaresAdjustment] converged={result.converged} "
         f"iterations={len(result.iterations)} parameters={len(result.parameter_names)}"
     )
     return result
 
 
-@program("LlrGroupedVceAdjustment")
-def llr_grouped_vce_adjustment(config: dict, context: RunContext):
-    """Run the grouped VCE, interval-bias, and IGGIII joint adjustment."""
-    from llrops.estimation.grouped_vce import (
-        GroupedVceAdjustment,
-        GroupedVceOptions,
-        VceGroup,
+@program("LlrAdjustment")
+def llr_adjustment(config: dict, context: RunContext):
+    """Run nonlinear LLR adjustment with robust weights and VCE."""
+    from llrops.estimation.adjustment_solver import (
+        LlrAdjustmentOptions,
+        LlrAdjustmentSolver,
     )
+    from llrops.estimation.variance_components import VarianceComponentDefinition
 
     datasets = load_datasets(config, context)
     processor = build_processor(config, context)
@@ -173,86 +174,265 @@ def llr_grouped_vce_adjustment(config: dict, context: RunContext):
     initialization = config.get("initialization") or {}
     robust = config.get("robust_estimation") or config.get("robustEstimation") or {}
     vce = config.get("vce") or {}
-    groups_config = config.get("vce_groups") or config.get("vceGroups") or []
-    groups = tuple(VceGroup.from_config(item) for item in groups_config)
-    options = GroupedVceOptions(
-        groups=groups,
-        prefit_gross_threshold_m=adjustment.get("prefitGrossThresholdM", 20.0),
-        prefit_gross_threshold_by_station_m=adjustment.get("prefitGrossThresholdByStationM"),
+    components_config = vce.get("components") or []
+    components = tuple(
+        VarianceComponentDefinition.from_config(item)
+        for item in components_config
+    )
+    options = LlrAdjustmentOptions(
+        components=components,
+        prefit_gross_threshold_m=adjustment.get(
+            "prefitGrossThresholdM",
+            adjustment.get("prefit_gross_threshold_m", 20.0),
+        ),
+        prefit_gross_threshold_by_station_m=adjustment.get(
+            "prefitGrossThresholdByStationM",
+            adjustment.get("prefit_gross_threshold_by_station_m"),
+        ),
         function_max_iterations=int(adjustment.get("maxIterations", 20)),
-        function_damping=float(adjustment.get("damping", 1.0)),
-        update_tolerance_m=float(adjustment.get("updateToleranceM", 1.0e-3)),
-        wrms_tolerance_m=float(adjustment.get("wrmsToleranceM", 1.0e-4)),
-        maximum_stochastic_iterations=int(vce.get("maximum_iterations", vce.get("maximumIterations", 20))),
+        update_tolerance_m=float(
+            adjustment.get("updateToleranceM", 1.0e-3)
+        ),
+        update_tolerance_by_block_m={
+            str(key): float(value)
+            for key, value in (adjustment.get("updateToleranceByBlockM") or {}).items()
+        },
+        required_consecutive_converged_linearizations=int(
+            adjustment.get(
+                "requiredConsecutiveConvergedLinearizations",
+                adjustment.get(
+                    "required_consecutive_converged_linearizations",
+                    2,
+                ),
+            )
+        ),
+        wrms_tolerance_m=float(
+            adjustment.get("wrmsToleranceM", 1.0e-4)
+        ),
+        maximum_stochastic_iterations=int(
+            vce.get("maximum_iterations", vce.get("maximumIterations", 8))
+        ),
         k0=float(robust.get("k0", 1.5)),
         k1=float(robust.get("k1", 6.0)),
         minimum_one_minus_leverage=float(
-            robust.get("minimum_one_minus_leverage", robust.get("minimumOneMinusLeverage", 1.0e-8))
+            robust.get(
+                "minimum_one_minus_leverage",
+                robust.get("minimumOneMinusLeverage", 1.0e-8),
+            )
         ),
         minimum_nonzero_robust_factor=float(
-            robust.get("minimum_nonzero_robust_factor", robust.get("minimumNonzeroRobustFactor", 1.0e-12))
+            robust.get(
+                "minimum_nonzero_robust_factor",
+                robust.get("minimumNonzeroRobustFactor", 1.0e-12),
+            )
         ),
-        minimum_mad_count=int(initialization.get("minimum_mad_count", initialization.get("minimumMadCount", 10))),
+        minimum_robust_factor_for_convergence=float(
+            robust.get(
+                "minimum_robust_factor_for_convergence",
+                robust.get("minimumRobustFactorForConvergence", 1.0e-3),
+            )
+        ),
+        minimum_mad_count=int(
+            initialization.get(
+                "minimum_mad_count",
+                initialization.get("minimumMadCount", 10),
+            )
+        ),
         minimum_initial_scale=float(
-            initialization.get("minimum_initial_scale", initialization.get("minimumInitialScale", 1.0))
+            initialization.get(
+                "minimum_initial_scale",
+                initialization.get("minimumInitialScale", 1.0),
+            )
         ),
-        bias_weight_cap=float(initialization.get("bias_weight_cap", initialization.get("biasWeightCap", 1.0e12))),
+        bias_weight_cap=float(
+            initialization.get(
+                "bias_weight_cap",
+                initialization.get("biasWeightCap", 1.0e12),
+            )
+        ),
         bias_maximum_iterations=int(
-            initialization.get("bias_maximum_iterations", initialization.get("biasMaximumIterations", 30))
+            initialization.get(
+                "bias_maximum_iterations",
+                initialization.get("biasMaximumIterations", 30),
+            )
         ),
-        vce_damping=float(vce.get("damping", 0.5)),
         minimum_effective_redundancy=float(
-            vce.get("minimum_effective_redundancy", vce.get("minimumEffectiveRedundancy", 20.0))
+            vce.get(
+                "minimum_effective_redundancy",
+                vce.get("minimumEffectiveRedundancy", 20.0),
+            )
         ),
-        scale_log_tolerance=float(vce.get("scale_log_tolerance", vce.get("scaleLogTolerance", 1.0e-3))),
-        robust_weight_tolerance=float(
-            vce.get("robust_weight_tolerance", vce.get("robustWeightTolerance", 1.0e-3))
+        scale_log_tolerance=float(
+            vce.get(
+                "scale_log_tolerance",
+                vce.get(
+                    "scaleLogTolerance",
+                    vce.get(
+                        "variance_ratio_tolerance",
+                        vce.get("varianceRatioTolerance", 2.5e-2),
+                    ),
+                ),
+            )
+        ),
+        robust_factor_change_tolerance=float(
+            vce.get(
+                "robust_factor_change_tolerance",
+                vce.get(
+                    "robustFactorChangeTolerance",
+                    vce.get(
+                        "robust_factor_ratio_tolerance",
+                        vce.get("robustFactorRatioTolerance", 2.0e-2),
+                    ),
+                ),
+            )
+        ),
+        robust_factor_change_quantile=float(
+            vce.get(
+                "robust_factor_change_quantile",
+                vce.get("robustFactorChangeQuantile", 0.999),
+            )
+        ),
+        active_set_change_tolerance=float(
+            vce.get(
+                "active_set_change_tolerance",
+                vce.get("activeSetChangeTolerance", 1.0e-3),
+            )
+        ),
+        initial_variance_damping=float(
+            vce.get(
+                "initial_variance_damping",
+                vce.get(
+                    "initialVarianceDamping",
+                    vce.get("damping", 1.0),
+                ),
+            )
+        ),
+        initial_factor_damping=float(
+            vce.get(
+                "initial_factor_damping",
+                vce.get("initialFactorDamping", 0.5),
+            )
+        ),
+        minimum_adaptive_damping=float(
+            vce.get(
+                "minimum_adaptive_damping",
+                vce.get("minimumAdaptiveDamping", 0.25),
+            )
+        ),
+        damping_reduction_factor=float(
+            vce.get(
+                "damping_reduction_factor",
+                vce.get("dampingReductionFactor", 0.5),
+            )
+        ),
+        damping_stagnation_ratio=float(
+            vce.get(
+                "damping_stagnation_ratio",
+                vce.get("dampingStagnationRatio", 0.98),
+            )
+        ),
+        damping_stagnation_iterations=int(
+            vce.get(
+                "damping_stagnation_iterations",
+                vce.get("dampingStagnationIterations", 2),
+            )
         ),
         minimum_variance_ratio_per_iteration=float(
-            vce.get("minimum_variance_ratio_per_iteration", vce.get("minimumVarianceRatioPerIteration", 0.25))
+            vce.get(
+                "minimum_variance_ratio_per_iteration",
+                vce.get("minimumVarianceRatioPerIteration", 0.25),
+            )
         ),
+        variance_component_method=str(vce.get("method", "helmert")),
         maximum_variance_ratio_per_iteration=float(
-            vce.get("maximum_variance_ratio_per_iteration", vce.get("maximumVarianceRatioPerIteration", 4.0))
+            vce.get(
+                "maximum_variance_ratio_per_iteration",
+                vce.get("maximumVarianceRatioPerIteration", 4.0),
+            )
         ),
     )
 
+    active_stage = {"name": "joint"}
+
     def report_iteration(item):
         print(
-            "[GroupedVCE] "
+            "[LlrAdjustment:HelmertVCE] "
+            f"stage={active_stage['name']} "
             f"linearization={item.linearization_iteration} "
             f"stochastic={item.stochastic_iteration} "
-            f"scaleLogChange={item.maximum_scale_log_change:.3e} "
-            f"factorChange={item.maximum_robust_factor_change:.3e} "
+            f"scaleLogTarget={item.maximum_scale_log_target_change:.3e} "
+            f"factorTargetQ={item.robust_factor_target_change_quantile:.3e} "
+            f"activeSetChange={item.active_set_change_fraction:.3e} "
+            f"damping={item.variance_damping:.2f}/{item.factor_damping:.2f} "
+            f"targetRejected={item.target_rejected_observation_count} "
             f"active={item.active_observation_count} "
-            f"rejected={item.rejected_observation_count}",
+            f"rejected={item.rejected_observation_count} "
+            f"converged={item.stochastic_converged}",
             flush=True,
         )
 
+    equation_source = _build_equation_source(config, context, datasets, processor)
+    stage_configs = adjustment.get("stages") or [{"name": "joint"}]
+    stage_results = []
     try:
-        result = GroupedVceAdjustment(
-            equation_source=_build_equation_source(config, context, datasets, processor),
-            parametrization=parametrization,
-            options=options,
-            context=context,
-            iteration_callback=(
-                report_iteration
-                if bool(config.get("showProgress", True))
-                else None
-            ),
-        ).run()
+        for index, stage in enumerate(stage_configs, start=1):
+            stage_name = str(stage.get("name") or f"stage-{index}")
+            active_stage["name"] = stage_name
+            selectors = stage.get("parametrizations")
+            stage_parametrization = (
+                parametrization
+                if not selectors
+                else parametrization.select_blocks(selectors)
+            )
+            stage_options = replace(
+                options,
+                function_max_iterations=int(
+                    stage.get("maxIterations", options.function_max_iterations)
+                ),
+                update_tolerance_m=float(
+                    stage.get("updateToleranceM", options.update_tolerance_m)
+                ),
+                required_consecutive_converged_linearizations=int(
+                    stage.get(
+                        "requiredConsecutiveConvergedLinearizations",
+                        options.required_consecutive_converged_linearizations,
+                    )
+                ),
+            )
+            result = LlrAdjustmentSolver(
+                equation_source=equation_source,
+                parametrization=stage_parametrization,
+                options=stage_options,
+                context=context,
+                iteration_callback=(
+                    report_iteration if bool(config.get("showProgress", True)) else None
+                ),
+            ).run()
+            stage_results.append(
+                {
+                    "name": stage_name,
+                    "parametrizations": [
+                        type(block).__name__ for block in stage_parametrization.blocks
+                    ],
+                    "summary": result.summary,
+                    "state": result.state,
+                }
+            )
     finally:
         processor.close()
 
     if config.get("outputJson"):
         path = context.resolve_path(config["outputJson"])
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(result.to_dict(), indent=2, default=str), encoding="utf-8")
+        payload = result.to_dict()
+        payload["processing_steps"] = stage_results
+        path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
     if config.get("outputNormals") and result.normals is not None:
         result.normals.save(context.resolve_path(config["outputNormals"]))
     print(
-        f"[LlrGroupedVceAdjustment] converged={result.converged} "
+        f"[LlrAdjustment] converged={result.converged} "
         f"linearizations={len(result.linearizations)} "
-        f"stochasticIterations={len(result.iterations)} groups={len(result.scales)}"
+        f"stochasticIterations={len(result.iterations)} components={len(result.scales)}"
     )
     return result
 

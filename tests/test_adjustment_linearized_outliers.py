@@ -65,8 +65,8 @@ def test_postfit_outlier_test_uses_linearized_residual_before_apply_update():
 
     assert np.allclose(result.solution, [10.0])
     assert result.rejected_keys == {}
-    assert result.iterations[0].wrms_after_m == 0.0
-    assert block.value == 10.0
+    assert np.isclose(result.iterations[0].wrms_after_m, 0.0, atol=1.0e-12)
+    assert np.isclose(block.value, 10.0, atol=1.0e-12)
 
 
 def test_prefit_gross_threshold_uses_station_override_then_global_default():
