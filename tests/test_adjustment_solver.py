@@ -9,6 +9,11 @@ from llrops.base.parameter_name import ParameterName
 from llrops.classes.observation.equations import ObservationEquation
 from llrops.classes.parametrization.base import Parametrization, ParametrizationList
 from llrops.estimation.convergence import ParameterConvergencePolicy
+from llrops.estimation.normal_equation_engine import (
+    DenseLinearization,
+    build_normal_equations_streaming,
+    solve_normal_equations,
+)
 from llrops.estimation.adjustment_solver import (
     LlrAdjustmentOptions,
     LlrAdjustmentSolver,
@@ -21,6 +26,7 @@ from llrops.estimation.robust_weights import (
     maximum_robust_factor_change,
     robust_factor_change_quantile,
 )
+from llrops.estimation.vce import HelmertVceEstimator
 from llrops.estimation.variance_components import (
     VarianceComponentDefinition,
     assign_variance_components,
@@ -320,6 +326,148 @@ def test_vce_direct_update_respects_variance_ratio_limit():
     assert first_component["raw_variance"] == pytest.approx(10000.0)
     assert first_component["limited_variance_ratio"] == pytest.approx(4.0)
     assert first_component["variance_after"] == pytest.approx(4.0)
+
+
+def _two_component_case():
+    equations = [
+        replace(_equation(("A", i), value, "STA_A"), sigma_m=0.5 + 0.1 * i)
+        for i, value in enumerate([0.7, 1.0, 1.2, 0.8, 1.1, 0.9])
+    ] + [
+        replace(_equation(("B", i), value, "STA_B"), sigma_m=0.8 + 0.1 * i)
+        for i, value in enumerate([0.0, 2.0, 1.7, -0.2, 2.4, 0.4])
+    ]
+    components = tuple(
+        VarianceComponentDefinition.from_config(
+            {
+                "id": name,
+                "station_system": name,
+                "station_aliases": [f"STA_{name}"],
+                "start": "2010-01-01",
+                "end_exclusive": None,
+            }
+        )
+        for name in ("A", "B")
+    )
+    return equations, components
+
+
+def test_dense_linearization_matches_streaming_normals_and_vce():
+    equations, components = _two_component_case()
+    parametrization = ParametrizationList([OffsetParametrization()])
+    parametrization.setup(equations, None)
+    names = parametrization.parameter_names()
+    assignments = assign_variance_components(equations, components)
+    scales = {"A": 1.3, "B": 0.7}
+    factors = {
+        equation.identity: 0.2 + 0.8 * (index + 1) / len(equations)
+        for index, equation in enumerate(equations)
+    }
+    weights = np.asarray(
+        [
+            factors[equation.identity]
+            / (scales[assignments[equation.identity]] ** 2 * equation.sigma_m**2)
+            for equation in equations
+        ]
+    )
+
+    dense = DenseLinearization.build(equations, parametrization, names)
+    dense_normals = dense.normal_equations(weights)
+    streaming_normals = build_normal_equations_streaming(
+        equations,
+        parametrization,
+        parameter_names=names,
+        weight_for=lambda equation: weights[equations.index(equation)],
+    )
+    assert dense_normals.N == pytest.approx(streaming_normals.N, rel=1.0e-13)
+    assert dense_normals.W == pytest.approx(streaming_normals.W, rel=1.0e-13)
+    assert dense_normals.lPl == pytest.approx(streaming_normals.lPl, rel=1.0e-13)
+
+    dense_solved = solve_normal_equations(dense_normals)
+    streaming_solved = solve_normal_equations(streaming_normals)
+    assert dense_solved.delta == pytest.approx(streaming_solved.delta, rel=1.0e-13)
+    assert dense_solved.covariance == pytest.approx(
+        streaming_solved.covariance, rel=1.0e-13
+    )
+    residual_vector = dense.reduced_observations - dense.design @ dense_solved.delta
+    residuals = {
+        key: float(value) for key, value in zip(dense.identities, residual_vector)
+    }
+    estimator = HelmertVceEstimator(
+        components, minimum_effective_redundancy=1.0
+    )
+    streaming_estimate = estimator.estimate(
+        equations=equations,
+        residuals=residuals,
+        normals=streaming_normals,
+        parametrization=parametrization,
+        parameter_names=names,
+        assignments=assignments,
+        factors=factors,
+        scales=scales,
+        covariance=streaming_solved.covariance,
+    )
+    dense_estimate = estimator.estimate_dense(
+        design=dense.design,
+        sigmas=dense.sigmas,
+        residuals=residual_vector,
+        component_ids=np.asarray([assignments[key] for key in dense.identities]),
+        factors=np.asarray([factors[key] for key in dense.identities]),
+        scales=scales,
+        normals=dense_normals,
+        covariance=dense_solved.covariance,
+    )
+    assert dense_estimate.scales == pytest.approx(
+        streaming_estimate.scales, rel=1.0e-12
+    )
+    for component in components:
+        assert dense_estimate.diagnostics[component.id] == pytest.approx(
+            streaming_estimate.diagnostics[component.id], rel=1.0e-12
+        )
+
+
+def _run_backend(backend, *, initial_scales=None, initial_factors=None):
+    equations, components = _two_component_case()
+    return LlrAdjustmentSolver(
+        equation_source=lambda iteration: equations,
+        parametrization=ParametrizationList([OffsetParametrization()]),
+        options=LlrAdjustmentOptions(
+            components=components,
+            prefit_gross_threshold_m=None,
+            function_max_iterations=2,
+            maximum_stochastic_iterations=3,
+            required_consecutive_converged_linearizations=99,
+            minimum_mad_count=2,
+            minimum_effective_redundancy=1.0,
+            linearization_backend=backend,
+        ),
+        initial_scales=initial_scales,
+        initial_factors=initial_factors,
+    ).run()
+
+
+def test_dense_and_streaming_adjustments_are_equivalent_and_warm_startable():
+    dense = _run_backend("dense")
+    streaming = _run_backend("streaming")
+
+    assert dense.scales == pytest.approx(streaming.scales, rel=1.0e-10)
+    assert dense.robust_factors == pytest.approx(
+        streaming.robust_factors, rel=1.0e-10
+    )
+    assert dense.normals.N == pytest.approx(streaming.normals.N, rel=1.0e-10)
+    assert dense.normals.W == pytest.approx(streaming.normals.W, rel=1.0e-10)
+    assert dense.state == streaming.state
+
+    warm = _run_backend(
+        "dense", initial_scales=dense.scales, initial_factors=dense.robust_factors
+    )
+    assert warm.settings["warm_started_scale_count"] == 2
+    assert warm.settings["warm_started_factor_count"] == 12
+    assert set(warm.summary["performance_seconds"]) == {
+        "cache_build",
+        "normal_solve",
+        "leverage",
+        "vce",
+    }
 
 
 def test_llr_adjustment_runs_joint_helmert_vce_cycle():

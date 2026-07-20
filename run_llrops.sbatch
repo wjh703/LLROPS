@@ -9,6 +9,12 @@
 
 set -euo pipefail
 
+# Small LLR normal systems are faster and more stable without per-rank BLAS
+# thread pools; MPI provides the forward-model parallelism.
+export OPENBLAS_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+
 cd "$SLURM_SUBMIT_DIR"
 
 echo "Job ID: $SLURM_JOB_ID"

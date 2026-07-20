@@ -258,6 +258,12 @@ programs:
         minimumOneWaySigmaM: 1.0e-3
         minimumFractionOfGroupMedian: 0.1
 
+      # Materialize A/l/sigma once per geometry point so repeated robust/VCE
+      # iterations use vectorized BLAS operations. The streaming backend remains
+      # available for numerical comparison and unusually large parameter sets.
+      linearizationBackend: dense
+      warmStartStochasticModelAcrossStages: true
+
       # Geometry outer-loop limit. Each outer loop computes O-C/design once,
       # performs a bounded IGGIII/VCE block, then always applies the parameter
       # correction before the next linearization.

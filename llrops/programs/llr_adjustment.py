@@ -201,6 +201,9 @@ def llr_adjustment(config: dict, context: RunContext):
         geometry_update_factor=float(
             adjustment.get("geometryUpdateFactor", 1.0)
         ),
+        linearization_backend=str(
+            adjustment.get("linearizationBackend", "dense")
+        ).strip().lower(),
         uncertainty_floor_minimum_m=float(
             uncertainty_quality.get("minimumOneWaySigmaM", 0.0)
         ),
@@ -338,6 +341,7 @@ def llr_adjustment(config: dict, context: RunContext):
             f"stage={active_stage['name']} "
             f"linearization={item.linearization_iteration} "
             f"stochastic={item.stochastic_iteration} "
+            f"elapsed={item.elapsed_seconds:.3f}s "
             f"scaleLogTarget={item.maximum_scale_log_target_change:.3e} "
             f"factorTargetQ={item.robust_factor_target_change_quantile:.3e} "
             f"activeSetChange={item.active_set_change_fraction:.3e} "
@@ -351,6 +355,11 @@ def llr_adjustment(config: dict, context: RunContext):
     equation_source = _build_equation_source(config, context, datasets, processor)
     stage_configs = adjustment.get("stages") or [{"name": "joint"}]
     stage_results = []
+    warm_start_stochastic = bool(
+        adjustment.get("warmStartStochasticModelAcrossStages", True)
+    )
+    previous_scales = {}
+    previous_factors = {}
     try:
         for index, stage in enumerate(stage_configs, start=1):
             stage_name = str(stage.get("name") or f"stage-{index}")
@@ -386,10 +395,26 @@ def llr_adjustment(config: dict, context: RunContext):
                 parametrization=stage_parametrization,
                 options=stage_options,
                 context=context,
+                initial_scales=(previous_scales if warm_start_stochastic else None),
+                initial_factors=(previous_factors if warm_start_stochastic else None),
                 iteration_callback=(
                     report_iteration if bool(config.get("showProgress", True)) else None
                 ),
             ).run()
+            previous_scales = dict(result.scales)
+            previous_factors = dict(result.robust_factors)
+            performance = result.summary["performance_seconds"]
+            print(
+                "[LlrAdjustment:Performance] "
+                f"stage={stage_name} backend={result.settings['linearization_backend']} "
+                f"cache={performance['cache_build']:.3f}s "
+                f"solve={performance['normal_solve']:.3f}s "
+                f"leverage={performance['leverage']:.3f}s "
+                f"vce={performance['vce']:.3f}s "
+                f"warmScales={result.settings['warm_started_scale_count']} "
+                f"warmFactors={result.settings['warm_started_factor_count']}",
+                flush=True,
+            )
             print(
                 "[LlrAdjustment:UncertaintyQC] "
                 f"stage={stage_name} action=floor "

@@ -45,9 +45,13 @@ class HelmertVceEstimator(VarianceComponentEstimator):
     maximum_variance_ratio_per_iteration: float = 4.0
     method: str = "helmert"
 
-    def estimate(self, *, equations, residuals, normals, parametrization, parameter_names, assignments, factors, scales):
+    def estimate(self, *, equations, residuals, normals, parametrization, parameter_names, assignments, factors, scales, covariance=None):
         active = [eq for eq in equations if factors[eq.identity] > self.minimum_nonzero_factor]
-        covariance = solve_normal_equations(normals).covariance
+        covariance = (
+            solve_normal_equations(normals).covariance
+            if covariance is None
+            else np.asarray(covariance, dtype=float)
+        )
         if covariance is None:
             raise RuntimeError("Equivalent-weight normal equation covariance is unavailable.")
         if normals.obs_count != len(active):
@@ -95,6 +99,96 @@ class HelmertVceEstimator(VarianceComponentEstimator):
         actual = sum(float(item["effective_redundancy"]) for item in diagnostics.values())
         if not np.isclose(actual, expected, rtol=1.0e-10, atol=1.0e-8):
             raise RuntimeError(f"Helmert redundancy check failed: {actual:.12g} != {expected:.12g}.")
+        return VarianceComponentEstimate(updates, diagnostics, normals)
+
+
+    def estimate_dense(
+        self,
+        *,
+        design,
+        sigmas,
+        residuals,
+        component_ids,
+        factors,
+        scales,
+        normals,
+        covariance,
+    ):
+        design = np.asarray(design, dtype=float)
+        sigmas = np.asarray(sigmas, dtype=float)
+        residuals = np.asarray(residuals, dtype=float)
+        factors = np.asarray(factors, dtype=float)
+        component_ids = np.asarray(component_ids, dtype=object)
+        active = factors > self.minimum_nonzero_factor
+        covariance = np.asarray(covariance, dtype=float)
+        counts: dict[str, int] = {}
+        numerators: dict[str, float] = {}
+        component_normal_matrices: dict[str, np.ndarray] = {}
+        for component in self.components:
+            mask = active & (component_ids == component.id)
+            A = design[mask]
+            factor = factors[mask]
+            sigma = sigmas[mask]
+            weight = factor / (float(scales[component.id]) ** 2 * sigma**2)
+            component_normal_matrices[component.id] = A.T @ (weight[:, None] * A)
+            counts[component.id] = int(np.count_nonzero(mask))
+            numerators[component.id] = float(
+                np.sum(factor * residuals[mask] ** 2 / sigma**2)
+            )
+
+        updates: dict[str, float] = {}
+        diagnostics: dict[str, dict[str, object]] = {}
+        for component in self.components:
+            consumed = float(
+                np.trace(covariance @ component_normal_matrices[component.id])
+            )
+            active_count = counts[component.id]
+            redundancy = float(active_count - consumed)
+            current_variance = float(scales[component.id]) ** 2
+            if redundancy < self.minimum_effective_redundancy:
+                raw_variance = current_variance
+                raw_ratio = limited_ratio = 1.0
+                next_variance = current_variance
+                status = "INSUFFICIENT_REDUNDANCY"
+            else:
+                raw_variance = numerators[component.id] / redundancy
+                if not np.isfinite(raw_variance) or raw_variance <= 0.0:
+                    raise RuntimeError(
+                        f"Invalid Helmert VCE estimate for component "
+                        f"{component.id!r}: {raw_variance!r}."
+                    )
+                raw_ratio = raw_variance / current_variance
+                limited_ratio = float(
+                    np.clip(
+                        raw_ratio,
+                        self.minimum_variance_ratio_per_iteration,
+                        self.maximum_variance_ratio_per_iteration,
+                    )
+                )
+                next_variance = current_variance * limited_ratio
+                status = "UPDATED"
+            updates[component.id] = float(np.sqrt(next_variance))
+            diagnostics[component.id] = {
+                "active_count": float(active_count),
+                "consumed_dof": consumed,
+                "effective_redundancy": redundancy,
+                "variance_before": float(current_variance),
+                "raw_variance": float(raw_variance),
+                "raw_variance_ratio": float(raw_ratio),
+                "limited_variance_ratio": float(limited_ratio),
+                "target_scale_log_change": float(abs(np.log(raw_ratio))),
+                "variance_after": float(next_variance),
+                "variance_ratio": float(next_variance / current_variance),
+                "update_status": status,
+            }
+        expected = float(np.count_nonzero(active) - np.linalg.matrix_rank(normals.N))
+        actual = sum(
+            float(item["effective_redundancy"]) for item in diagnostics.values()
+        )
+        if not np.isclose(actual, expected, rtol=1.0e-10, atol=1.0e-8):
+            raise RuntimeError(
+                f"Helmert redundancy check failed: {actual:.12g} != {expected:.12g}."
+            )
         return VarianceComponentEstimate(updates, diagnostics, normals)
 
 
