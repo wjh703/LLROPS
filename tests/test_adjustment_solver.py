@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -11,6 +12,7 @@ from llrops.estimation.convergence import ParameterConvergencePolicy
 from llrops.estimation.adjustment_solver import (
     LlrAdjustmentOptions,
     LlrAdjustmentSolver,
+    floor_prefit_uncertainties,
 )
 from llrops.estimation.robust_weights import (
     Igg3WeightModel,
@@ -110,6 +112,37 @@ def test_vce_assignment_distinguishes_overlapping_cerga_systems_by_wavelength():
     equations = [_equation("green", 0.0, "CERGA", 532.0), _equation("infrared", 0.0, "CERGA", 1064.0)]
 
     assert assign_variance_components(equations, components) == {"green": "CERGA_MEO", "infrared": "CERGA_IR"}
+
+
+def test_prefit_uncertainty_qc_floors_only_abnormally_small_sigmas():
+    equations = [
+        replace(_equation("tiny", 0.0, "STA_A"), sigma_m=1.0e-5),
+        replace(_equation("normal-1", 0.0, "STA_A"), sigma_m=0.02),
+        replace(_equation("normal-2", 0.0, "STA_A"), sigma_m=0.03),
+    ]
+
+    adjusted, records, groups = floor_prefit_uncertainties(
+        equations,
+        {equation.identity: "A" for equation in equations},
+        minimum_sigma_m=1.0e-3,
+        minimum_group_median_fraction=0.1,
+    )
+
+    assert groups["A"] == {
+        "median_reported_sigma_m": pytest.approx(0.02),
+        "sigma_floor_m": pytest.approx(0.002),
+        "observation_count": 3,
+        "floored_count": 1,
+    }
+    assert [equation.sigma_m for equation in adjusted] == pytest.approx(
+        [0.002, 0.02, 0.03]
+    )
+    assert records["tiny"]["status"] == "FLOORED"
+    assert records["tiny"]["reported_sigma_m"] == pytest.approx(1.0e-5)
+    assert records["normal-1"]["status"] == "UNCHANGED"
+    assert adjusted[0].metadata["uncertainty_quality_control"]["reason"] == (
+        "BELOW_PREFIT_UNCERTAINTY_FLOOR"
+    )
 
 
 def test_vce_assignment_rejects_unassigned_observation():
@@ -342,6 +375,9 @@ def test_llr_adjustment_runs_joint_helmert_vce_cycle():
         assert item["standardized_residual"] == pytest.approx(
             item["postfit_residual"] / item["residual_sigma"]
         )
+        assert item["reported_sigma_np"] == pytest.approx(item["sigma_np"])
+        assert item["effective_sigma_np"] == pytest.approx(item["sigma_np"])
+        assert item["uncertainty_qc_status"] == "UNCHANGED"
     assert all(0.0 <= factor <= 1.0 for factor in result.robust_factors.values())
     assert result.iterations[-1].total_effective_redundancy == pytest.approx(
         result.iterations[-1].expected_total_redundancy
@@ -368,6 +404,55 @@ def test_llr_adjustment_runs_joint_helmert_vce_cycle():
     assert "active_set_change_fraction" in payload["iterations"][0]
     assert "target_rejected_observation_count" in payload["iterations"][0]
     assert not any("damping" in key for key in payload["settings"])
+
+
+def test_adjustment_reports_prefit_uncertainty_floor():
+    equations = [
+        replace(_equation("tiny", 0.0, "STA_A"), sigma_m=1.0e-5),
+        replace(_equation("normal-1", 1.0, "STA_A"), sigma_m=0.02),
+        replace(_equation("normal-2", 2.0, "STA_A"), sigma_m=0.03),
+    ]
+    components = (
+        VarianceComponentDefinition.from_config(
+            {
+                "id": "A",
+                "station_system": "A",
+                "station_aliases": ["STA_A"],
+                "start": "2010-01-01",
+                "end_exclusive": None,
+            }
+        ),
+    )
+
+    result = LlrAdjustmentSolver(
+        equation_source=lambda iteration: equations,
+        parametrization=ParametrizationList([OffsetParametrization()]),
+        options=LlrAdjustmentOptions(
+            components=components,
+            prefit_gross_threshold_m=None,
+            function_max_iterations=1,
+            maximum_stochastic_iterations=1,
+            required_consecutive_converged_linearizations=1,
+            update_tolerance_m=10.0,
+            minimum_mad_count=2,
+            minimum_effective_redundancy=1.0,
+            k0=1.0e6,
+            k1=2.0e6,
+            uncertainty_floor_minimum_m=1.0e-3,
+            uncertainty_floor_group_median_fraction=0.1,
+        ),
+    ).run()
+
+    records = {item["observation_id"]: item for item in result.observations}
+    assert result.summary["uncertainty_sigma_floored_count"] == 1
+    assert result.summary["retained_uncertainty_sigma_floored_count"] == 1
+    assert records["tiny"]["reported_sigma_np"] == pytest.approx(1.0e-5)
+    assert records["tiny"]["effective_sigma_np"] == pytest.approx(0.002)
+    assert records["tiny"]["uncertainty_qc_status"] == "FLOORED"
+    assert records["normal-1"]["effective_sigma_np"] == pytest.approx(0.02)
+    assert result.uncertainty_quality_control["groups"]["A"][
+        "floored_count"
+    ] == 1
 
 
 from llrops.classes.parametrization.station_range_bias import StationRangeBiasParametrization
@@ -409,9 +494,6 @@ def test_prefit_gross_rejection_never_reenters():
 
     assert result.gross_rejected_keys == {"gross": 1}
     assert result.rejected_keys == {"gross": 1}
-
-
-from dataclasses import replace
 
 
 def test_extended_variance_components_cover_mcdonald_1969_and_current_meo():

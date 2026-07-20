@@ -171,6 +171,14 @@ def llr_adjustment(config: dict, context: RunContext):
     processor = build_processor(config, context)
     parametrization = _build_parametrization(config, context)
     adjustment = config.get("adjustment") or {}
+    uncertainty_quality = adjustment.get("uncertaintyQuality") or {}
+    uncertainty_quality_action = str(
+        uncertainty_quality.get("action", "floor")
+    ).strip().lower()
+    if uncertainty_quality_action != "floor":
+        raise ValueError(
+            "adjustment.uncertaintyQuality.action must be floor."
+        )
     initialization = config.get("initialization") or {}
     robust = config.get("robust_estimation") or config.get("robustEstimation") or {}
     vce = config.get("vce") or {}
@@ -192,6 +200,12 @@ def llr_adjustment(config: dict, context: RunContext):
         function_max_iterations=int(adjustment.get("maxIterations", 20)),
         geometry_update_factor=float(
             adjustment.get("geometryUpdateFactor", 1.0)
+        ),
+        uncertainty_floor_minimum_m=float(
+            uncertainty_quality.get("minimumOneWaySigmaM", 0.0)
+        ),
+        uncertainty_floor_group_median_fraction=float(
+            uncertainty_quality.get("minimumFractionOfGroupMedian", 0.0)
         ),
         update_tolerance_m=float(
             adjustment.get("updateToleranceM", 1.0e-3)
@@ -376,6 +390,13 @@ def llr_adjustment(config: dict, context: RunContext):
                     report_iteration if bool(config.get("showProgress", True)) else None
                 ),
             ).run()
+            print(
+                "[LlrAdjustment:UncertaintyQC] "
+                f"stage={stage_name} action=floor "
+                f"floored={result.summary['uncertainty_sigma_floored_count']} "
+                f"retainedFloored={result.summary['retained_uncertainty_sigma_floored_count']}",
+                flush=True,
+            )
             stage_results.append(
                 {
                     "name": stage_name,

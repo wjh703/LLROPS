@@ -249,6 +249,15 @@ programs:
     # Geometry linearization and irreversible prefit gross screening
     # -------------------------------------------------------------------------
     adjustment:
+      # Prefit uncertainty quality control. Reported one-way sigmas below
+      # max(minimumOneWaySigmaM, minimumFractionOfGroupMedian * group median)
+      # are floored once and then kept fixed across all relinearizations. Groups
+      # are the station/equipment-era VCE components configured below.
+      uncertaintyQuality:
+        action: floor
+        minimumOneWaySigmaM: 1.0e-3
+        minimumFractionOfGroupMedian: 0.1
+
       # Geometry outer-loop limit. Each outer loop computes O-C/design once,
       # performs a bounded IGGIII/VCE block, then always applies the parameter
       # correction before the next linearization.

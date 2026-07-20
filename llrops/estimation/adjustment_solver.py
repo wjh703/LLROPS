@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Callable, Hashable, Mapping, Optional, Sequence
 
 import numpy as np
@@ -82,6 +82,68 @@ def prefit_gross_rejections(
         if abs(residual) > threshold:
             rejected[equation.identity] = residual
     return rejected
+
+
+def floor_prefit_uncertainties(
+    equations: Sequence[ObservationEquation],
+    assignments: Mapping[ObsKey, str],
+    *,
+    minimum_sigma_m: float,
+    minimum_group_median_fraction: float,
+) -> tuple[
+    list[ObservationEquation],
+    dict[ObsKey, dict[str, object]],
+    dict[str, dict[str, object]],
+]:
+    """Apply a fixed prefit sigma floor within each variance-component group."""
+    grouped_sigmas: dict[str, list[float]] = {}
+    for equation in equations:
+        component_id = assignments[equation.identity]
+        grouped_sigmas.setdefault(component_id, []).append(float(equation.sigma_m))
+
+    group_diagnostics: dict[str, dict[str, object]] = {}
+    for component_id, values in grouped_sigmas.items():
+        median = float(np.median(np.asarray(values, dtype=float)))
+        floor = max(
+            float(minimum_sigma_m),
+            float(minimum_group_median_fraction) * median,
+        )
+        group_diagnostics[component_id] = {
+            "median_reported_sigma_m": median,
+            "sigma_floor_m": floor,
+        }
+
+    adjusted: list[ObservationEquation] = []
+    records: dict[ObsKey, dict[str, object]] = {}
+    for equation in equations:
+        component_id = assignments[equation.identity]
+        reported = float(equation.sigma_m)
+        floor = group_diagnostics[component_id]["sigma_floor_m"]
+        effective = max(reported, floor)
+        floored = effective > reported
+        qc = {
+            "component_id": component_id,
+            "reported_sigma_m": reported,
+            "effective_sigma_m": effective,
+            "sigma_floor_m": floor,
+            "status": "FLOORED" if floored else "UNCHANGED",
+            "reason": "BELOW_PREFIT_UNCERTAINTY_FLOOR" if floored else None,
+        }
+        records[equation.identity] = qc
+        metadata = dict(equation.metadata or {})
+        metadata["uncertainty_quality_control"] = qc
+        adjusted.append(replace(equation, sigma_m=effective, metadata=metadata))
+
+    for component_id, diagnostics in group_diagnostics.items():
+        component_records = [
+            item for item in records.values()
+            if item["component_id"] == component_id
+        ]
+        diagnostics["observation_count"] = len(component_records)
+        diagnostics["floored_count"] = sum(
+            item["status"] == "FLOORED" for item in component_records
+        )
+    return adjusted, records, group_diagnostics
 
 
 from llrops.estimation.robust_weights import (
@@ -183,6 +245,8 @@ class LlrAdjustmentOptions:
     prefit_gross_threshold_by_station_m: Optional[Mapping[str, Optional[float]]] = None
     function_max_iterations: int = 20
     geometry_update_factor: float = 1.0
+    uncertainty_floor_minimum_m: float = 0.0
+    uncertainty_floor_group_median_fraction: float = 0.0
     update_tolerance_m: float = 1.0e-3
     update_tolerance_by_block_m: Mapping[str, float] = None
     required_consecutive_converged_linearizations: int = 2
@@ -211,6 +275,12 @@ class LlrAdjustmentOptions:
             raise ValueError("Geometry maximum iterations must be positive.")
         if not 0.0 < self.geometry_update_factor <= 1.0:
             raise ValueError("Geometry update factor must be in (0, 1].")
+        if self.uncertainty_floor_minimum_m < 0.0:
+            raise ValueError("Uncertainty floor minimum must be non-negative.")
+        if not 0.0 <= self.uncertainty_floor_group_median_fraction <= 1.0:
+            raise ValueError(
+                "Uncertainty floor group-median fraction must be in [0, 1]."
+            )
         if self.maximum_stochastic_iterations < 1:
             raise ValueError("Stochastic maximum iterations must be positive.")
         if self.required_consecutive_converged_linearizations < 1:
@@ -269,6 +339,7 @@ class LlrAdjustmentResult:
     parameter_names: list[ParameterName]
     state: dict[str, object]
     gross_rejected: dict[ObsKey, float]
+    uncertainty_quality_control: dict[str, object]
     scales: dict[str, float]
     robust_factors: dict[ObsKey, float]
     iterations: list[LlrAdjustmentIteration]
@@ -289,6 +360,7 @@ class LlrAdjustmentResult:
             "parameter_names": names_to_strings(self.parameter_names),
             "state": self.state,
             "gross_rejected_observations": {str(key): value for key, value in self.gross_rejected.items()},
+            "uncertainty_quality_control": self.uncertainty_quality_control,
             "scales": self.scales,
             "iterations": [asdict(item) for item in self.iterations],
             "linearizations": self.linearizations,
@@ -353,6 +425,8 @@ class LlrAdjustmentSolver:
         self._retained_keys: Optional[set[ObsKey]] = None
         self._names: list[ParameterName] = []
         self._equation_evaluations: list[dict[str, object]] = []
+        self._uncertainty_qc_records: dict[ObsKey, dict[str, object]] = {}
+        self._uncertainty_qc_groups: dict[str, dict[str, object]] = {}
 
     def _equations(self) -> list[ObservationEquation]:
         self._equation_iteration += 1
@@ -378,6 +452,23 @@ class LlrAdjustmentSolver:
                 "converged_but_outside_fixed_domain_count": len(active) - len(retained),
             }
         )
+        if self._uncertainty_qc_records:
+            adjusted = []
+            for equation in retained:
+                qc = self._uncertainty_qc_records.get(equation.identity)
+                if qc is None:
+                    adjusted.append(equation)
+                    continue
+                metadata = dict(equation.metadata or {})
+                metadata["uncertainty_quality_control"] = qc
+                adjusted.append(
+                    replace(
+                        equation,
+                        sigma_m=float(qc["effective_sigma_m"]),
+                        metadata=metadata,
+                    )
+                )
+            retained = adjusted
         return retained
 
     def _weight(self, scales: Mapping[str, float], factors: Mapping[ObsKey, float], equation: ObservationEquation) -> float:
@@ -690,6 +781,23 @@ class LlrAdjustmentSolver:
                     "station_system": next(component.station_system for component in self.options.components if component.id == component_id),
                     "vce_component_id": component_id,
                     "sigma_np": float(equation.sigma_m),
+                    "reported_sigma_np": float(
+                        self._uncertainty_qc_records[equation.identity][
+                            "reported_sigma_m"
+                        ]
+                    ),
+                    "effective_sigma_np": float(equation.sigma_m),
+                    "uncertainty_qc_status": self._uncertainty_qc_records[
+                        equation.identity
+                    ]["status"],
+                    "uncertainty_qc_reason": self._uncertainty_qc_records[
+                        equation.identity
+                    ]["reason"],
+                    "uncertainty_sigma_floor_m": float(
+                        self._uncertainty_qc_records[equation.identity][
+                            "sigma_floor_m"
+                        ]
+                    ),
                     "base_scale": float(scales[component_id]),
                     "base_variance": float(scales[component_id] ** 2 * equation.sigma_m**2),
                     "base_weight": float(1.0 / (scales[component_id] ** 2 * equation.sigma_m**2)),
@@ -722,10 +830,25 @@ class LlrAdjustmentSolver:
         active_initial = [
             eq for eq in initial_equations if eq.identity not in self._gross_rejected
         ]
+        initial_assignments = assign_variance_components(
+            active_initial, self.options.components
+        )
+        (
+            active_initial,
+            self._uncertainty_qc_records,
+            self._uncertainty_qc_groups,
+        ) = floor_prefit_uncertainties(
+            active_initial,
+            initial_assignments,
+            minimum_sigma_m=self.options.uncertainty_floor_minimum_m,
+            minimum_group_median_fraction=(
+                self.options.uncertainty_floor_group_median_fraction
+            ),
+        )
         self._retained_keys = {eq.identity for eq in active_initial}
         self.parametrization.setup(active_initial, self.context)
         self._names = self.parametrization.parameter_names()
-        self._assignments = assign_variance_components(active_initial, self.options.components)
+        self._assignments = dict(initial_assignments)
 
         bias_delta = robust_bias_initial_values(
             active_initial,
@@ -1025,6 +1148,12 @@ class LlrAdjustmentSolver:
             "variance_component_method": self.options.variance_component_method,
             "geometry_max_iterations": self.options.function_max_iterations,
             "geometry_update_factor": self.options.geometry_update_factor,
+            "uncertainty_floor_minimum_m": (
+                self.options.uncertainty_floor_minimum_m
+            ),
+            "uncertainty_floor_group_median_fraction": (
+                self.options.uncertainty_floor_group_median_fraction
+            ),
             "parameter_update_tolerance_m": self.options.update_tolerance_m,
             "parameter_update_tolerance_by_block_m": dict(self.options.update_tolerance_by_block_m or {}),
             "required_consecutive_converged_linearizations": (
@@ -1076,6 +1205,14 @@ class LlrAdjustmentSolver:
                 "light_time_nonconverged_count"
             ],
             "gross_rejected_count": len(self._gross_rejected),
+            "uncertainty_sigma_floored_count": sum(
+                item["status"] == "FLOORED"
+                for item in self._uncertainty_qc_records.values()
+            ),
+            "retained_uncertainty_sigma_floored_count": sum(
+                self._uncertainty_qc_records[key]["status"] == "FLOORED"
+                for key in (self._retained_keys or ())
+            ),
             "retained_observation_count": len(self._retained_keys or ()),
             "final_equation_count": len(final_solution.equations),
             "equation_evaluation_count": len(self._equation_evaluations),
@@ -1136,6 +1273,9 @@ class LlrAdjustmentSolver:
                     "initial_scale": float(initial_scales[component.id]),
                     "final_scale": float(scales[component.id]),
                     "variance_component": float(scales[component.id] ** 2),
+                    "uncertainty_quality_control": dict(
+                        self._uncertainty_qc_groups[component.id]
+                    ),
                     "residual_rms": (
                         float(np.sqrt(np.mean(residuals**2)))
                         if len(residuals)
@@ -1171,6 +1311,18 @@ class LlrAdjustmentSolver:
             parameter_names=list(self._names),
             state=self.parametrization.state(),
             gross_rejected=dict(self._gross_rejected),
+            uncertainty_quality_control={
+                "action": "floor",
+                "minimum_sigma_m": self.options.uncertainty_floor_minimum_m,
+                "minimum_group_median_fraction": (
+                    self.options.uncertainty_floor_group_median_fraction
+                ),
+                "floored_count": summary["uncertainty_sigma_floored_count"],
+                "retained_floored_count": summary[
+                    "retained_uncertainty_sigma_floored_count"
+                ],
+                "groups": dict(self._uncertainty_qc_groups),
+            },
             scales=dict(scales),
             robust_factors=dict(factors),
             iterations=iterations,
