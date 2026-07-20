@@ -102,9 +102,11 @@ class DenseLinearization:
         l = self.reduced_observations[mask]
         w = weights[mask]
         weighted_A = w[:, None] * A
+        normal_matrix = A.T @ weighted_A
+        normal_matrix = 0.5 * (normal_matrix + normal_matrix.T)
         return NormalEquations(
             parameter_names=list(self.parameter_names),
-            N=A.T @ weighted_A,
+            N=normal_matrix,
             W=A.T @ (w * l),
             lPl=float(np.dot(w, l * l)),
             obs_count=int(np.count_nonzero(mask)),

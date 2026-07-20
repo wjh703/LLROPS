@@ -63,6 +63,27 @@ class OffsetParametrization(Parametrization):
         self.value += float(delta[0])
 
 
+class AffineParametrization(Parametrization):
+    def __init__(self):
+        self.value = np.zeros(2)
+
+    def parameter_names(self):
+        return [
+            ParameterName("test", "position.x"),
+            ParameterName("test", "position.y"),
+        ]
+
+    def design_columns(self, equation):
+        station_offset = 10.0 if equation.station_key == "STA_B" else 0.0
+        return np.array([1.0, 1.0e4 * (equation.identity[1] + station_offset)])
+
+    def reduce_observation(self, equation):
+        return float(self.design_columns(equation) @ self.value)
+
+    def apply_update(self, delta):
+        self.value += np.asarray(delta, dtype=float)
+
+
 def test_parametrization_selection_reuses_block_state():
     offset = OffsetParametrization()
     parametrization = ParametrizationList([offset])
@@ -353,7 +374,7 @@ def _two_component_case():
 
 def test_dense_linearization_matches_streaming_normals_and_vce():
     equations, components = _two_component_case()
-    parametrization = ParametrizationList([OffsetParametrization()])
+    parametrization = ParametrizationList([AffineParametrization()])
     parametrization.setup(equations, None)
     names = parametrization.parameter_names()
     assignments = assign_variance_components(equations, components)
@@ -378,6 +399,7 @@ def test_dense_linearization_matches_streaming_normals_and_vce():
         parameter_names=names,
         weight_for=lambda equation: weights[equations.index(equation)],
     )
+    assert np.array_equal(dense_normals.N, dense_normals.N.T)
     assert dense_normals.N == pytest.approx(streaming_normals.N, rel=1.0e-13)
     assert dense_normals.W == pytest.approx(streaming_normals.W, rel=1.0e-13)
     assert dense_normals.lPl == pytest.approx(streaming_normals.lPl, rel=1.0e-13)
