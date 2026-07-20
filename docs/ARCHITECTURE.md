@@ -75,7 +75,8 @@ llrops/
 │   ├── LlrNormalEquations        (build + store fixed-linearization normals, don't solve)
 │   └── NormalsCombineSolve       (align by parameter name, add, solve once)
 ├── parallel/      single-process serial + MPI master-worker backend
-│   └── cache.py     worker-cache lifecycle and deduplicated resource cleanup
+│   ├── cache.py     worker-cache lifecycle and deduplicated resource cleanup
+│   └── observation_spec.py  picklable model specs and catalog-state transfer
 └── cli.py         python -m llrops run config.yml [--mpi] --set var=value
 ```
 
