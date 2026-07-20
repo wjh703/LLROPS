@@ -14,20 +14,29 @@ from llrops.config.context import RunContext
 ProgramFunc = Callable[[dict, RunContext], object]
 
 _PROGRAMS: Dict[str, ProgramFunc] = {}
+_ALIASES: Dict[str, str] = {}
 
 
-def program(name: str):
+def program(name: str, *, expose: bool = True):
     def _wrap(func: ProgramFunc) -> ProgramFunc:
         _PROGRAMS[name.lower()] = func
-        func.program_name = name
+        if expose:
+            func.program_name = name
         return func
 
     return _wrap
 
 
+def program_alias(alias: str, target: str) -> None:
+    """Register a compatibility name without exposing a second program."""
+    _ALIASES[alias.lower()] = target.lower()
+
+
 def run_program(name: str, config: dict, context: RunContext):
+    key = name.lower()
+    key = _ALIASES.get(key, key)
     try:
-        func = _PROGRAMS[name.lower()]
+        func = _PROGRAMS[key]
     except KeyError:
         raise KeyError(
             f"Unknown program {name!r}. Available: {sorted(p for p in _PROGRAMS)}"
@@ -36,4 +45,4 @@ def run_program(name: str, config: dict, context: RunContext):
 
 
 def available_programs():
-    return sorted(func.program_name for func in _PROGRAMS.values())
+    return sorted(func.program_name for func in _PROGRAMS.values() if hasattr(func, "program_name"))

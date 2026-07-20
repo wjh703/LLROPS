@@ -37,6 +37,8 @@ import traceback
 from dataclasses import asdict
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
+from llrops.lifecycle import close_resource
+
 TAG_TASK = 101
 TAG_RESULT = 102
 TAG_STOP = 103
@@ -196,17 +198,18 @@ def _initialized_processor_for_task(cache: dict, spec: dict):
 
 
 def _close_cached_objects(cache: dict) -> None:
+    seen: set[int] = set()
+
     def _walk(value):
         if isinstance(value, dict):
             for item in value.values():
                 _walk(item)
             return
-        close = getattr(value, "close", None)
-        if callable(close):
-            try:
-                close()
-            except Exception:
-                pass
+        identity = id(value)
+        if identity in seen:
+            return
+        seen.add(identity)
+        close_resource(value, owner="mpi-worker-cache")
 
     for obj in cache.values():
         _walk(obj)

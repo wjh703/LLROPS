@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llrops"
+version = "35.0.0.dev0"
+description = "GROOPS-inspired Lunar Laser Ranging processing system"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "PyYAML>=6.0",
+  "pyerfa>=2.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "pytest-cov>=5"]
+mpi = ["mpi4py>=3.1"]
+physics = ["pysolid>=0.0.1"]
+
+[project.scripts]
+llrops = "llrops.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["llrops*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

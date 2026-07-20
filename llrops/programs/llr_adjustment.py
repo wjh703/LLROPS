@@ -112,7 +112,7 @@ def _build_parametrization(config: dict, context: RunContext):
     return ParametrizationList(blocks)
 
 
-@program("LlrLeastSquaresAdjustment")
+@program("_LlrLeastSquaresAdjustmentCompat", expose=False)
 def llr_least_squares_adjustment(config: dict, context: RunContext):
     from llrops.estimation.adjustment import AdjustmentOptions, LeastSquaresAdjustment
 
@@ -157,6 +157,8 @@ def llr_least_squares_adjustment(config: dict, context: RunContext):
     )
     return result
 
+
+program_alias("LlrLeastSquaresAdjustment", "_LlrLeastSquaresAdjustmentCompat")
 
 @program("LlrAdjustment")
 def llr_adjustment(config: dict, context: RunContext):
