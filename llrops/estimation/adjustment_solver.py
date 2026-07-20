@@ -12,6 +12,12 @@ from llrops.base.parameter_name import ParameterName, names_to_strings
 from llrops.classes.observation.equations import ObservationEquation
 from llrops.classes.parametrization.base import ParametrizationList
 from llrops.estimation.convergence import ParameterConvergencePolicy
+from llrops.estimation.adjustment_preprocessing import (
+    floor_prefit_uncertainties,
+    initialize_mad_scales,
+    prefit_gross_rejections,
+    robust_bias_initial_values,
+)
 from llrops.estimation.normal_equation_engine import (
     DenseLinearization,
     build_normal_equations_streaming,
@@ -20,224 +26,18 @@ from llrops.estimation.normal_equation_engine import (
     solve_normal_equations,
 )
 from llrops.fileio.normal_equations import NormalEquations
-from llrops.estimation.vce import HelmertVceEstimator
-from llrops.estimation.variance_components import VarianceComponentDefinition, assign_variance_components
-
-ObsKey = Hashable
-
-
-def _normalise(value: object) -> str:
-    return str(value or "").strip().upper().replace("-", "_").replace(" ", "_")
-
-
-def _as_texts(value: object) -> tuple[str, ...]:
-    if value is None:
-        return ()
-    if isinstance(value, str):
-        return (_normalise(value),)
-    return tuple(_normalise(item) for item in value if _normalise(item))
-
-
-def _metadata_candidates(eq: ObservationEquation, *keys: str) -> set[str]:
-    metadata = eq.metadata or {}
-    values = [eq.station_key]
-    values.extend(metadata.get(key) for key in keys)
-    return {_normalise(value) for value in values if _normalise(value)}
-
-
-
-
-def prefit_gross_threshold(
-    equation: ObservationEquation,
-    default: Optional[float],
-    by_station: Optional[Mapping[str, Optional[float]]],
-) -> Optional[float]:
-    overrides = by_station or {}
-    candidates = _metadata_candidates(
-        equation,
-        "station_catalog_key",
-        "station_name",
-        "station_full_name",
-        "station_id",
-        "station_code",
-    )
-    for key in candidates:
-        if key in overrides:
-            value = overrides[key]
-            return None if value is None else float(value)
-    return None if default is None else float(default)
-
-
-def prefit_gross_rejections(
-    equations: Sequence[ObservationEquation],
-    parametrization: ParametrizationList,
-    *,
-    threshold_m: Optional[float],
-    threshold_by_station_m: Optional[Mapping[str, Optional[float]]],
-) -> dict[ObsKey, float]:
-    rejected: dict[ObsKey, float] = {}
-    for equation in equations:
-        threshold = prefit_gross_threshold(equation, threshold_m, threshold_by_station_m)
-        if threshold is None:
-            continue
-        residual = float(parametrization.reduced_observation(equation))
-        if abs(residual) > threshold:
-            rejected[equation.identity] = residual
-    return rejected
-
-
-def floor_prefit_uncertainties(
-    equations: Sequence[ObservationEquation],
-    assignments: Mapping[ObsKey, str],
-    *,
-    minimum_sigma_m: float,
-    minimum_group_median_fraction: float,
-) -> tuple[
-    list[ObservationEquation],
-    dict[ObsKey, dict[str, object]],
-    dict[str, dict[str, object]],
-]:
-    """Apply a fixed prefit sigma floor within each variance-component group."""
-    grouped_sigmas: dict[str, list[float]] = {}
-    for equation in equations:
-        component_id = assignments[equation.identity]
-        grouped_sigmas.setdefault(component_id, []).append(float(equation.sigma_m))
-
-    group_diagnostics: dict[str, dict[str, object]] = {}
-    for component_id, values in grouped_sigmas.items():
-        median = float(np.median(np.asarray(values, dtype=float)))
-        floor = max(
-            float(minimum_sigma_m),
-            float(minimum_group_median_fraction) * median,
-        )
-        group_diagnostics[component_id] = {
-            "median_reported_sigma_m": median,
-            "sigma_floor_m": floor,
-        }
-
-    adjusted: list[ObservationEquation] = []
-    records: dict[ObsKey, dict[str, object]] = {}
-    for equation in equations:
-        component_id = assignments[equation.identity]
-        reported = float(equation.sigma_m)
-        floor = group_diagnostics[component_id]["sigma_floor_m"]
-        effective = max(reported, floor)
-        floored = effective > reported
-        qc = {
-            "component_id": component_id,
-            "reported_sigma_m": reported,
-            "effective_sigma_m": effective,
-            "sigma_floor_m": floor,
-            "status": "FLOORED" if floored else "UNCHANGED",
-            "reason": "BELOW_PREFIT_UNCERTAINTY_FLOOR" if floored else None,
-        }
-        records[equation.identity] = qc
-        metadata = dict(equation.metadata or {})
-        metadata["uncertainty_quality_control"] = qc
-        adjusted.append(replace(equation, sigma_m=effective, metadata=metadata))
-
-    for component_id, diagnostics in group_diagnostics.items():
-        component_records = [
-            item for item in records.values()
-            if item["component_id"] == component_id
-        ]
-        diagnostics["observation_count"] = len(component_records)
-        diagnostics["floored_count"] = sum(
-            item["status"] == "FLOORED" for item in component_records
-        )
-    return adjusted, records, group_diagnostics
-
-
 from llrops.estimation.robust_weights import (
     Igg3WeightModel,
-    active_set_change_fraction,
     igg3_factors,
     maximum_robust_factor_change,
-    robust_factor_change_quantile,
+)
+from llrops.estimation.vce import HelmertVceEstimator
+from llrops.estimation.variance_components import (
+    VarianceComponentDefinition,
+    assign_variance_components,
 )
 
-
-
-def _bias_indices(names: Sequence[ParameterName]) -> np.ndarray:
-    return np.asarray([index for index, name in enumerate(names) if name.type == "rangeBias"], dtype=int)
-
-
-def robust_bias_initial_values(
-    equations: Sequence[ObservationEquation],
-    parametrization: ParametrizationList,
-    names: Sequence[ParameterName],
-    *,
-    weight_cap: float,
-    maximum_iterations: int,
-) -> np.ndarray:
-    indices = _bias_indices(names)
-    if not len(indices):
-        return np.zeros(len(names), dtype=float)
-    design = np.vstack([parametrization.design_row(eq)[indices] for eq in equations])
-    observations = np.asarray([parametrization.reduced_observation(eq) for eq in equations], dtype=float)
-    formal_weights = np.asarray(
-        [min(1.0 / (eq.sigma_m * eq.sigma_m), weight_cap) for eq in equations],
-        dtype=float,
-    )
-    if np.linalg.matrix_rank(design) < design.shape[1]:
-        return np.zeros(len(names), dtype=float)
-
-    robust_weights = formal_weights.copy()
-    beta = np.zeros(design.shape[1], dtype=float)
-    for _ in range(maximum_iterations):
-        normal = design.T @ (robust_weights[:, None] * design)
-        rhs = design.T @ (robust_weights * observations)
-        try:
-            next_beta = np.linalg.solve(normal, rhs)
-        except np.linalg.LinAlgError:
-            return np.zeros(len(names), dtype=float)
-        residuals = observations - design @ next_beta
-        median = float(np.median(residuals))
-        scale = 1.4826 * float(np.median(np.abs(residuals - median)))
-        if not np.isfinite(scale) or scale <= 1.0e-12:
-            beta = next_beta
-            break
-        magnitude = np.abs(residuals - median)
-        huber = np.ones_like(magnitude)
-        outside = magnitude > 1.345 * scale
-        huber[outside] = 1.345 * scale / magnitude[outside]
-        if np.max(np.abs(next_beta - beta)) <= 1.0e-10:
-            beta = next_beta
-            break
-        beta = next_beta
-        robust_weights = formal_weights * huber
-
-    delta = np.zeros(len(names), dtype=float)
-    delta[indices] = beta
-    return delta
-
-
-def initialize_mad_scales(
-    equations: Sequence[ObservationEquation],
-    parametrization: ParametrizationList,
-    assignments: Mapping[ObsKey, str],
-    components: Sequence[VarianceComponentDefinition],
-    *,
-    minimum_count: int,
-    minimum_scale: float,
-) -> dict[str, float]:
-    scales: dict[str, float] = {}
-    for component in components:
-        values = np.asarray(
-            [
-                parametrization.reduced_observation(eq) / eq.sigma_m
-                for eq in equations
-                if assignments[eq.identity] == component.id
-            ],
-            dtype=float,
-        )
-        if len(values) < minimum_count:
-            scales[component.id] = minimum_scale
-            continue
-        median = float(np.median(values))
-        scale = 1.4826 * float(np.median(np.abs(values - median)))
-        scales[component.id] = minimum_scale if not np.isfinite(scale) or scale <= 0.0 else max(minimum_scale, scale)
-    return scales
+ObsKey = Hashable
 
 
 @dataclass(frozen=True)
@@ -294,17 +94,15 @@ class LlrAdjustmentOptions:
             )
         if not 0.0 < self.robust_factor_change_quantile <= 1.0:
             raise ValueError("Robust factor change quantile must be in (0, 1].")
-        if (
-            self.scale_log_tolerance < 0.0
-            or self.robust_factor_change_tolerance < 0.0
-        ):
+        if self.scale_log_tolerance < 0.0 or self.robust_factor_change_tolerance < 0.0:
             raise ValueError("Stochastic convergence tolerances must be non-negative.")
         if self.active_set_change_tolerance < 0.0:
             raise ValueError("Active-set change tolerance must be non-negative.")
         if not 0.0 < self.minimum_one_minus_leverage <= 1.0:
             raise ValueError("Minimum one-minus-leverage must be in (0, 1].")
         if not (
-            0.0 < self.minimum_variance_ratio_per_iteration
+            0.0
+            < self.minimum_variance_ratio_per_iteration
             <= self.maximum_variance_ratio_per_iteration
         ):
             raise ValueError("VCE variance-ratio limits must be positive and ordered.")
@@ -365,7 +163,9 @@ class LlrAdjustmentResult:
             "equation_evaluations": self.equation_evaluations,
             "parameter_names": names_to_strings(self.parameter_names),
             "state": self.state,
-            "gross_rejected_observations": {str(key): value for key, value in self.gross_rejected.items()},
+            "gross_rejected_observations": {
+                str(key): value for key, value in self.gross_rejected.items()
+            },
             "uncertainty_quality_control": self.uncertainty_quality_control,
             "scales": self.scales,
             "iterations": [asdict(item) for item in self.iterations],
@@ -453,7 +253,9 @@ class LlrAdjustmentSolver:
         equations = self.equation_source(self._equation_iteration)
         identities = [eq.identity for eq in equations]
         if len(set(identities)) != len(identities):
-            duplicate = next(key for index, key in enumerate(identities) if key in identities[:index])
+            duplicate = next(
+                key for index, key in enumerate(identities) if key in identities[:index]
+            )
             raise ValueError(f"Observation identity {duplicate!r} is not unique.")
 
         active = [eq for eq in equations if eq.converged]
@@ -491,9 +293,7 @@ class LlrAdjustmentSolver:
             retained = adjusted
         return retained
 
-    def _prepare_linearization(
-        self, equations: Sequence[ObservationEquation]
-    ) -> None:
+    def _prepare_linearization(self, equations: Sequence[ObservationEquation]) -> None:
         if self.options.linearization_backend == "streaming":
             self._dense_linearization = None
             return
@@ -519,17 +319,21 @@ class LlrAdjustmentSolver:
             dtype=float,
         )
         scale_values = np.asarray(
-            [
-                float(scales[self._assignments[key]])
-                for key in linearization.identities
-            ],
+            [float(scales[self._assignments[key]]) for key in linearization.identities],
             dtype=float,
         )
         return factor_values / (scale_values**2 * linearization.sigmas**2)
 
-    def _weight(self, scales: Mapping[str, float], factors: Mapping[ObsKey, float], equation: ObservationEquation) -> float:
+    def _weight(
+        self,
+        scales: Mapping[str, float],
+        factors: Mapping[ObsKey, float],
+        equation: ObservationEquation,
+    ) -> float:
         component = self._assignments[equation.identity]
-        return float(factors[equation.identity]) / (scales[component] * scales[component] * equation.sigma_m * equation.sigma_m)
+        return float(factors[equation.identity]) / (
+            scales[component] * scales[component] * equation.sigma_m * equation.sigma_m
+        )
 
     def _solve_linearized(
         self,
@@ -544,9 +348,12 @@ class LlrAdjustmentSolver:
                 raise RuntimeError("Dense linearization does not match equations.")
             started = perf_counter()
             weights = self._dense_weights(dense, scales, factors)
-            active = np.asarray(
-                [float(factors[key]) for key in dense.identities], dtype=float
-            ) > self.options.minimum_nonzero_robust_factor
+            active = (
+                np.asarray(
+                    [float(factors[key]) for key in dense.identities], dtype=float
+                )
+                > self.options.minimum_nonzero_robust_factor
+            )
             if np.count_nonzero(active) < len(self._names):
                 raise RuntimeError(
                     "Too few non-zero-factor observations for the current parameter set."
@@ -583,7 +390,9 @@ class LlrAdjustmentSolver:
             if factors[eq.identity] > self.options.minimum_nonzero_robust_factor
         ]
         if len(usable) < len(self._names):
-            raise RuntimeError("Too few non-zero-factor observations for the current parameter set.")
+            raise RuntimeError(
+                "Too few non-zero-factor observations for the current parameter set."
+            )
 
         normals = build_normal_equations_streaming(
             usable,
@@ -662,10 +471,7 @@ class LlrAdjustmentSolver:
                 1.0 - leverage, self.options.minimum_one_minus_leverage
             )
             scale_values = np.asarray(
-                [
-                    float(scales[self._assignments[key]])
-                    for key in dense.identities
-                ],
+                [float(scales[self._assignments[key]]) for key in dense.identities],
                 dtype=float,
             )
             sigma_v = np.sqrt(scale_values**2 * dense.sigmas**2 * one_minus)
@@ -676,19 +482,13 @@ class LlrAdjustmentSolver:
                     key: float(value)
                     for key, value in zip(dense.identities, standardized_values)
                 },
-                {
-                    key: float(value)
-                    for key, value in zip(dense.identities, sigma_v)
-                },
+                {key: float(value) for key, value in zip(dense.identities, sigma_v)},
             )
 
         started = perf_counter()
         base_weights = {
             eq.identity: 1.0
-            / (
-                scales[self._assignments[eq.identity]] ** 2
-                * eq.sigma_m**2
-            )
+            / (scales[self._assignments[eq.identity]] ** 2 * eq.sigma_m**2)
             for eq in solution.equations
         }
         base_normals = build_normal_equations_streaming(
@@ -705,9 +505,7 @@ class LlrAdjustmentSolver:
         residual_sigmas: dict[ObsKey, float] = {}
         for equation in solution.equations:
             row = self.parametrization.design_row(equation)
-            leverage = base_weights[equation.identity] * float(
-                row @ covariance @ row
-            )
+            leverage = base_weights[equation.identity] * float(row @ covariance @ row)
             if not np.isfinite(leverage):
                 raise RuntimeError(
                     f"Invalid leverage for observation {equation.identity!r}: "
@@ -776,9 +574,7 @@ class LlrAdjustmentSolver:
 
     def _block_update_norms(self, delta: np.ndarray) -> dict[str, float]:
         return {
-            f"{index}:{type(block).__name__}": float(
-                block.max_update_norm(block_delta)
-            )
+            f"{index}:{type(block).__name__}": float(block.max_update_norm(block_delta))
             for index, (block, block_delta) in enumerate(
                 zip(
                     self.parametrization.blocks,
@@ -866,9 +662,7 @@ class LlrAdjustmentSolver:
                 if weight_sum <= 0.0
                 else float(np.sqrt(np.sum(weights * residuals**2) / weight_sum))
             ),
-            "robust_factors": self._robust_factor_summary(
-                equations, factors
-            ),
+            "robust_factors": self._robust_factor_summary(equations, factors),
         }
 
     def _parameter_records(
@@ -926,6 +720,7 @@ class LlrAdjustmentSolver:
             "sigma0_post": solved.sigma0_post,
         }
         return records, normal_summary
+
     def _observation_records(
         self,
         equations: Sequence[ObservationEquation],
@@ -942,17 +737,24 @@ class LlrAdjustmentSolver:
             matched_bias = [
                 str(name)
                 for index, name in enumerate(self._names)
-                if name.type == "rangeBias" and self.parametrization.design_row(equation)[index] != 0.0
+                if name.type == "rangeBias"
+                and self.parametrization.design_row(equation)[index] != 0.0
             ]
-            status = "REJECTED" if factor <= self.options.minimum_nonzero_robust_factor else (
-                "FULL_WEIGHT" if factor == 1.0 else "DOWNWEIGHTED"
+            status = (
+                "REJECTED"
+                if factor <= self.options.minimum_nonzero_robust_factor
+                else ("FULL_WEIGHT" if factor == 1.0 else "DOWNWEIGHTED")
             )
             records.append(
                 {
                     "observation_id": str(equation.identity),
                     "epoch": equation.epoch.isot(),
                     "station_id": equation.station_key,
-                    "station_system": next(component.station_system for component in self.options.components if component.id == component_id),
+                    "station_system": next(
+                        component.station_system
+                        for component in self.options.components
+                        if component.id == component_id
+                    ),
                     "vce_component_id": component_id,
                     "sigma_np": float(equation.sigma_m),
                     "reported_sigma_np": float(
@@ -968,13 +770,15 @@ class LlrAdjustmentSolver:
                         equation.identity
                     ]["reason"],
                     "uncertainty_sigma_floor_m": float(
-                        self._uncertainty_qc_records[equation.identity][
-                            "sigma_floor_m"
-                        ]
+                        self._uncertainty_qc_records[equation.identity]["sigma_floor_m"]
                     ),
                     "base_scale": float(scales[component_id]),
-                    "base_variance": float(scales[component_id] ** 2 * equation.sigma_m**2),
-                    "base_weight": float(1.0 / (scales[component_id] ** 2 * equation.sigma_m**2)),
+                    "base_variance": float(
+                        scales[component_id] ** 2 * equation.sigma_m**2
+                    ),
+                    "base_weight": float(
+                        1.0 / (scales[component_id] ** 2 * equation.sigma_m**2)
+                    ),
                     "postfit_residual": float(residuals[equation.identity]),
                     "residual_sigma": float(residual_sigmas[equation.identity]),
                     "leverage": float(
@@ -984,7 +788,9 @@ class LlrAdjustmentSolver:
                     ),
                     "standardized_residual": float(standardized[equation.identity]),
                     "igg3_factor": factor,
-                    "equivalent_weight": float(factor / (scales[component_id] ** 2 * equation.sigma_m**2)),
+                    "equivalent_weight": float(
+                        factor / (scales[component_id] ** 2 * equation.sigma_m**2)
+                    ),
                     "robust_status": status,
                     "matched_bias_ids": matched_bias,
                 }
@@ -1069,7 +875,6 @@ class LlrAdjustmentSolver:
         global_stochastic_iteration = 0
         consecutive_converged_linearizations = 0
 
-
         for linearization in range(1, self.options.function_max_iterations + 1):
             stochastic_converged = False
             stochastic_iterations_used = 0
@@ -1110,8 +915,7 @@ class LlrAdjustmentSolver:
                 )
                 variance_ratio_change = max(
                     abs(
-                        (next_scales[component.id] ** 2)
-                        / (scales[component.id] ** 2)
+                        (next_scales[component.id] ** 2) / (scales[component.id] ** 2)
                         - 1.0
                     )
                     for component in self.options.components
@@ -1135,12 +939,10 @@ class LlrAdjustmentSolver:
                     robust_solution.delta
                 )
                 stochastic_converged = (
-                    scale_log_target_change
-                    <= self.options.scale_log_tolerance
+                    scale_log_target_change <= self.options.scale_log_tolerance
                     and factor_target_change
                     <= self.options.robust_factor_change_tolerance
-                    and active_set_change
-                    <= self.options.active_set_change_tolerance
+                    and active_set_change <= self.options.active_set_change_tolerance
                 )
                 iteration_components = {
                     component.id: {
@@ -1157,16 +959,10 @@ class LlrAdjustmentSolver:
                         iteration=global_stochastic_iteration,
                         linearization_iteration=linearization,
                         stochastic_iteration=stochastic,
-                        elapsed_seconds=float(
-                            perf_counter() - stochastic_started
-                        ),
-                        maximum_variance_ratio_change=float(
-                            variance_ratio_change
-                        ),
+                        elapsed_seconds=float(perf_counter() - stochastic_started),
+                        maximum_variance_ratio_change=float(variance_ratio_change),
                         maximum_robust_factor_change=float(factor_change),
-                        maximum_scale_log_target_change=float(
-                            scale_log_target_change
-                        ),
+                        maximum_scale_log_target_change=float(scale_log_target_change),
                         robust_factor_target_change_quantile=float(
                             factor_target_change
                         ),
@@ -1198,9 +994,7 @@ class LlrAdjustmentSolver:
                             )
                             - np.linalg.matrix_rank(latest_normals.N)
                         ),
-                        normal_matrix_condition=normal_matrix_condition(
-                            latest_normals
-                        ),
+                        normal_matrix_condition=normal_matrix_condition(latest_normals),
                         candidate_wrms_m=robust_solution.wrms_m,
                         maximum_candidate_parameter_update_m=max(
                             candidate_update_by_block.values(),
@@ -1208,8 +1002,7 @@ class LlrAdjustmentSolver:
                         ),
                         candidate_update_by_block_m=candidate_update_by_block,
                         scales={
-                            key: float(value)
-                            for key, value in next_scales.items()
+                            key: float(value) for key, value in next_scales.items()
                         },
                         robust_factor_summary=self._robust_factor_summary(
                             current_equations,
@@ -1228,7 +1021,6 @@ class LlrAdjustmentSolver:
                 if stochastic_converged:
                     break
 
-
             if final_solution is None:
                 raise RuntimeError("Stochastic model produced no linearized solution.")
 
@@ -1237,9 +1029,7 @@ class LlrAdjustmentSolver:
                 scales,
                 factors,
             )
-            candidate_update_by_block = self._block_update_norms(
-                final_solution.delta
-            )
+            candidate_update_by_block = self._block_update_norms(final_solution.delta)
             maximum_update = max(
                 candidate_update_by_block.values(),
                 default=0.0,
@@ -1257,34 +1047,23 @@ class LlrAdjustmentSolver:
                 >= self.options.required_consecutive_converged_linearizations
             )
 
-            applied_delta = (
-                self.options.geometry_update_factor
-                * final_solution.delta
-            )
-            applied_updates = self.parametrization.apply_update(
-                applied_delta
-            )
+            applied_delta = self.options.geometry_update_factor * final_solution.delta
+            applied_updates = self.parametrization.apply_update(applied_delta)
             linearizations.append(
                 {
                     "iteration": linearization,
                     "stochastic_iterations": stochastic_iterations_used,
                     "stochastic_converged": stochastic_converged,
-                    "stochastic_iteration_limit_reached": (
-                        not stochastic_converged
-                    ),
+                    "stochastic_iteration_limit_reached": (not stochastic_converged),
                     "maximum_parameter_update_m": float(maximum_update),
-                    "parameter_update_within_tolerance": bool(
-                        update_within_tolerance
-                    ),
+                    "parameter_update_within_tolerance": bool(update_within_tolerance),
                     "parameter_update_tolerance_by_block_m": convergence_evaluation.tolerances_m,
                     "normalized_parameter_update_by_block": convergence_evaluation.normalized_updates,
                     "consecutive_converged_linearizations": (
                         consecutive_converged_linearizations
                     ),
                     "parameter_converged": bool(parameter_converged),
-                    "geometry_update_factor": (
-                        self.options.geometry_update_factor
-                    ),
+                    "geometry_update_factor": (self.options.geometry_update_factor),
                     "applied_update_by_block_m": applied_updates,
                     "wrms_m": final_solution.wrms_m,
                     "equation_count": len(current_equations),
@@ -1296,9 +1075,7 @@ class LlrAdjustmentSolver:
                             final_solution.delta,
                         )
                     },
-                    "scales": {
-                        key: float(value) for key, value in scales.items()
-                    },
+                    "scales": {key: float(value) for key, value in scales.items()},
                     "robust_factor_summary": self._robust_factor_summary(
                         current_equations,
                         factors,
@@ -1332,9 +1109,7 @@ class LlrAdjustmentSolver:
             scales,
             factors,
         )
-        parameter_records, normal_summary = self._parameter_records(
-            final_solution
-        )
+        parameter_records, normal_summary = self._parameter_records(final_solution)
         global_residuals = self._residual_summary(
             final_solution, standardized, scales, factors
         )
@@ -1345,14 +1120,14 @@ class LlrAdjustmentSolver:
             "linearization_backend": self.options.linearization_backend,
             "warm_started_scale_count": warm_scale_count,
             "warm_started_factor_count": warm_factor_count,
-            "uncertainty_floor_minimum_m": (
-                self.options.uncertainty_floor_minimum_m
-            ),
+            "uncertainty_floor_minimum_m": (self.options.uncertainty_floor_minimum_m),
             "uncertainty_floor_group_median_fraction": (
                 self.options.uncertainty_floor_group_median_fraction
             ),
             "parameter_update_tolerance_m": self.options.update_tolerance_m,
-            "parameter_update_tolerance_by_block_m": dict(self.options.update_tolerance_by_block_m or {}),
+            "parameter_update_tolerance_by_block_m": dict(
+                self.options.update_tolerance_by_block_m or {}
+            ),
             "required_consecutive_converged_linearizations": (
                 self.options.required_consecutive_converged_linearizations
             ),
@@ -1366,9 +1141,7 @@ class LlrAdjustmentSolver:
             "robust_factor_change_quantile": (
                 self.options.robust_factor_change_quantile
             ),
-            "active_set_change_tolerance": (
-                self.options.active_set_change_tolerance
-            ),
+            "active_set_change_tolerance": (self.options.active_set_change_tolerance),
             "igg3_k0": self.options.k0,
             "igg3_k1": self.options.k1,
             "minimum_one_minus_leverage": self.options.minimum_one_minus_leverage,
@@ -1384,17 +1157,13 @@ class LlrAdjustmentSolver:
             "maximum_variance_ratio_per_iteration": (
                 self.options.maximum_variance_ratio_per_iteration
             ),
-            "minimum_effective_redundancy": (
-                self.options.minimum_effective_redundancy
-            ),
+            "minimum_effective_redundancy": (self.options.minimum_effective_redundancy),
         }
         first_evaluation = self._equation_evaluations[0]
         summary = {
             "converged": converged,
             "termination_reason": termination_reason,
-            "source_observation_count": first_evaluation[
-                "source_observation_count"
-            ],
+            "source_observation_count": first_evaluation["source_observation_count"],
             "initial_light_time_converged_count": first_evaluation[
                 "light_time_converged_count"
             ],
@@ -1416,8 +1185,7 @@ class LlrAdjustmentSolver:
             "linearization_count": len(linearizations),
             "stochastic_iteration_count": len(iterations),
             "performance_seconds": {
-                key: float(value)
-                for key, value in self._performance_seconds.items()
+                key: float(value) for key, value in self._performance_seconds.items()
             },
             "consecutive_converged_linearizations": (
                 consecutive_converged_linearizations
@@ -1432,10 +1200,7 @@ class LlrAdjustmentSolver:
                 if self._assignments[eq.identity] == component.id
             ]
             residuals = np.asarray(
-                [
-                    final_solution.residuals[eq.identity]
-                    for eq in component_equations
-                ],
+                [final_solution.residuals[eq.identity] for eq in component_equations],
                 dtype=float,
             )
             standards = np.asarray(
@@ -1488,14 +1253,23 @@ class LlrAdjustmentSolver:
                         else None
                     ),
                     "median_standardized_residual": (
-                        float(np.median(standards))
-                        if len(standards)
-                        else None
+                        float(np.median(standards)) if len(standards) else None
                     ),
-                    "mad_standardized_residual": self._distribution_summary(standards).get("mad"),
-                    "residual_wrms": None if component_weight_sum <= 0.0 else float(np.sqrt(np.sum(component_weights * residuals**2) / component_weight_sum)),
+                    "mad_standardized_residual": self._distribution_summary(
+                        standards
+                    ).get("mad"),
+                    "residual_wrms": None
+                    if component_weight_sum <= 0.0
+                    else float(
+                        np.sqrt(
+                            np.sum(component_weights * residuals**2)
+                            / component_weight_sum
+                        )
+                    ),
                     "residual_summary_m": self._distribution_summary(residuals),
-                    "standardized_residual_summary": self._distribution_summary(standards),
+                    "standardized_residual_summary": self._distribution_summary(
+                        standards
+                    ),
                     "robust_factor_summary": component_factors,
                     "full_weight_count": component_factors["full_weight_count"],
                     "downweighted_count": component_factors["downweighted_count"],
@@ -1546,6 +1320,7 @@ class LlrAdjustmentSolver:
                 else latest_normals
             ),
         )
+
 
 __all__ = [
     "LlrAdjustmentSolver",

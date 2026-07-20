@@ -30,14 +30,15 @@ Task kinds:
     chunk of NptRecords -> typed observation results (used by ``LlrResiduals`` and by the
     equation sources of ``LlrAdjustment`` / ``LlrNormalEquations``).
 """
+
 from __future__ import annotations
 
 import time
 import traceback
 from dataclasses import asdict
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence
 
-from llrops.lifecycle import close_resource
+from llrops.parallel.cache import close_cached_objects
 
 TAG_TASK = 101
 TAG_RESULT = 102
@@ -73,6 +74,7 @@ def mpi_comm_world():
 # ---------------------------------------------------------------------------
 # observation spec: everything a worker needs to build its own observation processor
 # ---------------------------------------------------------------------------
+
 
 def _prepare_shared_resources(merged: dict, context) -> dict:
     """Build rank-0-only immutable resources for one observation spec.
@@ -124,7 +126,9 @@ def make_observation_spec(config: dict, context, datasets) -> dict:
         from llrops.fileio.catalogs import load_station_catalog
 
         station_catalog = load_station_catalog(
-            config.get("stationCatalog", context.global_class_configs.get("stationCatalog"))
+            config.get(
+                "stationCatalog", context.global_class_configs.get("stationCatalog")
+            )
         )
         context.shared["stationCatalog"] = station_catalog
     reflector_catalog = context.shared.get("reflectorCatalog")
@@ -132,11 +136,15 @@ def make_observation_spec(config: dict, context, datasets) -> dict:
         from llrops.fileio.catalogs import load_reflector_catalog
 
         reflector_catalog = load_reflector_catalog(
-            config.get("reflectorCatalog", context.global_class_configs.get("reflectorCatalog"))
+            config.get(
+                "reflectorCatalog", context.global_class_configs.get("reflectorCatalog")
+            )
         )
         context.shared["reflectorCatalog"] = reflector_catalog
 
-    spec_id = f"{id(context)}-{hash(repr(sorted(merged.items(), key=lambda kv: kv[0])))}"
+    spec_id = (
+        f"{id(context)}-{hash(repr(sorted(merged.items(), key=lambda kv: kv[0])))}"
+    )
     return {
         "specId": spec_id,
         "programConfig": merged,
@@ -197,24 +205,6 @@ def _initialized_processor_for_task(cache: dict, spec: dict):
         ) from None
 
 
-def _close_cached_objects(cache: dict) -> None:
-    seen: set[int] = set()
-
-    def _walk(value):
-        if isinstance(value, dict):
-            for item in value.values():
-                _walk(item)
-            return
-        identity = id(value)
-        if identity in seen:
-            return
-        seen.add(identity)
-        close_resource(value, owner="mpi-worker-cache")
-
-    for obj in cache.values():
-        _walk(obj)
-
-
 def snapshot_catalog_state(context) -> dict:
     """Pickle-light snapshot of the mutable per-iteration model state."""
     import numpy as np
@@ -222,7 +212,10 @@ def snapshot_catalog_state(context) -> dict:
     reflectors = context.shared.get("reflectorCatalog") or {}
     return {
         "reflectorPositions": {
-            str(key): [float(x) for x in np.asarray(rec.moon_fixed_xyz_m, dtype=float).reshape(3)]
+            str(key): [
+                float(x)
+                for x in np.asarray(rec.moon_fixed_xyz_m, dtype=float).reshape(3)
+            ]
             for key, rec in reflectors.items()
         }
     }
@@ -239,7 +232,9 @@ def _apply_catalog_state(processor, catalog_state: Optional[dict]) -> None:
         new_catalog = {}
         for key, rec in processor.reflector_catalog.items():
             if key in positions:
-                rec = replace(rec, moon_fixed_xyz_m=np.asarray(positions[key], dtype=float))
+                rec = replace(
+                    rec, moon_fixed_xyz_m=np.asarray(positions[key], dtype=float)
+                )
             new_catalog[key] = rec
         processor.reflector_catalog = new_catalog
 
@@ -247,6 +242,7 @@ def _apply_catalog_state(processor, catalog_state: Optional[dict]) -> None:
 # ---------------------------------------------------------------------------
 # task handlers (executed on worker ranks; rank 0 falls back to them serially)
 # ---------------------------------------------------------------------------
+
 
 def _observation_spec_for_payload(payload: dict, cache: dict) -> dict:
     spec_id = str(payload["specId"])
@@ -261,7 +257,10 @@ def _observation_spec_for_payload(payload: dict, cache: dict) -> dict:
 def _handle_observation_results(payload: dict, cache: dict):
     """NptRecord chunk -> typed observation results or lightweight table rows."""
     from llrops.fileio.npt import NptDataset
-    from llrops.classes.observation import ObservationOutputLevel, ObservationProcessingOptions
+    from llrops.classes.observation import (
+        ObservationOutputLevel,
+        ObservationProcessingOptions,
+    )
 
     spec = _observation_spec_for_payload(payload, cache)
     processor = _initialized_processor_for_task(cache, spec)
@@ -295,7 +294,6 @@ def _handle_observation_results(payload: dict, cache: dict):
     return response
 
 
-
 TASK_HANDLERS: Dict[str, Callable[[dict, dict], object]] = {
     "observation_results": _handle_observation_results,
 }
@@ -304,6 +302,7 @@ TASK_HANDLERS: Dict[str, Callable[[dict, dict], object]] = {
 # ---------------------------------------------------------------------------
 # runtime: generic dynamic master-worker scheduler
 # ---------------------------------------------------------------------------
+
 
 class MpiRuntime:
     """One communicator, one worker loop, one dynamic scheduler.
@@ -479,7 +478,10 @@ class MpiRuntime:
                 if tag == TAG_INITIALIZE_SPEC:
                     command = message or {}
                     spec_id = str(command.get("specId", ""))
-                    if command.get("kind") != "initializeObservationSpec" or not spec_id:
+                    if (
+                        command.get("kind") != "initializeObservationSpec"
+                        or not spec_id
+                    ):
                         self.comm.send(
                             (
                                 True,
@@ -525,7 +527,7 @@ class MpiRuntime:
                         (True, task_id, traceback.format_exc()), dest=0, tag=TAG_RESULT
                     )
         finally:
-            _close_cached_objects(cache)
+            close_cached_objects(cache)
 
     # -- master side -----------------------------------------------------------
     def map_tasks(
@@ -569,8 +571,7 @@ class MpiRuntime:
         total = progress_total if progress_total is not None else n_tasks
         if not quiet:
             print(
-                f"\r{desc}: 0/{total} "
-                f"(starting, tasks 0/{n_tasks}, ranks {self.size})",
+                f"\r{desc}: 0/{total} (starting, tasks 0/{n_tasks}, ranks {self.size})",
                 end="",
                 flush=True,
             )
@@ -627,7 +628,7 @@ class MpiRuntime:
         if self.has_workers:
             for worker in range(1, self.size):
                 self.comm.send(None, dest=worker, tag=TAG_STOP)
-        _close_cached_objects(self._serial_cache)
+        close_cached_objects(self._serial_cache)
         self._serial_cache.clear()
         self._prepared_spec_ids.clear()
         self._initialized_spec_ids.clear()
@@ -636,6 +637,7 @@ class MpiRuntime:
 # ---------------------------------------------------------------------------
 # program-facing helpers
 # ---------------------------------------------------------------------------
+
 
 def chunk_dataset_tasks(datasets, chunksize: int) -> List[dict]:
     """Chunk already parsed NptRecords of every source (v24 ``_make_tasks``)."""
@@ -773,5 +775,9 @@ def mpi_observation_rows(
     for result in results:
         rows_by_source[result["sourceName"]].extend(result["rows"])
     for rows in rows_by_source.values():
-        rows.sort(key=lambda row: int(row.get("normal_point_index", row.get("record_index", 0))))
+        rows.sort(
+            key=lambda row: int(
+                row.get("normal_point_index", row.get("record_index", 0))
+            )
+        )
     return rows_by_source

@@ -67,6 +67,7 @@ llrops/
 │   └── builders.py    the ONLY place mapping config type names → classes
 ├── estimation/
 │   ├── adjustment.py              generic Gauss–Newton over a ParametrizationList
+│   ├── adjustment_preprocessing.py  outlier/uncertainty/initial-scale preprocessing
 │   └── normal_equation_engine.py  shared streaming normal-equation core
 ├── programs/      GROOPS "programs": one task each, driven by config
 │   ├── CrdToMini, NormalPointsToLlrops, LlrResiduals
@@ -74,6 +75,7 @@ llrops/
 │   ├── LlrNormalEquations        (build + store fixed-linearization normals, don't solve)
 │   └── NormalsCombineSolve       (align by parameter name, add, solve once)
 ├── parallel/      single-process serial + MPI master-worker backend
+│   └── cache.py     worker-cache lifecycle and deduplicated resource cleanup
 └── cli.py         python -m llrops run config.yml [--mpi] --set var=value
 ```
 
