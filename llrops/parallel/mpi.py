@@ -77,7 +77,7 @@ def _processor_for_task(cache: dict, spec: dict):
     """
     processor_key = ("processor", spec["specId"])
     if processor_key not in cache:
-        shared_class_cache = cache.setdefault(("sharedClassCache", spec["specId"]), {})
+        shared_class_cache = cache.setdefault("sharedClassCache", {})
         cache[processor_key] = build_worker_processor(spec, shared_class_cache)
     return cache[processor_key]
 

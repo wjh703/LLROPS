@@ -2,7 +2,7 @@ import logging
 
 from llrops.lifecycle import close_resources
 from llrops.parallel.cache import close_cached_objects
-from llrops.programs.base import available_programs, program, program_alias, run_program
+from llrops.programs.base import available_programs, program, run_program
 
 
 class Resource:
@@ -23,12 +23,10 @@ def test_close_resources_deduplicates_resources(caplog):
     assert resource.count == 1
 
 
-def test_program_alias_is_not_a_second_public_program():
+def test_program_registry_is_case_insensitive():
     @program("TestCanonicalProgram")
     def canonical(config, context):
         return config["value"]
 
-    program_alias("TestLegacyProgram", "TestCanonicalProgram")
     assert "TestCanonicalProgram" in available_programs()
-    assert "TestLegacyProgram" not in available_programs()
-    assert run_program("TestLegacyProgram", {"value": 3}, None) == 3
+    assert run_program("testcanonicalprogram", {"value": 3}, None) == 3

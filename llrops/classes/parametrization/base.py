@@ -9,8 +9,8 @@ A parametrization owns a contiguous block of design-matrix columns.  It
   force-model coefficients, integrator initial conditions, ...),
 * reports its current values for output.
 
-The estimator (:mod:`llrops.estimation.adjustment`) and the normal-equation
-builder are completely generic over the parametrization list — adding EOP,
+The estimator (:mod:`llrops.estimation.adjustment_solver`) and the
+normal-equation builder are generic over the parametrization list — adding EOP,
 Love-number or orbit-state parameters never touches them.
 """
 from __future__ import annotations

@@ -8,16 +8,16 @@ from llrops.base.epoch import Epoch, TimeScale
 from llrops.base.parameter_name import ParameterName
 from llrops.classes.observation.equations import ObservationEquation
 from llrops.classes.parametrization.base import Parametrization, ParametrizationList
+from llrops.estimation.adjustment_preprocessing import floor_prefit_uncertainties
 from llrops.estimation.convergence import ParameterConvergencePolicy
 from llrops.estimation.normal_equation_engine import (
     DenseLinearization,
     build_normal_equations_streaming,
     solve_normal_equations,
 )
+from llrops.estimation.adjustment_options import LlrAdjustmentOptions
 from llrops.estimation.adjustment_solver import (
-    LlrAdjustmentOptions,
     LlrAdjustmentSolver,
-    floor_prefit_uncertainties,
 )
 from llrops.estimation.robust_weights import (
     Igg3WeightModel,
@@ -113,32 +113,53 @@ def test_parameter_convergence_policy_supports_block_tolerances():
     assert evaluation.tolerances_m["1:StationRangeBiasParametrization"] == pytest.approx(2.0e-3)
 
 
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -1.0])
+def test_parameter_convergence_policy_rejects_invalid_update_norms(value):
+    policy = ParameterConvergencePolicy(default_tolerance_m=1.0e-3)
+
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        policy.evaluate({"OffsetParametrization": value})
+
+
+def test_helmert_vce_requires_at_least_one_component():
+    with pytest.raises(ValueError, match="at least one component"):
+        HelmertVceEstimator(components=())
+
+
 def test_vce_assignment_distinguishes_overlapping_cerga_systems_by_wavelength():
     components = (
         VarianceComponentDefinition.from_config(
             {
                 "id": "CERGA_MEO",
-                "station_system": "CERGA_MEO",
-                "station_aliases": ["CERGA"],
+                "stationSystem": "CERGA_MEO",
+                "stationAliases": ["CERGA"],
                 "start": "2015-01-01",
-                "end_exclusive": "2023-01-01",
-                "wavelength_max_nm": 700.0,
+                "endExclusive": "2023-01-01",
+                "wavelengthMaxExclusiveNm": 700.0,
             }
         ),
         VarianceComponentDefinition.from_config(
             {
                 "id": "CERGA_IR",
-                "station_system": "CERGA_IR",
-                "station_aliases": ["CERGA"],
+                "stationSystem": "CERGA_IR",
+                "stationAliases": ["CERGA"],
                 "start": "2015-01-01",
-                "end_exclusive": None,
-                "wavelength_min_nm": 700.0,
+                "endExclusive": None,
+                "wavelengthMinNm": 700.0,
             }
         ),
     )
-    equations = [_equation("green", 0.0, "CERGA", 532.0), _equation("infrared", 0.0, "CERGA", 1064.0)]
+    equations = [
+        _equation("green", 0.0, "CERGA", 532.0),
+        _equation("boundary", 0.0, "CERGA", 700.0),
+        _equation("infrared", 0.0, "CERGA", 1064.0),
+    ]
 
-    assert assign_variance_components(equations, components) == {"green": "CERGA_MEO", "infrared": "CERGA_IR"}
+    assert assign_variance_components(equations, components) == {
+        "green": "CERGA_MEO",
+        "boundary": "CERGA_IR",
+        "infrared": "CERGA_IR",
+    }
 
 
 def test_prefit_uncertainty_qc_floors_only_abnormally_small_sigmas():
@@ -177,10 +198,10 @@ def test_vce_assignment_rejects_unassigned_observation():
         VarianceComponentDefinition.from_config(
             {
                 "id": "A",
-                "station_system": "A",
-                "station_aliases": ["STA_A"],
+                "stationSystem": "A",
+                "stationAliases": ["STA_A"],
                 "start": "2010-01-01",
-                "end_exclusive": None,
+                "endExclusive": None,
             }
         ),
     )
@@ -316,10 +337,10 @@ def test_vce_direct_update_respects_variance_ratio_limit():
         VarianceComponentDefinition.from_config(
             {
                 "id": "A",
-                "station_system": "A",
-                "station_aliases": ["STA_A"],
+                "stationSystem": "A",
+                "stationAliases": ["STA_A"],
                 "start": "2010-01-01",
-                "end_exclusive": None,
+                "endExclusive": None,
             }
         ),
     )
@@ -329,7 +350,7 @@ def test_vce_direct_update_respects_variance_ratio_limit():
         options=LlrAdjustmentOptions(
             components=components,
             prefit_gross_threshold_m=None,
-            function_max_iterations=6,
+            maximum_linearizations=6,
             maximum_stochastic_iterations=3,
             required_consecutive_converged_linearizations=1,
             update_tolerance_m=1.0e-6,
@@ -344,9 +365,9 @@ def test_vce_direct_update_respects_variance_ratio_limit():
     assert result.converged
     assert result.scales["A"] == pytest.approx(100.0)
     first_component = result.iterations[0].variance_components["A"]
-    assert first_component["raw_variance"] == pytest.approx(10000.0)
-    assert first_component["limited_variance_ratio"] == pytest.approx(4.0)
-    assert first_component["variance_after"] == pytest.approx(4.0)
+    assert first_component["estimated_variance"] == pytest.approx(10000.0)
+    assert first_component["bounded_variance_ratio"] == pytest.approx(4.0)
+    assert first_component["proposed_variance"] == pytest.approx(4.0)
 
 
 def _two_component_case():
@@ -361,10 +382,10 @@ def _two_component_case():
         VarianceComponentDefinition.from_config(
             {
                 "id": name,
-                "station_system": name,
-                "station_aliases": [f"STA_{name}"],
+                "stationSystem": name,
+                "stationAliases": [f"STA_{name}"],
                 "start": "2010-01-01",
-                "end_exclusive": None,
+                "endExclusive": None,
             }
         )
         for name in ("A", "B")
@@ -455,7 +476,7 @@ def _run_backend(backend, *, initial_scales=None, initial_factors=None):
         options=LlrAdjustmentOptions(
             components=components,
             prefit_gross_threshold_m=None,
-            function_max_iterations=2,
+            maximum_linearizations=2,
             maximum_stochastic_iterations=3,
             required_consecutive_converged_linearizations=99,
             minimum_mad_count=2,
@@ -504,19 +525,19 @@ def test_llr_adjustment_runs_joint_helmert_vce_cycle():
         VarianceComponentDefinition.from_config(
             {
                 "id": "A",
-                "station_system": "A",
-                "station_aliases": ["STA_A"],
+                "stationSystem": "A",
+                "stationAliases": ["STA_A"],
                 "start": "2010-01-01",
-                "end_exclusive": None,
+                "endExclusive": None,
             }
         ),
         VarianceComponentDefinition.from_config(
             {
                 "id": "B",
-                "station_system": "B",
-                "station_aliases": ["STA_B"],
+                "stationSystem": "B",
+                "stationAliases": ["STA_B"],
                 "start": "2010-01-01",
-                "end_exclusive": None,
+                "endExclusive": None,
             }
         ),
     )
@@ -526,7 +547,7 @@ def test_llr_adjustment_runs_joint_helmert_vce_cycle():
         options=LlrAdjustmentOptions(
             components=components,
             prefit_gross_threshold_m=None,
-            function_max_iterations=6,
+            maximum_linearizations=6,
             maximum_stochastic_iterations=4,
             minimum_mad_count=2,
             minimum_effective_redundancy=1.0,
@@ -537,16 +558,16 @@ def test_llr_adjustment_runs_joint_helmert_vce_cycle():
     assert result.normals is not None
     assert len(result.observations) == len(equations)
     for item in result.observations:
-        base_sigma = item["base_scale"] * item["sigma_np"]
+        base_sigma = item["base_scale"] * item["effective_sigma_m"]
         assert 0.0 <= item["leverage"] < 1.0
-        assert item["residual_sigma"] == pytest.approx(
+        assert item["residual_sigma_m"] == pytest.approx(
             base_sigma * np.sqrt(1.0 - item["leverage"])
         )
         assert item["standardized_residual"] == pytest.approx(
-            item["postfit_residual"] / item["residual_sigma"]
+            item["current_state_residual_m"] / item["residual_sigma_m"]
         )
-        assert item["reported_sigma_np"] == pytest.approx(item["sigma_np"])
-        assert item["effective_sigma_np"] == pytest.approx(item["sigma_np"])
+        assert item["reported_sigma_m"] == pytest.approx(item["effective_sigma_m"])
+        assert item["effective_sigma_m"] == pytest.approx(item["effective_sigma_m"])
         assert item["uncertainty_qc_status"] == "UNCHANGED"
     assert all(0.0 <= factor <= 1.0 for factor in result.robust_factors.values())
     assert result.iterations[-1].total_effective_redundancy == pytest.approx(
@@ -554,7 +575,7 @@ def test_llr_adjustment_runs_joint_helmert_vce_cycle():
     )
     for iteration in result.iterations:
         expected = max(
-            abs(group["variance_after"] / group["variance_before"] - 1.0)
+            abs(group["proposed_variance"] / group["current_variance"] - 1.0)
             for group in iteration.variance_components.values()
         )
         assert iteration.maximum_variance_ratio_change == pytest.approx(expected)
@@ -586,10 +607,10 @@ def test_adjustment_reports_prefit_uncertainty_floor():
         VarianceComponentDefinition.from_config(
             {
                 "id": "A",
-                "station_system": "A",
-                "station_aliases": ["STA_A"],
+                "stationSystem": "A",
+                "stationAliases": ["STA_A"],
                 "start": "2010-01-01",
-                "end_exclusive": None,
+                "endExclusive": None,
             }
         ),
     )
@@ -600,7 +621,7 @@ def test_adjustment_reports_prefit_uncertainty_floor():
         options=LlrAdjustmentOptions(
             components=components,
             prefit_gross_threshold_m=None,
-            function_max_iterations=1,
+            maximum_linearizations=1,
             maximum_stochastic_iterations=1,
             required_consecutive_converged_linearizations=1,
             update_tolerance_m=10.0,
@@ -616,17 +637,16 @@ def test_adjustment_reports_prefit_uncertainty_floor():
     records = {item["observation_id"]: item for item in result.observations}
     assert result.summary["uncertainty_sigma_floored_count"] == 1
     assert result.summary["retained_uncertainty_sigma_floored_count"] == 1
-    assert records["tiny"]["reported_sigma_np"] == pytest.approx(1.0e-5)
-    assert records["tiny"]["effective_sigma_np"] == pytest.approx(0.002)
+    assert records["tiny"]["reported_sigma_m"] == pytest.approx(1.0e-5)
+    assert records["tiny"]["effective_sigma_m"] == pytest.approx(0.002)
     assert records["tiny"]["uncertainty_qc_status"] == "FLOORED"
-    assert records["normal-1"]["effective_sigma_np"] == pytest.approx(0.02)
+    assert records["normal-1"]["effective_sigma_m"] == pytest.approx(0.02)
     assert result.uncertainty_quality_control["groups"]["A"][
         "floored_count"
     ] == 1
 
 
 from llrops.classes.parametrization.station_range_bias import StationRangeBiasParametrization
-from llrops.estimation.adjustment import AdjustmentOptions, LeastSquaresAdjustment
 
 
 def test_open_bias_interval_remains_active():
@@ -650,20 +670,35 @@ def test_open_bias_interval_remains_active():
 
 def test_prefit_gross_rejection_never_reenters():
     equations = [_equation("gross", 100.0, "STA"), _equation("good", 1.0, "STA")]
-    result = LeastSquaresAdjustment(
+    components = (
+        VarianceComponentDefinition.from_config(
+            {
+                "id": "STA",
+                "stationSystem": "STA",
+                "stationAliases": ["STA"],
+                "start": "2010-01-01",
+                "endExclusive": None,
+            }
+        ),
+    )
+    result = LlrAdjustmentSolver(
         equation_source=lambda iteration: equations,
         parametrization=ParametrizationList([OffsetParametrization()]),
-        options=AdjustmentOptions(
-            max_iterations=2,
+        options=LlrAdjustmentOptions(
+            components=components,
+            maximum_linearizations=2,
             prefit_gross_threshold_m=20.0,
-            enable_outlier_rejection=True,
-            outlier_sigma_factor=1000.0,
-            allow_outlier_reentry=True,
+            maximum_stochastic_iterations=1,
+            required_consecutive_converged_linearizations=1,
+            minimum_mad_count=2,
+            minimum_effective_redundancy=1.0,
+            k0=1.0e6,
+            k1=2.0e6,
         ),
     ).run()
 
-    assert result.gross_rejected_keys == {"gross": 1}
-    assert result.rejected_keys == {"gross": 1}
+    assert result.gross_rejected == {"gross": 100.0}
+    assert set(result.robust_factors) == {"good"}
 
 
 def test_extended_variance_components_cover_mcdonald_1969_and_current_meo():
@@ -671,20 +706,20 @@ def test_extended_variance_components_cover_mcdonald_1969_and_current_meo():
         VarianceComponentDefinition.from_config(
             {
                 "id": "MCDONALD_1969_1985",
-                "station_system": "MCDONALD",
-                "station_aliases": ["MCDONALD"],
+                "stationSystem": "MCDONALD",
+                "stationAliases": ["MCDONALD"],
                 "start": "1969-01-01",
-                "end_exclusive": "1986-01-01",
+                "endExclusive": "1986-01-01",
             }
         ),
         VarianceComponentDefinition.from_config(
             {
                 "id": "CERGA_MEO_2009_PRESENT",
-                "station_system": "CERGA_MEO",
-                "station_aliases": ["GRASSE"],
+                "stationSystem": "CERGA_MEO",
+                "stationAliases": ["GRASSE"],
                 "start": "2009-01-01",
-                "end_exclusive": None,
-                "wavelength_max_nm": 700.0,
+                "endExclusive": None,
+                "wavelengthMaxExclusiveNm": 700.0,
             }
         ),
     )
@@ -713,10 +748,10 @@ def test_stochastic_iterations_do_not_recompute_observation_equations():
         VarianceComponentDefinition.from_config(
             {
                 "id": "A",
-                "station_system": "A",
-                "station_aliases": ["STA_A"],
+                "stationSystem": "A",
+                "stationAliases": ["STA_A"],
                 "start": "2010-01-01",
-                "end_exclusive": None,
+                "endExclusive": None,
             }
         ),
     )
@@ -732,7 +767,7 @@ def test_stochastic_iterations_do_not_recompute_observation_equations():
         options=LlrAdjustmentOptions(
             components=components,
             prefit_gross_threshold_m=None,
-            function_max_iterations=2,
+            maximum_linearizations=2,
             maximum_stochastic_iterations=5,
             required_consecutive_converged_linearizations=1,
             update_tolerance_m=10.0,
@@ -746,11 +781,15 @@ def test_stochastic_iterations_do_not_recompute_observation_equations():
     ).run()
 
     assert len(result.iterations) > 1
-    assert source_calls == [1]
+    assert source_calls == [1, 2]
     assert result.converged
     assert result.termination_reason == "CONVERGED"
-    assert result.summary["equation_evaluation_count"] == 1
+    assert result.summary["equation_evaluation_count"] == 2
     assert result.equation_evaluations[0]["fixed_domain_returned_count"] == 6
+    assert [item["purpose"] for item in result.equation_evaluations] == [
+        "initialization",
+        "final-state-report",
+    ]
 
 
 def test_stochastic_iteration_limit_still_applies_parameter_update():
@@ -762,10 +801,10 @@ def test_stochastic_iteration_limit_still_applies_parameter_update():
         VarianceComponentDefinition.from_config(
             {
                 "id": "A",
-                "station_system": "A",
-                "station_aliases": ["STA_A"],
+                "stationSystem": "A",
+                "stationAliases": ["STA_A"],
                 "start": "2010-01-01",
-                "end_exclusive": None,
+                "endExclusive": None,
             }
         ),
     )
@@ -782,8 +821,8 @@ def test_stochastic_iteration_limit_still_applies_parameter_update():
         options=LlrAdjustmentOptions(
             components=components,
             prefit_gross_threshold_m=None,
-            function_max_iterations=2,
-            geometry_update_factor=0.5,
+            maximum_linearizations=2,
+            parameter_update_factor=0.5,
             maximum_stochastic_iterations=1,
             update_tolerance_m=0.0,
             minimum_mad_count=2,
@@ -796,24 +835,29 @@ def test_stochastic_iteration_limit_still_applies_parameter_update():
         ),
     ).run()
 
-    assert source_calls == [1, 2]
+    assert source_calls == [1, 2, 3]
     first = result.linearizations[0]
     assert not first["stochastic_converged"]
     assert first["stochastic_iteration_limit_reached"]
-    assert first["geometry_update_factor"] == 0.5
+    assert first["parameter_update_factor"] == 0.5
     candidate = first["candidate_update_by_block_m"]["0:OffsetParametrization"]
     assert first["maximum_parameter_update_m"] == pytest.approx(candidate)
     applied = first["applied_update_by_block_m"]["OffsetParametrization"]
     assert applied == pytest.approx(0.5 * candidate)
     assert applied > 0.0
-    assert result.settings["geometry_update_factor"] == 0.5
-    assert result.termination_reason == "MAXIMUM_GEOMETRY_ITERATIONS_REACHED"
+    assert result.settings["parameter_update_factor"] == 0.5
+    assert result.termination_reason == "MAXIMUM_LINEARIZATIONS_REACHED"
+
+
+def test_adjustment_options_requires_at_least_one_variance_component():
+    with pytest.raises(ValueError, match="At least one variance component"):
+        LlrAdjustmentOptions(components=())
 
 
 @pytest.mark.parametrize("factor", [0.0, -0.5, 1.01])
-def test_geometry_update_factor_must_be_in_unit_interval(factor):
-    with pytest.raises(ValueError, match="Geometry update factor"):
-        LlrAdjustmentOptions(components=(), geometry_update_factor=factor)
+def test_parameter_update_factor_must_be_in_unit_interval(factor):
+    with pytest.raises(ValueError, match="Parameter update factor"):
+        LlrAdjustmentOptions(components=(), parameter_update_factor=factor)
 
 
 def test_fixed_domain_observation_can_reenter_after_one_failed_linearization():
@@ -825,10 +869,10 @@ def test_fixed_domain_observation_can_reenter_after_one_failed_linearization():
         VarianceComponentDefinition.from_config(
             {
                 "id": "A",
-                "station_system": "A",
-                "station_aliases": ["STA_A"],
+                "stationSystem": "A",
+                "stationAliases": ["STA_A"],
                 "start": "2010-01-01",
-                "end_exclusive": None,
+                "endExclusive": None,
             }
         ),
     )
@@ -845,7 +889,7 @@ def test_fixed_domain_observation_can_reenter_after_one_failed_linearization():
         options=LlrAdjustmentOptions(
             components=components,
             prefit_gross_threshold_m=None,
-            function_max_iterations=3,
+            maximum_linearizations=3,
             maximum_stochastic_iterations=1,
             required_consecutive_converged_linearizations=99,
             minimum_mad_count=2,
@@ -858,7 +902,7 @@ def test_fixed_domain_observation_can_reenter_after_one_failed_linearization():
     assert [
         item["fixed_domain_returned_count"]
         for item in result.equation_evaluations
-    ] == [6, 5, 6]
+    ] == [6, 5, 6, 6]
     assert set(result.robust_factors) == set(range(6))
 
 
@@ -872,10 +916,10 @@ def test_parameter_convergence_requires_two_confirmation_linearizations():
         VarianceComponentDefinition.from_config(
             {
                 "id": "A",
-                "station_system": "A",
-                "station_aliases": ["STA_A"],
+                "stationSystem": "A",
+                "stationAliases": ["STA_A"],
                 "start": "2010-01-01",
-                "end_exclusive": None,
+                "endExclusive": None,
             }
         ),
     )
@@ -892,7 +936,7 @@ def test_parameter_convergence_requires_two_confirmation_linearizations():
         options=LlrAdjustmentOptions(
             components=components,
             prefit_gross_threshold_m=None,
-            function_max_iterations=4,
+            maximum_linearizations=4,
             maximum_stochastic_iterations=2,
             update_tolerance_m=1.0e-6,
             minimum_mad_count=2,
@@ -902,7 +946,7 @@ def test_parameter_convergence_requires_two_confirmation_linearizations():
         ),
     ).run()
 
-    assert source_calls == [1, 2, 3]
+    assert source_calls == [1, 2, 3, 4]
     assert len(result.linearizations) == 3
     first_linearization = result.linearizations[0]
     assert not first_linearization["parameter_converged"]
@@ -910,7 +954,7 @@ def test_parameter_convergence_requires_two_confirmation_linearizations():
         first_linearization["candidate_update_by_block_m"]["0:OffsetParametrization"]
     )
     assert "geometry_damping" not in result.settings
-    assert result.summary["equation_evaluation_count"] == 3
+    assert result.summary["equation_evaluation_count"] == 4
     assert result.equation_evaluations[1]["fixed_domain_returned_count"] == 6
     assert result.linearizations[-2]["consecutive_converged_linearizations"] == 1
     assert result.linearizations[-1]["consecutive_converged_linearizations"] == 2
@@ -918,3 +962,55 @@ def test_parameter_convergence_requires_two_confirmation_linearizations():
     assert block.value == pytest.approx(np.mean([0.7, 1.0, 1.2, 0.8, 1.1, 0.9]))
     assert "late" not in result.robust_factors
     assert all(item["observation_id"] != "late" for item in result.observations)
+
+
+def test_final_report_matches_the_applied_damped_state():
+    values = [1.0, 2.0, 3.0, 1.0, 2.0, 3.0]
+    equations = [
+        _equation(index, value, "STA_A")
+        for index, value in enumerate(values)
+    ]
+    components = (
+        VarianceComponentDefinition.from_config(
+            {
+                "id": "A",
+                "stationSystem": "A",
+                "stationAliases": ["STA_A"],
+                "start": "2010-01-01",
+                "endExclusive": None,
+            }
+        ),
+    )
+    block = OffsetParametrization()
+
+    result = LlrAdjustmentSolver(
+        equation_source=lambda iteration: equations,
+        parametrization=ParametrizationList([block]),
+        options=LlrAdjustmentOptions(
+            components=components,
+            prefit_gross_threshold_m=None,
+            maximum_linearizations=1,
+            parameter_update_factor=0.5,
+            maximum_stochastic_iterations=1,
+            required_consecutive_converged_linearizations=99,
+            minimum_mad_count=2,
+            minimum_effective_redundancy=1.0,
+            scale_log_tolerance=10.0,
+            robust_factor_change_tolerance=10.0,
+            k0=1.0e6,
+            k1=2.0e6,
+        ),
+    ).run()
+
+    assert block.value == pytest.approx(1.0)
+    assert result.parameters[0]["remaining_linearized_correction_m"] == pytest.approx(
+        1.0
+    )
+    first = result.observations[0]
+    assert first["current_state_residual_m"] == pytest.approx(0.0)
+    assert first["linearized_postfit_residual_m"] == pytest.approx(-1.0)
+    assert first["applied_igg3_factor"] == pytest.approx(1.0)
+    assert first["final_state_proposed_igg3_factor"] == pytest.approx(1.0)
+    assert not first["proposed_igg3_factor_applied"]
+    assert not result.variance_components[0]["proposed_scale_applied"]
+    assert result.equation_evaluations[-1]["purpose"] == "final-state-report"

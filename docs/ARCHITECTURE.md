@@ -66,8 +66,15 @@ llrops/
 │   ├── parametrization/  base + reflectorPosition + stationRangeBias
 │   └── builders.py    the ONLY place mapping config type names → classes
 ├── estimation/
-│   ├── adjustment.py              generic Gauss–Newton over a ParametrizationList
+│   ├── adjustment_config.py       strict canonical config and staged plan
+│   ├── adjustment_options.py      validated numerical invariants
 │   ├── adjustment_preprocessing.py  outlier/uncertainty/initial-scale preprocessing
+│   ├── adjustment_reporting.py    result types and pure report assembly
+│   ├── adjustment_solver.py       nonlinear relinearization + IGGIII/VCE coordination
+│   ├── convergence.py             parameter-block convergence policy
+│   ├── robust_weights.py          IGGIII equivalent-weight model
+│   ├── variance_components.py     component definitions and strict assignment
+│   ├── vce.py                     Helmert trace VCE
 │   └── normal_equation_engine.py  shared streaming normal-equation core
 ├── programs/      GROOPS "programs": one task each, driven by config
 │   ├── CrdToMini, NormalPointsToLlrops, LlrResiduals
@@ -176,13 +183,15 @@ A `Parametrization` block declares `ParameterName`s, fills its design columns
 from partial blocks, optionally reduces `l` by its current value (bias-type
 parameters), and absorbs solved corrections back into model state (catalog
 positions, bias tables, force-model coefficients, integrator initial
-conditions). `LeastSquaresAdjustment` and the normal-equation engine are fully
+conditions). `LlrAdjustmentSolver` and the normal-equation engine are fully
 generic over the block list — they never learn what a "reflector" is.
 
 `LlrAdjustment`, `LlrNormalEquations` and `NormalsCombineSolve` share the same
 normal-equation representation.  `LlrAdjustment` is the nonlinear iteration
-controller: each iteration reruns the forward model, streams typed equations directly into
-normal equations, solves, applies the update and checks outliers/convergence.
+controller: each linearization reruns the forward model, performs the bounded
+IGGIII/Helmert-VCE stochastic iteration at fixed geometry, applies the parameter
+update, and checks block-specific convergence. Its final report relinearizes at
+the applied state so state, residuals, normals, and remaining corrections agree.
 `LlrNormalEquations` writes one fixed-linearization normal-equation file.
 `NormalsCombineSolve` only loads, aligns, adds and solves those files once.
 
@@ -202,7 +211,7 @@ normal equations, solves, applies the update and checks outliers/convergence.
 | `pipeline.py` observation workflow | `classes/observation/{resolver,model,corrections,reduction,assembly,processor,results}.py` | split into typed, independently testable stages; assembled by `builders.build_observation_processor` |
 | `pipeline.py` writers | `fileio/oc_table.py` | serializes typed `LlrObservationResult` objects |
 | `reflector_fit.py` | removed | reflector fitting is now `LlrAdjustment` + `reflectorPosition` (+ optional `stationRangeBias`) |
-| — | `estimation/adjustment.py` | NEW generic iterative estimator |
+| — | `estimation/adjustment_{config,options,preprocessing,reporting,solver}.py` | typed nonlinear adjustment components |
 | — | `estimation/normal_equation_engine.py` | NEW shared streaming normal-equation core |
 | `run_llr_np_oc.py` | program `LlrResiduals` | config-driven |
 | `run_llr_reflector_fit.py` | removed | use program `LlrAdjustment` with reflector parametrization |

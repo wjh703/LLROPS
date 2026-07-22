@@ -169,7 +169,7 @@ def llr_residuals(config: dict, context: RunContext):
         # workers hold their own processor and compute NptRecord chunks.
         from llrops.parallel.mpi import make_observation_spec, mpi_observation_rows
 
-        spec = make_observation_spec(config, context, datasets)
+        spec = make_observation_spec(config, context)
         results_by_file = mpi_observation_rows(
             runtime,
             spec,

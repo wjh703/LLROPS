@@ -24,5 +24,5 @@ echo "Start time: $(date)"
 echo "Working directory: $(pwd)"
 
 uv run mpirun -n 96 python -m llrops run configs/llrops_reflector_bias_adjustment_detailed.yml --mpi
-
+# uv run mpirun -n 96 python -m llrops run configs/llrops_oc_residuals.yml --mpi
 echo "End time: $(date)"

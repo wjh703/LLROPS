@@ -37,6 +37,39 @@ class NormalEquations:
     obs_count: int = 0
     meta: Dict[str, object] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        names = list(self.parameter_names)
+        if not all(isinstance(name, ParameterName) for name in names):
+            raise TypeError("Normal-equation parameter names must be ParameterName objects.")
+        if len(set(names)) != len(names):
+            raise ValueError("Normal-equation parameter names must be unique.")
+
+        normal_matrix = np.asarray(self.N, dtype=float)
+        right_hand_side = np.asarray(self.W, dtype=float).reshape(-1)
+        parameter_count = len(names)
+        if normal_matrix.shape != (parameter_count, parameter_count):
+            raise ValueError(
+                f"Normal matrix has shape {normal_matrix.shape}, expected "
+                f"{(parameter_count, parameter_count)}."
+            )
+        if right_hand_side.shape != (parameter_count,):
+            raise ValueError(
+                f"Normal right-hand side has shape {right_hand_side.shape}, "
+                f"expected {(parameter_count,)}."
+            )
+        if not np.all(np.isfinite(normal_matrix)) or not np.all(np.isfinite(right_hand_side)):
+            raise ValueError("Normal equations contain non-finite matrix values.")
+        if not np.isfinite(self.lPl) or float(self.lPl) < 0.0:
+            raise ValueError("Normal-equation lPl must be finite and non-negative.")
+        if isinstance(self.obs_count, bool) or int(self.obs_count) != self.obs_count or int(self.obs_count) < 0:
+            raise ValueError("Normal-equation observation count must be a non-negative integer.")
+        self.parameter_names = names
+        self.N = normal_matrix
+        self.W = right_hand_side
+        self.lPl = float(self.lPl)
+        self.obs_count = int(self.obs_count)
+        self.meta = dict(self.meta)
+
     # -- construction --------------------------------------------------------
     @classmethod
     def zeros(cls, parameter_names: Sequence[ParameterName], **meta) -> "NormalEquations":
@@ -150,7 +183,7 @@ class NormalEquations:
         )
 
     # -- solving ---------------------------------------------------------------
-    def solve(self):
+    def solve(self) -> tuple[np.ndarray, np.ndarray, Optional[float]]:
         """Solve ``N x = W`` by Cholesky factorization of the SPD normal matrix.
 
         ``N = A.T @ P @ A`` and ``W = A.T @ P @ L`` where
@@ -168,9 +201,19 @@ class NormalEquations:
         x = np.linalg.solve(lower.T, np.linalg.solve(lower, W))
         identity = np.eye(N.shape[0])
         Qxx = np.linalg.solve(lower.T, np.linalg.solve(lower, identity))
-        dof = max(self.obs_count - len(self.parameter_names), 1)
-        vPv = max(self.lPl - float(W @ x), 0.0)
-        sigma0 = float(np.sqrt(vPv / dof))
+        quadratic = float(W @ x)
+        vPv = self.lPl - quadratic
+        tolerance = 1.0e-12 * max(abs(self.lPl), abs(quadratic), 1.0)
+        if vPv < -tolerance:
+            raise np.linalg.LinAlgError(
+                "Normal equations yield a negative residual quadratic form: "
+                f"lPl-W.T@x={vPv:.6e}."
+            )
+        vPv = max(vPv, 0.0)
+        degrees_of_freedom = self.obs_count - len(self.parameter_names)
+        sigma0 = None if degrees_of_freedom <= 0 else float(
+            np.sqrt(vPv / degrees_of_freedom)
+        )
         return x, Qxx, sigma0
 
     # -- IO ---------------------------------------------------------------------

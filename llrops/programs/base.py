@@ -14,27 +14,20 @@ from llrops.config.context import RunContext
 ProgramFunc = Callable[[dict, RunContext], object]
 
 _PROGRAMS: Dict[str, ProgramFunc] = {}
-_ALIASES: Dict[str, str] = {}
 
 
-def program(name: str, *, expose: bool = True):
+def program(name: str):
     def _wrap(func: ProgramFunc) -> ProgramFunc:
         _PROGRAMS[name.lower()] = func
-        if expose:
-            func.program_name = name
+        func.program_name = name
         return func
 
     return _wrap
 
 
-def program_alias(alias: str, target: str) -> None:
-    """Register a compatibility name without exposing a second program."""
-    _ALIASES[alias.lower()] = target.lower()
-
 
 def run_program(name: str, config: dict, context: RunContext):
     key = name.lower()
-    key = _ALIASES.get(key, key)
     try:
         func = _PROGRAMS[key]
     except KeyError:

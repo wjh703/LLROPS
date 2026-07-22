@@ -56,7 +56,13 @@ def _prepare_shared_resources(merged: dict, context) -> dict:
     return resources
 
 
-def make_observation_spec(config: dict, context, datasets) -> dict:
+def make_observation_spec(
+    config: dict,
+    context,
+    *,
+    station_catalog=None,
+    reflector_catalog=None,
+) -> dict:
     """Resolve one picklable observation specification on rank 0.
 
     The complete specification is broadcast once to every worker and then
@@ -69,7 +75,6 @@ def make_observation_spec(config: dict, context, datasets) -> dict:
         if value is not None:
             merged[category] = value
 
-    station_catalog = context.shared.get("stationCatalog")
     if station_catalog is None:
         from llrops.fileio.catalogs import load_station_catalog
 
@@ -78,8 +83,6 @@ def make_observation_spec(config: dict, context, datasets) -> dict:
                 "stationCatalog", context.global_class_configs.get("stationCatalog")
             )
         )
-        context.shared["stationCatalog"] = station_catalog
-    reflector_catalog = context.shared.get("reflectorCatalog")
     if reflector_catalog is None:
         from llrops.fileio.catalogs import load_reflector_catalog
 
@@ -88,11 +91,10 @@ def make_observation_spec(config: dict, context, datasets) -> dict:
                 "reflectorCatalog", context.global_class_configs.get("reflectorCatalog")
             )
         )
-        context.shared["reflectorCatalog"] = reflector_catalog
 
-    spec_id = (
-        f"{id(context)}-{hash(repr(sorted(merged.items(), key=lambda kv: kv[0])))}"
-    )
+    sequence = int(context.shared.get("mpiObservationSpecSequence", 0)) + 1
+    context.shared["mpiObservationSpecSequence"] = sequence
+    spec_id = f"{id(context)}:{sequence}"
     return {
         "specId": spec_id,
         "programConfig": merged,
