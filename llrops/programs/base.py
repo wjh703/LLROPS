@@ -25,9 +25,11 @@ def program(name: str):
     return _wrap
 
 
+
 def run_program(name: str, config: dict, context: RunContext):
+    key = name.lower()
     try:
-        func = _PROGRAMS[name.lower()]
+        func = _PROGRAMS[key]
     except KeyError:
         raise KeyError(
             f"Unknown program {name!r}. Available: {sorted(p for p in _PROGRAMS)}"
@@ -36,4 +38,4 @@ def run_program(name: str, config: dict, context: RunContext):
 
 
 def available_programs():
-    return sorted(func.program_name for func in _PROGRAMS.values())
+    return sorted(func.program_name for func in _PROGRAMS.values() if hasattr(func, "program_name"))

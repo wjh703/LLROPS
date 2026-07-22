@@ -710,8 +710,9 @@ $$
 建议：
 
 ```yaml
-minimum_mad_count: 10
-minimum_initial_scale: 1.0
+initialization:
+  minimumMadCount: 10
+  minimumInitialScale: 1.0
 ```
 
 以下情况回退到 $s_g^{(0)}=1$：
@@ -729,29 +730,21 @@ MAD 只用于启动，不是最终 VCE 结果。
 
 ### 10.1 标准化残差
 
-IGGIII 直接使用当前方差分量尺度与 NP 正式精度构造无量纲统计量：
+IGGIII 使用当前 VCE 尺度、NP 正式精度和基础权法方程计算的残差杠杆值。基础权不包含 IGGIII 因子，因此降权不会反过来放大标准化分母：
 
-$$
-\boxed{
-\sigma_{v_i}=s_{g(i)}\sigma_{i,\mathrm{NP}},
-\qquad
-t_i=\frac{v_i}{\sigma_{v_i}}.
-}
-$$
+```text
+base_weight_i = 1 / (scale_g**2 * sigma_i**2)
+h_i = base_weight_i * a_i.T * covariance_base * a_i
+one_minus_h_i = max(1 - h_i, minimumOneMinusLeverage)
+residual_sigma_i = scale_g * sigma_i * sqrt(one_minus_h_i)
+t_i = residual_i / residual_sigma_i
+```
 
-不计算参数估计杠杆值，也不使用 $1-h_i$ 修正残差标准差。
+这与 GROOPS 抗差最小二乘按残差多余度构造检验量的思路一致。`minimumOneMinusLeverage` 只防止高杠杆或浮点舍入使残差方差退化。
 
 ### 10.2 残差标准差与输出
 
-每条观测记录输出：
-
-```text
-base_variance = base_scale**2 * sigma_np**2
-residual_sigma = base_scale * sigma_np
-standardized_residual = postfit_residual / residual_sigma
-```
-
-残差标准差非有限或非正时直接报错。
+每条观测记录输出 `base_variance_m2`、`residual_sigma_m`、`leverage` 和 `standardized_residual`。残差标准差、杠杆值或标准化残差非有限时直接报错。最终报告使用已应用参数状态的残差，同时单列再求解得到的 `linearized_postfit_residual_m`。
 
 ### 10.3 为什么不使用等价权方差
 
@@ -946,7 +939,8 @@ $$
 数值保护：
 
 ```yaml
-minimum_nonzero_robust_factor: 1.0e-12
+robustEstimation:
+  activeFactorThreshold: 1.0e-12
 ```
 
 当 $\alpha_i\le10^{-12}$ 时按零权处理。
@@ -1144,7 +1138,8 @@ $$
 建议：
 
 ```yaml
-minimum_effective_redundancy: 20.0
+vce:
+  minimumEffectiveRedundancy: 20.0
 ```
 
 当 $r_g<r_{\min}$ 时：
@@ -1238,22 +1233,23 @@ $$
 
 ### 14.4 参数收敛与连续确认
 
-每个外层结束时都求解并完整应用参数改正。只有当随机模型收敛且最大参数块改正不超过 $\varepsilon_x$ 时，该外层才计为一次收敛候选；默认要求连续两次外层候选后才报告整体收敛。任一外层不满足条件都会将连续计数清零。
+每个外层结束时都求解，并按 `parameterUpdateFactor` 应用参数改正；收敛判据始终使用未缩放候选改正。只有当随机模型收敛且最大参数块改正不超过 $\varepsilon_x$ 时，该外层才计为一次收敛候选；默认要求连续两次外层候选后才报告整体收敛。任一外层不满足条件都会将连续计数清零。
 
 ```yaml
 adjustment:
-  maxIterations: 10
+  maximumLinearizations: 10
   updateToleranceM: 1.0e-3
   requiredConsecutiveConvergedLinearizations: 2
+robustEstimation:
+  changeQuantile: 0.999
 vce:
-  maximum_iterations: 8
-  scale_log_tolerance: 2.5e-2
-  robust_factor_change_tolerance: 2.0e-2
-  robust_factor_change_quantile: 0.999
-  active_set_change_tolerance: 1.0e-3
+  maximumIterations: 8
+  scaleLogTolerance: 2.5e-2
+  targetFactorChangeTolerance: 2.0e-2
+  targetActiveSetChangeTolerance: 1.0e-3
 ```
 
-日志分别记录几何线性化、随机模型迭代、三个目标残差，并同时报告原始零目标数 `targetRejected` 和实际零权数 `rejected`。
+日志分别记录非线性线性化、随机模型迭代、三个目标残差，并同时报告原始零目标数 `targetRejected` 和实际零权数 `rejected`。
 
 ---
 
@@ -1261,15 +1257,17 @@ vce:
 
 ```python
 def solve_llr_adjustment(observations, state, config):
+    options = parse_adjustment_plan(config).options
     equations = initialize_fixed_observation_domain(observations, state)
     scales = initialize_group_scales_with_mad(equations)
     factors = target_factors = ones(equations)
     consecutive_outer_convergence = 0
-    for linearization in range(config.adjustment.max_iterations):
+    termination_reason = "MAXIMUM_LINEARIZATIONS_REACHED"
+    for linearization in range(options.maximum_linearizations):
         stochastic_converged = False
-        for stochastic in range(config.vce.maximum_iterations):
+        for stochastic in range(options.maximum_stochastic_iterations):
             base_solution = solve_fixed(equations, scales, factors)
-            standardized = standardize_without_leverage(base_solution, scales)
+            standardized = standardize_with_base_leverage(base_solution, scales)
 
             next_targets = igg3_factors(standardized, k0=1.5, k1=6.0)
             factor_target_q = quantile_999(abs(next_targets - factors))
@@ -1294,20 +1292,25 @@ def solve_llr_adjustment(observations, state, config):
 
         final_solution = solve_fixed(equations, scales, factors)
         update_small = maximum_parameter_block_norm(final_solution.delta) <= 1e-3
-        apply_parameter_update_once(final_solution.delta)
+        apply_parameter_update_once(options.parameter_update_factor * final_solution.delta)
 
         if stochastic_converged and update_small:
             consecutive_outer_convergence += 1
         else:
             consecutive_outer_convergence = 0
         if consecutive_outer_convergence >= 2:
-            return build_converged_output(final_solution, scales, factors)
+            termination_reason = "CONVERGED"
+            break
 
-        equations = recompute_oc_and_design(observations, current_state())
-        equations = equations.with_fixed_initial_ids()
+        if linearization + 1 < options.maximum_linearizations:
+            equations = recompute_oc_and_design(observations, current_state())
+            equations = equations.with_fixed_initial_ids()
 
-    return build_nonconverged_output(
-        reason="MAXIMUM_GEOMETRY_ITERATIONS_REACHED"
+    final_equations = recompute_oc_and_design(observations, current_state())
+    final_equations = final_equations.with_fixed_initial_ids()
+    final_solution = solve_fixed(final_equations, scales, factors)
+    return build_output_at_applied_state(
+        termination_reason, final_solution, scales, factors
     )
 
 ```
@@ -1448,59 +1451,66 @@ def estimate_group_scales_equivalent_helmert(
 
 ## 17. 推荐配置文件
 
+配置只接受 lowerCamelCase canonical schema；未知键和旧别名会在计算前报错。
+
 ```yaml
 adjustment:
-  maxIterations: 10
+  maximumLinearizations: 10
+  parameterUpdateFactor: 1.0
+  linearizationBackend: dense
   updateToleranceM: 1.0e-3
   requiredConsecutiveConvergedLinearizations: 2
+  uncertaintyFloor:
+    minimumOneWaySigmaM: 1.0e-3
+    minimumFractionOfGroupMedian: 0.1
 
-robust_estimation:
+robustEstimation:
   k0: 1.5
   k1: 6.0
-  minimum_nonzero_robust_factor: 1.0e-12
-  minimum_robust_factor_for_convergence: 1.0e-3
+  minimumOneMinusLeverage: 1.0e-8
+  activeFactorThreshold: 1.0e-12
+  convergenceFactorFloor: 1.0e-3
+  changeQuantile: 0.999
 
 initialization:
-  bias_weight_cap: 1.0e12
-  bias_maximum_iterations: 30
-  minimum_mad_count: 10
-  minimum_initial_scale: 1.0
+  biasWeightCap: 1.0e+12
+  biasMaximumIterations: 30
+  minimumMadCount: 10
+  minimumInitialScale: 1.0
 
 vce:
-  maximum_iterations: 8
-  minimum_effective_redundancy: 20.0
-  scale_log_tolerance: 2.5e-2
-  robust_factor_change_tolerance: 2.0e-2
-  robust_factor_change_quantile: 0.999
-  active_set_change_tolerance: 1.0e-3
-  minimum_variance_ratio_per_iteration: 0.25
-  maximum_variance_ratio_per_iteration: 4.0
+  maximumIterations: 8
+  minimumEffectiveRedundancy: 20.0
+  scaleLogTolerance: 2.5e-2
+  targetFactorChangeTolerance: 2.0e-2
+  targetActiveSetChangeTolerance: 1.0e-3
+  minimumVarianceRatioPerIteration: 0.25
+  maximumVarianceRatioPerIteration: 4.0
+  components:
+    - id: APACHE_2006_PRESENT
+      stationSystem: APACHE
+      stationAliases: [APOLLO, APACHE]
+      start: 2006-01-01
+      endExclusive: null
 ```
 
 ## 18. 代码架构
 
 ```text
 llrops/estimation/
-  adjustment_solver.py       # LlrAdjustmentSolver 非线性外层与随机模型协调
-  robust_weights.py          # RobustWeightModel / Igg3WeightModel
-  variance_components.py     # VarianceComponentDefinition 与观测归属
-  vce.py                     # VarianceComponentEstimator
-                             #   HelmertVceEstimator
-                             #   SimplifiedHelmertVceEstimator
-                             #   LeastSquaresVceEstimator
+  adjustment_config.py       # strict schema 与 staged plan
+  adjustment_options.py      # 数值不变量
+  adjustment_preprocessing.py# 固定域 gross 筛选、误差 floor、MAD 启动
+  adjustment_reporting.py    # 结果类型与纯报告组装
+  adjustment_solver.py       # 非线性外层与随机模型协调
+  robust_weights.py          # Igg3WeightModel
+  variance_components.py     # 分量定义与严格一对一归属
+  vce.py                     # HelmertVceEstimator
   convergence.py             # ParameterConvergencePolicy
-  normal_equation_engine.py  # 流式法方程累计与 Cholesky 求解入口
+  normal_equation_engine.py  # dense/streaming 法方程核心
 ```
 
-公共程序 `LlrAdjustment` 负责装配上述组件。普通非鲁棒最小二乘入口命名为
-`LlrLeastSquaresAdjustment`。VCE 算法与方差分量定义严格分离：`components`
-只描述观测归属，`method` 决定采用哪一种方差分量估计器。当前生产配置仅启用
-经过验证的 `helmert`；简化 Helmert 和 LS-VCE 保留独立类型，不得退化为 Helmert
-公式的别名。
-
-`adjustment.stages` 可按类名选择参数块并连续执行多个 estimate 步骤。各步骤复用
-同一参数对象，前一步结果直接成为下一步先验值。`updateToleranceByBlockM` 对不同
-参数块设置独立的米级影响阈值。
+公共程序 `LlrAdjustment` 只负责装配和阶段执行。生产路径只有一个调整器和一个经过验证的 Helmert VCE 实现；配置不暴露伪策略选择器。`components` 只描述观测归属。`adjustment.stages` 按参数块类名连续执行多个 estimate 步骤，并复用同一参数对象；随机尺度和因子是否跨阶段继承由 `warmStartStochasticModelAcrossStages` 明确控制。
 
 ---
 
@@ -1513,17 +1523,17 @@ llrops/estimation/
 | 字段 | 诊断用途 |
 |---|---|
 | `summary` | 汇总输入、光行时收敛、gross 剔除、固定域保留、方程重算、迭代、秩、条件数与验后单位权中误差 |
-| `termination_reason` | 区分正常收敛和达到几何线性化上限 |
-| `settings` | 固化本次几何、VCE 与 IGGIII 收敛阈值 |
+| `termination_reason` | 区分正常收敛和达到线性化上限 |
+| `settings` | 固化本次线性化、VCE 与 IGGIII 收敛阈值 |
 | `equation_evaluations` | 逐次记录前向模型输入数、光行时收敛数及固定观测域返回数 |
-| `linearizations` | 记录每个几何线性化点的随机模型状态、候选/实际参数改正、连续收敛计数、WRMS 和法方程状态 |
+| `linearizations` | 记录每个线性化点的随机模型状态、候选/实际参数改正、连续收敛计数、WRMS 和法方程状态 |
 | `iterations` | 记录尺度/因子未阻尼目标残差、活跃集变化率、当前阻尼、VCE 多余度和候选参数改正 |
-| `parameters` | 最终线性化改正、协因数标准差、验后形式标准差和最大参数相关性 |
+| `parameters` | 最终已应用状态的剩余线性化改正、协因数标准差、验后形式标准差和最大参数相关性 |
 | `global_residuals` | 全局残差、标准化残差分位数、等价权 WRMS 与抗差状态计数 |
 | `variance_components` | VCE 分量、残差分布、抗差状态和实际时间覆盖 |
-| `observations` | 保留逐观测后验残差、杠杆值、标准化残差、IGGIII 因子和等价权 |
+| `observations` | 保留逐观测当前状态残差、线性化后验残差、杠杆值、已应用与最终状态建议 IGGIII 因子和等价权 |
 
-`termination_reason` 取 `CONVERGED` 或 `MAXIMUM_GEOMETRY_ITERATIONS_REACHED`。随机模型达到单个内层上限记录在对应 `linearizations` 项中，不再提前终止整个调整。
+`termination_reason` 取 `CONVERGED` 或 `MAXIMUM_LINEARIZATIONS_REACHED`。随机模型达到单个内层上限记录在对应 `linearizations` 项中，不再提前终止整个调整。
 
 ### 19.2 每个方差分量
 
@@ -1544,8 +1554,8 @@ llrops/estimation/
 | `initial_scale` | MAD 启动 $s_g^{(0)}$ |
 | `final_scale` | 最终 $s_g$ |
 | `variance_component` | 最终 $s_g^2$ |
-| `residual_rms` | 残差 RMS |
-| `residual_wrms` | 最终等价权 WRMS |
+| `residual_rms_m` | 残差 RMS（米） |
+| `residual_wrms_m` | 最终等价权 WRMS（米） |
 | `standardized_rms` | 标准化残差 RMS |
 | `median_standardized_residual` | 标准化残差中位数 |
 | `mad_standardized_residual` | 标准化残差 MAD |
@@ -1558,17 +1568,26 @@ observation_id
 epoch
 station_id
 station_system
-variance_component_id
-sigma_np
+vce_component_id
+reported_sigma_m
+effective_sigma_m
+uncertainty_qc_status
+uncertainty_qc_reason
+uncertainty_sigma_floor_m
 base_scale
-base_variance
-base_weight
-postfit_residual
-residual_sigma
+base_variance_m2
+base_weight_per_m2
+current_state_residual_m
+linearized_postfit_residual_m
+residual_sigma_m
+leverage
 standardized_residual
-igg3_factor
-equivalent_weight
-robust_status
+applied_igg3_factor
+final_state_proposed_igg3_factor
+proposed_igg3_factor_applied
+equivalent_weight_per_m2
+applied_robust_status
+final_state_proposed_robust_status
 matched_bias_ids
 ```
 
@@ -1577,7 +1596,7 @@ matched_bias_ids
 ```text
 name
 type
-final_linearized_correction_m
+remaining_linearized_correction_m
 cofactor_sigma_m
 formal_sigma_m
 maximum_absolute_correlation
@@ -1602,6 +1621,7 @@ expected_total_redundancy
 normal_matrix_condition
 scales
 robust_factor_summary
+final_state_proposed_robust_factor_summary
 variance_components
 ```
 

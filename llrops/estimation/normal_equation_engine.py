@@ -49,6 +49,70 @@ class NormalEquationSingularError(np.linalg.LinAlgError):
     """Raised when a normal-equation matrix cannot be solved strictly."""
 
 
+@dataclass(frozen=True)
+class DenseLinearization:
+    """Materialized fixed-linearization system for repeated reweighting."""
+
+    equations: tuple[ObservationEquation, ...]
+    parameter_names: tuple[ParameterName, ...]
+    design: np.ndarray
+    reduced_observations: np.ndarray
+    sigmas: np.ndarray
+    identities: tuple[object, ...]
+
+    @classmethod
+    def build(
+        cls,
+        equations: Sequence[ObservationEquation],
+        parametrization: ParametrizationList,
+        parameter_names: Sequence[ParameterName],
+    ) -> "DenseLinearization":
+        rows = tuple(equations)
+        design = np.vstack([parametrization.design_row(eq) for eq in rows])
+        reduced = np.asarray(
+            [parametrization.reduced_observation(eq) for eq in rows], dtype=float
+        )
+        sigmas = np.asarray([eq.sigma_m for eq in rows], dtype=float)
+        for array in (design, reduced, sigmas):
+            array.setflags(write=False)
+        return cls(
+            equations=rows,
+            parameter_names=tuple(parameter_names),
+            design=design,
+            reduced_observations=reduced,
+            sigmas=sigmas,
+            identities=tuple(eq.identity for eq in rows),
+        )
+
+    def normal_equations(
+        self,
+        weights: np.ndarray,
+        *,
+        active: Optional[np.ndarray] = None,
+    ) -> NormalEquations:
+        weights = np.asarray(weights, dtype=float).reshape(-1)
+        if weights.size != len(self.equations):
+            raise ValueError("Dense weights do not match the observation count.")
+        if not np.all(np.isfinite(weights)) or np.any(weights < 0.0):
+            raise ValueError("Dense weights must be finite and non-negative.")
+        mask = weights > 0.0 if active is None else np.asarray(active, dtype=bool)
+        if mask.shape != weights.shape:
+            raise ValueError("Dense active mask does not match the observation count.")
+        A = self.design[mask]
+        l = self.reduced_observations[mask]
+        w = weights[mask]
+        weighted_A = w[:, None] * A
+        normal_matrix = A.T @ weighted_A
+        normal_matrix = 0.5 * (normal_matrix + normal_matrix.T)
+        return NormalEquations(
+            parameter_names=list(self.parameter_names),
+            N=normal_matrix,
+            W=A.T @ (w * l),
+            lPl=float(np.dot(w, l * l)),
+            obs_count=int(np.count_nonzero(mask)),
+        )
+
+
 def build_normal_equations_streaming(
     equations: Iterable[ObservationEquation],
     parametrization: ParametrizationList,

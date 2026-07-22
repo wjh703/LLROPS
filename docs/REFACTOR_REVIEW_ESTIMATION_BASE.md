@@ -1,5 +1,11 @@
 # Follow-up review: estimation, parametrization, base, range bias and uncertainty
 
+> Historical review note for v28-v29. The generic `LeastSquaresAdjustment`,
+> `AdjustmentOptions`, and iteration-snapshot API described below were later
+> removed. Current nonlinear estimation is owned by `adjustment_solver.py`, with
+> strict options, parsing, preprocessing, and reporting in the adjacent
+> `adjustment_*` modules documented in `ARCHITECTURE.md`.
+
 This note records the v28 direction after the v27 ERFA refactor.  The guiding
 principle is strict, explicit modelling: no hidden regularization, no silent
 parameter rescue, and domain tables should carry their own units, coverage and

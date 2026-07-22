@@ -1,10 +1,13 @@
+from llrops.config.context import RunContext
 from llrops.parallel.mpi import (
     MpiRuntime,
     TAG_BROADCAST_SPEC,
     TAG_INITIALIZE_SPEC,
     TAG_READY,
     TAG_STOP,
+    _processor_for_task,
 )
+from llrops.parallel.observation_spec import make_observation_spec
 
 
 class _FakeStatus:
@@ -141,6 +144,48 @@ def test_single_rank_spec_uses_serial_cache(monkeypatch):
     assert runtime.initialize_observation_workers("serial", quiet=True) is True
     assert runtime._serial_cache[("observationSpec", "serial")] is spec
     assert runtime._serial_cache[("processor", "serial")] is processor
+
+
+def test_observation_specs_are_unique_and_use_explicit_catalogs():
+    context = RunContext(global_class_configs={}, working_dir=".")
+    first_stations = {"station": object()}
+    first_reflectors = {"reflector": object()}
+    second_stations = {"other-station": object()}
+    second_reflectors = {"other-reflector": object()}
+
+    first = make_observation_spec(
+        {},
+        context,
+        station_catalog=first_stations,
+        reflector_catalog=first_reflectors,
+    )
+    second = make_observation_spec(
+        {},
+        context,
+        station_catalog=second_stations,
+        reflector_catalog=second_reflectors,
+    )
+
+    assert first["specId"] != second["specId"]
+    assert first["stationCatalog"] is first_stations
+    assert second["stationCatalog"] is second_stations
+    assert first["reflectorCatalog"] is first_reflectors
+    assert second["reflectorCatalog"] is second_reflectors
+
+
+def test_worker_processors_share_only_the_immutable_class_cache(monkeypatch):
+    cache = {}
+    class_caches = []
+
+    def build(spec, shared_class_cache):
+        class_caches.append(shared_class_cache)
+        return object()
+
+    monkeypatch.setattr("llrops.parallel.mpi.build_worker_processor", build)
+    first = _processor_for_task(cache, {"specId": "first"})
+    second = _processor_for_task(cache, {"specId": "second"})
+    assert first is not second
+    assert class_caches[0] is class_caches[1]
 
 
 class _FakeWorkerComm:

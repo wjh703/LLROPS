@@ -246,13 +246,27 @@ programs:
           - {station: WETTZELL, start: 2018-01-01, end_exclusive: null, name: WETTZELL_20180101_PRESENT}
 
     # -------------------------------------------------------------------------
-    # Geometry linearization and irreversible prefit gross screening
+    # Nonlinear adjustment and irreversible prefit gross screening
     # -------------------------------------------------------------------------
     adjustment:
-      # Geometry outer-loop limit. Each outer loop computes O-C/design once,
+      # Prefit uncertainty quality control. Reported one-way sigmas below
+      # max(minimumOneWaySigmaM, minimumFractionOfGroupMedian * group median)
+      # are floored once and then kept fixed across all relinearizations. Groups
+      # are the station/equipment-era VCE components configured below.
+      uncertaintyFloor:
+        minimumOneWaySigmaM: 1.0e-3
+        minimumFractionOfGroupMedian: 0.1
+
+      # Materialize A/l/sigma once per linearization point so repeated robust/VCE
+      # iterations use vectorized BLAS operations. The streaming backend remains
+      # available for numerical comparison and unusually large parameter sets.
+      linearizationBackend: dense
+      warmStartStochasticModelAcrossStages: true
+
+      # Nonlinear outer-loop limit. Each outer loop computes O-C/design once,
       # performs a bounded IGGIII/VCE block, then always applies the parameter
       # correction before the next linearization.
-      maxIterations: 10
+      maximumLinearizations: 10
       # Default tolerance for parameter blocks without an explicit override.
       updateToleranceM: 2.0e-3
       updateToleranceByBlockM:
@@ -268,18 +282,22 @@ programs:
         - name: reflector
           parametrizations:
             - ReflectorPositionParametrization
-          maxIterations: 8
+          maximumLinearizations: 8
           updateToleranceM: 1.0e-3
         - name: bias
           parametrizations:
             - StationRangeBiasParametrization
-          maxIterations: 8
+          maximumLinearizations: 8
           updateToleranceM: 2.0e-3
         - name: joint
           parametrizations:
             - ReflectorPositionParametrization
             - StationRangeBiasParametrization
-          maxIterations: 10
+          # Half-step parameter updates suppress the observed Apollo 15 y/z
+          # sign-alternating joint oscillation. Convergence is still tested
+          # against the full, undamped candidate correction.
+          parameterUpdateFactor: 0.5
+          maximumLinearizations: 10
           updateToleranceM: 2.0e-3
 
       # Applied once before Bias initialization, MAD, VCE, or IGGIII.
@@ -296,57 +314,56 @@ programs:
         MLRS2: 1.5
 
     initialization:
-      bias_weight_cap: 1.0e12
-      bias_maximum_iterations: 30
-      minimum_mad_count: 10
-      minimum_initial_scale: 1.0
+      biasWeightCap: 1.0e+12
+      biasMaximumIterations: 30
+      minimumMadCount: 10
+      minimumInitialScale: 1.0
 
-    robust_estimation:
+    robustEstimation:
       k0: 1.5
       k1: 6.0
       # Studentized residual correction for observations with high adjustment leverage.
-      minimum_one_minus_leverage: 1.0e-8
-      minimum_nonzero_robust_factor: 1.0e-12
+      minimumOneMinusLeverage: 1.0e-8
+      activeFactorThreshold: 1.0e-12
       # Zero IGGIII targets are rejected immediately. Changes wholly below this
       # floor are ignored for convergence; near-full factors snap to 1.
-      minimum_robust_factor_for_convergence: 1.0e-3
+      convergenceFactorFloor: 1.0e-3
+      changeQuantile: 0.999
 
     vce:
-      method: helmert
-      # Bounded stochastic block per geometry linearization. Hitting this limit
+      # Bounded stochastic block per outer linearization. Hitting this limit
       # no longer aborts the adjustment; the current parameter correction is
       # applied and O-C/design are recomputed.
-      maximum_iterations: 8
-      minimum_effective_redundancy: 20.0
+      maximumIterations: 8
+      minimumEffectiveRedundancy: 20.0
 
       # Convergence is evaluated on undamped fixed-point targets, not on the
       # smaller applied step. A few threshold observations cannot dominate the
       # decision, but active/rejected membership must remain stable.
-      scale_log_tolerance: 2.5e-2
-      robust_factor_change_tolerance: 2.0e-2
-      robust_factor_change_quantile: 0.999
-      active_set_change_tolerance: 1.0e-3
+      scaleLogTolerance: 2.5e-2
+      targetFactorChangeTolerance: 2.0e-2
+      targetActiveSetChangeTolerance: 1.0e-3
 
       # IGGIII factors and bounded Helmert variance targets are applied directly.
       # Protect a single VCE update from an extreme raw component variance.
-      minimum_variance_ratio_per_iteration: 0.25
-      maximum_variance_ratio_per_iteration: 4.0
+      minimumVarianceRatioPerIteration: 0.25
+      maximumVarianceRatioPerIteration: 4.0
 
       # Exactly one component must match each retained observation.
       # CERGA MeO/IR overlap is separated by laser wavelength. The strict one-match rule is
       # enforced directly and is not a configurable policy.
       components:
-        - {id: MCDONALD_1969_1985, station_system: MCDONALD, station_aliases: [MCDONALD], start: 1969-01-01, end_exclusive: 1986-01-01}
-        - {id: MLRS1_1983_1988, station_system: MLRS1, station_aliases: [MLRS1], start: 1983-01-01, end_exclusive: 1989-01-01}
-        - {id: MLRS2_1988_2015, station_system: MLRS2, station_aliases: [MLRS2], start: 1988-01-01, end_exclusive: 2016-01-01}
-        - {id: HALEAKALA_1984_1990, station_system: HALEAKALA, station_aliases: [HALEAKALA], start: 1984-01-01, end_exclusive: 1991-01-01}
-        - {id: CERGA_RUBY_1984_1986, station_system: CERGA_RUBY, station_aliases: [GRASSE, CERGA], start: 1984-01-01, end_exclusive: 1987-01-01}
-        - {id: CERGA_YAG_1987_2005, station_system: CERGA_YAG, station_aliases: [GRASSE, CERGA], start: 1987-01-01, end_exclusive: 2006-01-01}
-        - {id: CERGA_MEO_2009_PRESENT, station_system: CERGA_MEO, station_aliases: [GRASSE, CERGA], start: 2009-01-01, end_exclusive: null, wavelength_max_nm: 700.0}
-        - {id: CERGA_IR_2015_PRESENT, station_system: CERGA_IR, station_aliases: [GRASSE, CERGA], start: 2015-01-01, end_exclusive: null, wavelength_min_nm: 700.0}
-        - {id: APACHE_2006_PRESENT, station_system: APACHE, station_aliases: [APOLLO, APACHE, APOL], start: 2006-01-01, end_exclusive: null}
-        - {id: MATERA_2003_PRESENT, station_system: MATERA, station_aliases: [MATERA], start: 2003-01-01, end_exclusive: null}
-        - {id: WETTZELL_2018_PRESENT, station_system: WETTZELL, station_aliases: [WETTZELL], start: 2018-01-01, end_exclusive: null}
+        - {id: MCDONALD_1969_1985, stationSystem: MCDONALD, stationAliases: [MCDONALD], start: 1969-01-01, endExclusive: 1986-01-01}
+        - {id: MLRS1_1983_1988, stationSystem: MLRS1, stationAliases: [MLRS1], start: 1983-01-01, endExclusive: 1989-01-01}
+        - {id: MLRS2_1988_2015, stationSystem: MLRS2, stationAliases: [MLRS2], start: 1988-01-01, endExclusive: 2016-01-01}
+        - {id: HALEAKALA_1984_1990, stationSystem: HALEAKALA, stationAliases: [HALEAKALA], start: 1984-01-01, endExclusive: 1991-01-01}
+        - {id: CERGA_RUBY_1984_1986, stationSystem: CERGA_RUBY, stationAliases: [GRASSE, CERGA], start: 1984-01-01, endExclusive: 1987-01-01}
+        - {id: CERGA_YAG_1987_2005, stationSystem: CERGA_YAG, stationAliases: [GRASSE, CERGA], start: 1987-01-01, endExclusive: 2006-01-01}
+        - {id: CERGA_MEO_2009_PRESENT, stationSystem: CERGA_MEO, stationAliases: [GRASSE, CERGA], start: 2009-01-01, endExclusive: null, wavelengthMaxExclusiveNm: 700.0}
+        - {id: CERGA_IR_2015_PRESENT, stationSystem: CERGA_IR, stationAliases: [GRASSE, CERGA], start: 2015-01-01, endExclusive: null, wavelengthMinNm: 700.0}
+        - {id: APACHE_2006_PRESENT, stationSystem: APACHE, stationAliases: [APOLLO, APACHE, APOL], start: 2006-01-01, endExclusive: null}
+        - {id: MATERA_2003_PRESENT, stationSystem: MATERA, stationAliases: [MATERA], start: 2003-01-01, endExclusive: null}
+        - {id: WETTZELL_2018_PRESENT, stationSystem: WETTZELL, stationAliases: [WETTZELL], start: 2018-01-01, endExclusive: null}
 
     # MPI task granularity; ignored in normal serial execution.
     mpi:
@@ -354,17 +371,17 @@ programs:
 
     # Full diagnostic JSON. In addition to observation records, this contains:
     # - summary and termination_reason;
-    # - equation_evaluations and geometry linearizations;
+    # - equation_evaluations and nonlinear linearizations;
     # - fixed-linearization stochastic iterations;
     # - parameter precision/correlation diagnostics;
     # - global and component residual/factor distributions.
-    outputJson: "{outputDir}/reflector_bias_adjustment1.json"
+    outputJson: "{outputDir}/reflector_bias_adjustment4.json"
 
     # Final weighted normal equations for independent inspection/re-solving.
     # writes:
     #   {outputNormals}.npz
     #   {outputNormals}.parameters.json
-    outputNormals: "{outputDir}/reflector_bias_adjustment_normals1"
+    outputNormals: "{outputDir}/reflector_bias_adjustment_normals4"
 
   # ---------------------------------------------------------------------------
   # Optional fixed-linearization normal-equation split workflow.

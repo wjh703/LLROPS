@@ -75,7 +75,8 @@ class Ephemeris(ABC):
         return 0.0
 
     def close(self) -> None:
-        pass
+        """Release resources; the default implementation owns none."""
+        return None
 
     def __enter__(self) -> "Ephemeris":
         return self

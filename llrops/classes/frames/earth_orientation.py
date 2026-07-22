@@ -119,7 +119,8 @@ class EarthOrientation(ABC):
         ...
 
     def close(self) -> None:
-        pass
+        """Release resources; the default implementation owns none."""
+        return None
 
 
 class C04EarthOrientation(EarthOrientation):

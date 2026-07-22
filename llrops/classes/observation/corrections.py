@@ -141,7 +141,7 @@ class UncertaintyModel(ABC):
         station_candidates: Sequence[str],
         epoch_utc: Epoch,
     ) -> UncertaintyEstimate:
-        pass
+        raise NotImplementedError
 
     def validate(
         self,
