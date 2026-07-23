@@ -2,8 +2,10 @@
 # LLROPS nonlinear adjustment: reflector coordinates + station range bias
 # ==============================================================================
 #
-# Current code base:
-#   current llrops_project_dev source tree
+# Current program implementation:
+#   llrops/programs/llr_adjustment.py
+# Configurable observation classes are assembled by:
+#   llrops/classes/observation_factory.py
 #
 # Run serial, single process:
 #   uv run python -m llrops run configs/llrops_reflector_bias_adjustment_detailed.yml
@@ -20,7 +22,7 @@
 # - Do not use the old "parallel: {enabled, workers, chunksize}" block.
 # - In MPI mode, only the "mpi.chunksize" option below controls O-C task size.
 # - rangeBias is the forward-model range-bias class config.
-# - stationRangeBias per=station+interval requires explicit w'pintervals/periods.
+# - stationRangeBias per=station+interval requires explicit intervals/periods.
 # - Override variables.* when running with a different data or output directory.
 # - Time/Earth-rotation transforms now use ERFA + explicit IERS C04 EOP; Astropy is not required.
 
@@ -108,6 +110,10 @@ globals:
   reflectorCatalog: builtin
 
 programs:
+  # Program names are resolved through llrops/programs/registry.py. This file
+  # intentionally runs only LlrAdjustment; fixed-linearization normal-equation
+  # generation and combination are separate configurable programs.
+
   # ---------------------------------------------------------------------------
   # Main nonlinear adjustment
   # ---------------------------------------------------------------------------
@@ -137,14 +143,8 @@ programs:
     #   wrms-table | mini
     uncertainty: mini
 
-    # LlrAdjustment needs reflector design partials. Keep this true.
-    # If set false, reflectorPosition estimation will fail because the
-    # reflector_position_pa partial block will be missing.
-    includeReflectorDesign: true
-
-    # outputLevel is effectively full when includeReflectorDesign is true.
-    # Full output includes troposphere elevation clamp diagnostics.
-    outputLevel: full
+    # LlrAdjustment always requests reflector design partials from the
+    # observation pipeline; no residual-table outputLevel is needed here.
 
     # Horizon threshold is diagnostic only; rows are not filtered by it.
     minElevationDeg: 3.0
@@ -382,40 +382,3 @@ programs:
     #   {outputNormals}.npz
     #   {outputNormals}.parameters.json
     outputNormals: "{outputDir}/reflector_bias_adjustment_normals4"
-
-  # ---------------------------------------------------------------------------
-  # Optional fixed-linearization normal-equation split workflow.
-  # Disabled by default. This is useful if you later want to build normal
-  # equations by station/time block and combine them.
-  # ---------------------------------------------------------------------------
-  # - program: LlrNormalEquations
-  #   enabled: false
-  #   inputNormalPoints:
-  #     - "{inputNp}"
-  #   miniIoLog: "{miniIoLog}"
-  #   combineInputs: false
-  #   startTime: null
-  #   endTime: null
-  #   stationName: null
-  #   reflectorName: null
-  #   uncertainty: wrms-table
-  #   includeReflectorDesign: true
-  #   outputLevel: full
-  #   minElevationDeg: 0.0
-  #   showProgress: true
-  #   parametrization:
-  #     - type: reflectorPosition
-  #       reflectors: [APOLLO15]
-  #     - type: stationRangeBias
-  #       per: station
-  #       stations: [APOLLO, GRASSE]
-  #   mpi:
-  #     chunksize: 8
-  #   outputNormals: "{outputDir}/normals/block_example"
-
-  # - program: NormalsCombineSolve
-  #   enabled: false
-  #   inputNormals:
-  #     - "{outputDir}/normals/block_example"
-  #   outputSolutionJson: "{outputDir}/combined_solution.json"
-  #   outputNormals: "{outputDir}/normals/combined"
