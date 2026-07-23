@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from llrops.base.constants import C
 from llrops.base.epoch import Epoch, TimeScale
 from llrops.config.context import RunContext
 from llrops.fileio.crd import convert_crd_to_mini
@@ -39,6 +40,9 @@ def test_crd_reads_directly_to_npt_without_mini_quantization_or_side_effect(tmp_
     assert record.reflector_code == "3"
     assert record.round_trip_time_s == pytest.approx(2.500000000123)
     assert record.uncertainty_two_way_s == pytest.approx(12.3456e-12)
+    assert record.range_uncertainty_one_way_m == pytest.approx(
+        0.5 * C * 12.3456e-12
+    )
     assert record.pressure_hpa == pytest.approx(900.123)
     assert record.temperature_k == pytest.approx(280.123)
     assert record.humidity_percent == pytest.approx(50.25)
@@ -83,6 +87,8 @@ def test_mini_reads_directly_to_npt(tmp_path):
     assert record.station_name == "APOL"
     assert record.reflector_name == "Apollo 15"
     assert record.round_trip_time_s == pytest.approx(2.5)
+    assert record.uncertainty_two_way_s == pytest.approx(12.3e-12)
+    assert record.range_uncertainty_one_way_m == pytest.approx(0.5 * C * 12.3e-12)
 
 
 def test_llrops_jsonl_round_trip_preserves_canonical_values(tmp_path):
@@ -100,6 +106,10 @@ def test_llrops_jsonl_round_trip_preserves_canonical_values(tmp_path):
     assert len(recovered.records) == 1
     assert recovered.records[0].transmit_epoch == original.records[0].transmit_epoch
     assert recovered.records[0].round_trip_time_s == original.records[0].round_trip_time_s
+    assert (
+        recovered.records[0].uncertainty_two_way_s
+        == original.records[0].uncertainty_two_way_s
+    )
     assert recovered.records[0].temperature_k == original.records[0].temperature_k
     assert dispatched.records[0].station_code == "70610"
 

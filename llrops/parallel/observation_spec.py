@@ -15,7 +15,6 @@ _MODEL_CATEGORIES = (
     "stationDisplacement",
     "reflectorDisplacement",
     "rangeBias",
-    "uncertaintyModel",
 )
 
 
@@ -69,6 +68,9 @@ def make_observation_spec(
     referenced by ``specId`` in individual tasks.  This avoids repeatedly
     pickling catalogs and EOP arrays for every small chunk.
     """
+    from llrops.classes.observation_factory import validate_observation_config
+
+    validate_observation_config(config, context.global_class_configs)
     merged: dict = {}
     for category in _MODEL_CATEGORIES:
         value = context.class_config(category, config)

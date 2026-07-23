@@ -14,7 +14,7 @@ Each line carries *exactly* the following fields (1-based columns):
     38    1      reflector id                   0=A11 1=L1 2=A14 3=A15 4=L2 [required]
     39-43 5      station id                     ILRS-style 5-char code  [required]
     44-46 3      number of returns              integer (optional)
-    47-52 6      uncertainty (two-way)          integer, 0.1 ps         [optional; not used for weights]
+    47-52 6      uncertainty (two-way)          integer, 0.1 ps         [required; used for weights]
     53-55 3      signal-to-noise ratio          integer, S/N * 10 (optional)
     56    1      quality code                   single char (optional)
     57-62 6      surface pressure               integer, hPa * 100, > 0 [required]
@@ -436,9 +436,8 @@ def parse_mini_file(path, *, mini_io_log_path=None):
 
     After this function returns, every record in the dataset is guaranteed to
     carry complete MINI-owned data: launch epoch, observed two-way light time,
-    reflector id, station id, MINI uncertainty, pressure, temperature, humidity,
-    and wavelength.  Catalog resolution and WRMS-table matching depend on the
-    processing catalogs and are validated once at the
+    reflector id, station id, uncertainty, pressure, temperature, humidity,
+    and wavelength. Catalog identities are resolved at the
     :meth:`LlrObservationProcessor.process` boundary.
     """
     path = Path(path)

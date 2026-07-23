@@ -24,8 +24,8 @@
 - Kept time handling on the scalar `Epoch` contract; batch facade code has been removed.
 - Routed catalog vector and parameter-vector checks through `base.array_validation`.
 
-## Range bias and uncertainty
+## Range bias
 
-- Added `RangeBiasTable` and `WrmsUncertaintyTable` station-indexed table objects.
+- Added the station-indexed `RangeBiasTable` object.
 - Added a first table-object layer before the v29 public API cleanup.
 - Added coverage summaries and table lookup tests.

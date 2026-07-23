@@ -102,10 +102,6 @@ globals:
   rangeBias:
     type: none
 
-  uncertaintyModel:
-    type: wrms-table
-    model: default
-
   stationCatalog: builtin
   reflectorCatalog: builtin
 
@@ -139,9 +135,8 @@ programs:
     stationName: null
     reflectorName: null
 
-    # Observation uncertainty:
-    #   wrms-table | mini
-    uncertainty: mini
+    # Observation uncertainty is read from each input normal-point record.
+    # MINI supplies its uncertainty field; CRD supplies record 11 bin RMS.
 
     # LlrAdjustment always requests reflector design partials from the
     # observation pipeline; no residual-table outputLevel is needed here.

@@ -133,7 +133,6 @@ def _handle_observation_results(payload: dict, cache: dict):
     )
     results = processor.process(
         local,
-        source_name=payload["sourceName"],
         options=options,
     )
     response = {

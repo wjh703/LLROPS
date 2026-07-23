@@ -21,9 +21,6 @@ class LlrObservationResultBuilder:
     ) -> LlrObservationResult:
         record = observation.record
         solution = prediction.light_time
-        selected = reduction.selected_uncertainty
-        mini = reduction.mini_uncertainty
-        wrms = reduction.wrms_uncertainty
         bias = reduction.range_bias
         station_itrf_m = observation.station.itrf_xyz_at(observation.transmit_epoch)
 
@@ -34,24 +31,11 @@ class LlrObservationResultBuilder:
             "reflector_id": record.reflector_code,
             "station_id": record.station_code or record.station_name,
             "station_full_name": observation.station.name,
-            "uncertainty_model": selected.kind.value,
-            "uncertainty_raw": selected.uncertainty_raw,
-            "uncertainty_two_way_s": selected.uncertainty_two_way_s,
-            "uncertainty_two_way_ps": selected.uncertainty_two_way_ps,
-            "range_uncertainty_one_way_m": selected.sigma_one_way_m,
-            "fit_sigma_one_way_m": selected.sigma_one_way_m,
+            "uncertainty_two_way_s": record.uncertainty_two_way_s,
+            "uncertainty_two_way_ps": record.uncertainty_two_way_ps,
+            "range_uncertainty_one_way_m": record.range_uncertainty_one_way_m,
+            "fit_sigma_one_way_m": record.range_uncertainty_one_way_m,
             "sigma_definition": reduction.sigma_definition,
-            "uncertainty_source": selected.source,
-            "uncertainty_group": selected.group,
-            "wrms_two_way_m": None if wrms is None else wrms.wrms_two_way_m,
-            "wrms_sigma_one_way_m": None if wrms is None else wrms.sigma_one_way_m,
-            "wrms_uncertainty_raw": None if wrms is None else wrms.uncertainty_raw,
-            "wrms_uncertainty_two_way_s": None if wrms is None else wrms.uncertainty_two_way_s,
-            "wrms_uncertainty_two_way_ps": None if wrms is None else wrms.uncertainty_two_way_ps,
-            "mini_uncertainty_raw": mini.uncertainty_raw,
-            "mini_uncertainty_two_way_s": mini.uncertainty_two_way_s,
-            "mini_uncertainty_two_way_ps": mini.uncertainty_two_way_ps,
-            "mini_range_uncertainty_one_way_m": mini.sigma_one_way_m,
             "pressure_hpa": record.pressure_hpa,
             "temperature_c": record.temperature_c,
             "humidity_percent": record.humidity_percent,
@@ -147,7 +131,7 @@ class LlrObservationResultBuilder:
             reflector_key=observation.reflector_key,
             epoch=observation.transmit_epoch,
             observed_minus_computed_m=reduction.observed_minus_computed_one_way_m,
-            sigma_one_way_m=selected.sigma_one_way_m,
+            sigma_one_way_m=record.range_uncertainty_one_way_m,
             converged=solution.converged,
             partials=partials,
             values=values,

@@ -27,27 +27,8 @@ globals:
 - Removed module-level function wrappers such as `range_bias_two_way_cm()`;
   callers now use `RangeBiasTable` or `TableRangeBiasModel` explicitly.
 
-## Declarative uncertainty model
-
-- Added the `uncertaintyModel` class config category for the WRMS table used by
-  `uncertainty: wrms-table` processing.
-- Built-in default WRMS uncertainty is selected with:
-
-```yaml
-globals:
-  uncertaintyModel:
-    type: wrms-table
-    model: default
-```
-
-- Custom WRMS uncertainty tables can be supplied inline or from YAML/JSON files
-  through `uncertaintyModel: {type: table, file: ...}`.
-- Removed the old `wrms_uncertainty_entry()` wrapper; callers now query a
-  `WrmsUncertaintyTable` instance explicitly.
-
 ## Tests
 
-- Added declarative YAML/mapping tests for range-bias and WRMS uncertainty
-  tables.
+- Added declarative YAML/mapping tests for range-bias tables.
 - Updated strict import tests after removing compatibility aliases.
 - Current suite: `47 passed`.

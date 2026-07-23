@@ -54,12 +54,11 @@ llrops/
 │   │   ├── ocean_pole_tide.py  grid reader + IERS 2010 ocean pole-tide loading
 │   │   └── lunar_solid_tide.py  Moon-fixed lunar solid tide
 │   ├── range_bias/       range-bias models and declarative tables
-│   ├── uncertainty/      uncertainty models and WRMS tables
 │   ├── observation/   typed observation workflow
 │   │   ├── light_time.py   request/solver/solution for two-way propagation
 │   │   ├── model.py        pure theoretical LLR observable + reflector partial
 │   │   ├── resolver.py     catalog resolution boundary
-│   │   ├── reduction.py   deterministic corrections + stochastic reduction
+│   │   ├── reduction.py   deterministic corrections + scalar diagnostics
 │   │   ├── result_builder.py  typed result construction and diagnostics
 │   │   ├── frozen_mapping.py  immutable mappings for transport types
 │   │   ├── processor.py   dataset orchestration only
@@ -159,7 +158,9 @@ NptRecord
 
 `LightTimeSolver.solve(LightTimeRequest)` owns only the two-way propagation
 problem. `LlrObservationModel` adds the theoretical observable and optional
-reflector PA partial. Catalog resolution, bias correction, uncertainty selection, result assembly, progress reporting, and table projection live in separate objects.
+reflector PA partial. Catalog resolution, bias correction, input uncertainty
+propagation, result assembly, progress reporting, and table projection live in
+separate objects.
 The estimator never reconstructs equations from table dictionaries.
 
 ```python
@@ -208,7 +209,8 @@ the applied state so state, residuals, normals, and remaining corrections agree.
 | `ephemeris.py` | `classes/ephemerides/{base,longitude_libration,calceph}.py` | split into interface, immutable query/result objects, correction model and CALCEPH implementation |
 | `iers_delay_models.py` | `classes/delays/{base,shapiro,troposphere}.py` | moved; registered as `troposphere`/`relativity` types |
 | `tidal_displacement.py` | `classes/displacement/{base,solid_earth_tide,pole_tide,ocean_pole_tide,lunar_solid_tide}.py` | split into typed inputs, composable interfaces, independent physics models and explicit backend injection |
-| `range_bias.py`, `uncertainty_model.py` | `classes/range_bias/table.py`, `classes/uncertainty/wrms_table.py` | moved into explicit station-indexed table models |
+| `range_bias.py` | `classes/range_bias/table.py` | moved into an explicit station-indexed table model |
+| `uncertainty_model.py` | `fileio/normal_points.py` | external uncertainty models removed; each input record owns its two-way uncertainty |
 | `light_time.py` | `classes/observation/light_time.py` | request/solver/result API; long keyword-list interface removed |
 | `pipeline.py` StationRecord/ReflectorRecord/resolve | `fileio/catalogs.py` | moved + config loaders added |
 | `pipeline.py` observation workflow | `classes/observation/{resolver,model,reduction,result_builder,processor,results}.py` plus domain model packages | split into typed, independently testable stages; assembled by `observation_factory.build_observation_processor` |
@@ -221,8 +223,11 @@ the applied state so state, residuals, normals, and remaining corrections agree.
 | six argparse CLIs | `python -m llrops run config.yml` | one entry point |
 
 Breaking changes: package renamed (`llr_processor_refactored` → `llrops`),
-CLI replaced by configs, and observation assembly is centralized in
-`observation_factory.build_observation_processor`. Physics formulas are preserved, while public APIs and dependency injection are intentionally redesigned during development.
+CLI replaced by configs, observation assembly is centralized in
+`observation_factory.build_observation_processor`, and observation uncertainty
+comes only from normal-point records. Physics formulas are preserved, while
+public APIs and dependency injection are intentionally redesigned during
+development.
 
 ## 5. Extension guides
 
