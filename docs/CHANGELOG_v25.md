@@ -7,7 +7,7 @@
 * LLRPipeline renamed LlrRangeModel (alias kept); model assembly moved to
   `llrops.classes.observation_factory.build_observation_processor`, driven by registered class
   categories: ephemerides, earthRotation, troposphere, relativity,
-  stationDisplacement, reflectorDisplacement, rangeBias, uncertainty.
+  stationDisplacement, reflectorDisplacement, and rangeBias.
 * New GROOPS-style estimation stack: ObservationEquation with named partial
   blocks, Parametrization classes (reflectorPosition, stationRangeBias),
   structured ParameterName, NormalEquations files with name-aligned
@@ -15,7 +15,7 @@
   LlrAdjustment / LlrNormalEquations / NormalsCombineSolve.
 * All v24 numerical modules moved into the package structure (imports rewritten):
   light-time, tides, delays, frames, ephemeris backend, MINI/CRD IO,
-  range-bias and WRMS tables. Reflector fitting is no longer a separate
+  and range-bias tables. Reflector fitting is no longer a separate
   estimator; it is expressed through the generalized adjustment stack.
 
 ## Update (this revision)

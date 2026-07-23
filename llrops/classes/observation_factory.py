@@ -13,7 +13,6 @@ relativity             : none | iersShapiro
 stationDisplacement    : none | sum | iers2010SolidEarthTide | iers2010PoleTide | iers2010OceanPoleTide
 reflectorDisplacement  : none | lunarSolidTide
 rangeBias             : none | inpop21 | table
-uncertaintyModel      : wrms-table | table
 parametrization        : reflectorPosition | stationRangeBias   (registered in their modules)
 
 ``RunContext.create_class(..., cache=True)`` is intentionally used here for
@@ -27,6 +26,26 @@ from pathlib import Path
 
 from llrops.config.registry import register_factory, normalize_class_config
 
+
+_REMOVED_UNCERTAINTY_CONFIG_KEYS = frozenset({"uncertainty", "uncertaintyModel"})
+
+
+def validate_observation_config(
+    program_config: dict,
+    global_config: dict | None = None,
+) -> None:
+    """Reject uncertainty selectors now owned by normal-point records."""
+    for scope, config in (
+        ("program", program_config),
+        ("globals", global_config or {}),
+    ):
+        removed = sorted(_REMOVED_UNCERTAINTY_CONFIG_KEYS.intersection(config))
+        if removed:
+            raise ValueError(
+                f"{scope} contains removed uncertainty configuration key(s) "
+                f"{removed}; every normal-point record must provide "
+                "uncertainty_two_way_s."
+            )
 
 
 def _resolve_optional_path(ctx, value):
@@ -67,12 +86,6 @@ def _register_all() -> None:
         builtin_range_bias_table,
         load_range_bias_table,
     )
-    from llrops.classes.uncertainty.wrms_table import (
-        WrmsUncertaintyTable,
-        builtin_wrms_uncertainty_table,
-        load_wrms_uncertainty_table,
-    )
-    from llrops.classes.uncertainty.models import WrmsTableUncertainty
 
     def _calceph(cfg: dict, ctx):
         if "file" not in cfg:
@@ -184,7 +197,6 @@ def _register_all() -> None:
         ),
     )
 
-
     def _range_bias_table(cfg: dict, ctx) -> TableRangeBiasModel:
         has_file = "file" in cfg
         has_biases = "biases" in cfg
@@ -199,25 +211,6 @@ def _register_all() -> None:
     register_factory("rangeBias", "none", lambda cfg, ctx: ZeroRangeBiasModel())
     register_factory("rangeBias", "inpop21", lambda cfg, ctx: TableRangeBiasModel(builtin_range_bias_table("inpop21")))
     register_factory("rangeBias", "table", _range_bias_table)
-
-    def _builtin_wrms_uncertainty(cfg: dict, ctx) -> WrmsTableUncertainty:
-        if "model" not in cfg:
-            raise ValueError("uncertaintyModel/wrms-table requires explicit 'model'.")
-        return WrmsTableUncertainty(builtin_wrms_uncertainty_table(cfg["model"]))
-
-    def _table_wrms_uncertainty(cfg: dict, ctx) -> WrmsTableUncertainty:
-        has_file = "file" in cfg
-        has_uncertainties = "uncertainties" in cfg
-        if has_file == has_uncertainties:
-            raise ValueError("uncertaintyModel/table requires exactly one of 'file' or 'uncertainties'.")
-        if has_file:
-            table = load_wrms_uncertainty_table(_resolve_optional_path(ctx, cfg["file"]))
-        else:
-            table = WrmsUncertaintyTable.from_mapping(cfg)
-        return WrmsTableUncertainty(table)
-
-    register_factory("uncertaintyModel", "wrms-table", _builtin_wrms_uncertainty)
-    register_factory("uncertaintyModel", "table", _table_wrms_uncertainty)
 
     # Parametrizations register themselves on import.
     import llrops.classes.parametrization.reflector_position  # noqa: F401
@@ -252,8 +245,10 @@ def build_observation_processor(
         stationDisplacement:   {type: sum, components: [...]} | none
         reflectorDisplacement: lunarSolidTide | none
         rangeBias:             none | inpop21 | {type: table, file: ...} | {type: table, biases: [...]}
-        uncertaintyModel:      {type: wrms-table, model: default} | {type: table, file: ...} | {type: table, uncertainties: [...]}
+
+    Observation uncertainty is read directly from each normal-point record.
     """
+    validate_observation_config(program_config, context.global_class_configs)
     ensure_registered()
     from llrops.classes.frames import ReferenceFrameSystem
     from llrops.classes.observation import (
@@ -264,7 +259,6 @@ def build_observation_processor(
         LlrObservationResultBuilder,
         ObservationResolver,
     )
-    from llrops.classes.uncertainty.models import MiniUncertainty, UncertaintyKind
     from llrops.fileio.catalogs import load_station_catalog, load_reflector_catalog
 
     def cfg(category: str):
@@ -323,21 +317,9 @@ def build_observation_processor(
         normalize_class_config(range_bias_cfg),
         cache=True,
     )
-    uncertainty_cfg = context.class_config("uncertaintyModel", program_config)
-    if uncertainty_cfg is None:
-        raise KeyError("Observation processing requires explicit 'uncertaintyModel' in the program or globals config.")
-    wrms_uncertainty = context.create_class(
-        "uncertaintyModel",
-        normalize_class_config(uncertainty_cfg),
-        cache=True,
-    )
     reducer = LlrObservationReducer(
         ephemeris=ephemeris,
         range_bias=range_bias,
-        uncertainty_models={
-            UncertaintyKind.WRMS_TABLE: wrms_uncertainty,
-            UncertaintyKind.MINI: MiniUncertainty(),
-        },
     )
     processor = LlrObservationProcessor(
         resolver=resolver,

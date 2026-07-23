@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Mapping
 
 import numpy as np
 
@@ -13,14 +12,6 @@ from llrops.classes.range_bias.models import (
     RangeBiasCorrection,
     RangeBiasModel,
 )
-from llrops.classes.uncertainty.models import (
-    MiniUncertainty,
-    UncertaintyEstimate,
-    UncertaintyKind,
-    UncertaintyModel,
-    WrmsTableUncertainty,
-)
-from llrops.classes.uncertainty.wrms_table import DEFAULT_WRMS_UNCERTAINTY_TABLE
 
 from .model import LlrPrediction
 from .resolver import ResolvedObservation
@@ -28,12 +19,9 @@ from .resolver import ResolvedObservation
 
 @dataclass(frozen=True, slots=True)
 class ObservationReduction:
-    """Bias-corrected residual, stochastic weight, and scalar diagnostics."""
+    """Bias-corrected residual and scalar diagnostics."""
 
     range_bias: RangeBiasCorrection
-    selected_uncertainty: UncertaintyEstimate
-    mini_uncertainty: UncertaintyEstimate
-    wrms_uncertainty: UncertaintyEstimate | None
     computed_rtt_raw_s: float
     computed_rtt_s: float
     observed_minus_computed_raw_rtt_s: float
@@ -68,73 +56,31 @@ class ObservationReduction:
 
     @property
     def sigma_definition(self) -> str:
-        if self.selected_uncertainty.kind is UncertaintyKind.WRMS_TABLE:
-            return "WRMS table: sigma_one_way_m = 0.5 * wrms_two_way_m; no sigma floor"
         return (
-            "MINI uncertainty: sigma_one_way_m = "
-            "0.5 * c * mini_uncertainty_two_way_s; no sigma floor"
+            "normal-point record: sigma_one_way_m = "
+            "0.5 * c * uncertainty_two_way_s; no sigma floor"
         )
 
 
 class LlrObservationReducer:
-    """Apply deterministic corrections and select an uncertainty model."""
+    """Apply deterministic corrections to a resolved observation."""
 
     def __init__(
         self,
         *,
         ephemeris: Ephemeris,
         range_bias: RangeBiasModel,
-        uncertainty_models: Mapping[UncertaintyKind, UncertaintyModel] | None = None,
     ) -> None:
         if not isinstance(ephemeris, Ephemeris):
             raise TypeError("ephemeris must implement Ephemeris.")
         self.ephemeris = ephemeris
         self.range_bias = range_bias
-        self.uncertainty_models = dict(
-            uncertainty_models
-            or {
-                UncertaintyKind.WRMS_TABLE: WrmsTableUncertainty(DEFAULT_WRMS_UNCERTAINTY_TABLE),
-                UncertaintyKind.MINI: MiniUncertainty(),
-            }
-        )
-        missing = set(UncertaintyKind) - set(self.uncertainty_models)
-        if missing:
-            names = sorted(item.value for item in missing)
-            raise ValueError(f"Missing uncertainty model(s): {names}")
-
-    def validate_uncertainty(
-        self,
-        observations: Iterable[ResolvedObservation],
-        kind: UncertaintyKind,
-        *,
-        source_name: str,
-    ) -> None:
-        model = self.uncertainty_models[kind]
-        problems: list[str] = []
-        for observation in observations:
-            try:
-                model.validate(
-                    record=observation.record,
-                    station_candidates=observation.station_candidates,
-                    epoch_utc=observation.transmit_epoch,
-                )
-            except ValueError as exc:
-                problems.append(
-                    f"normal_point_index={observation.record.index}: {exc}"
-                )
-        if problems:
-            detail = "\n  ".join(problems)
-            raise ValueError(
-                f"{source_name}: uncertainty validation failed for "
-                f"{len(problems)} record(s):\n  {detail}"
-            )
 
     def reduce(
         self,
         observation: ResolvedObservation,
         prediction: LlrPrediction,
         *,
-        uncertainty: UncertaintyKind,
         min_elevation_deg: float,
     ) -> ObservationReduction:
         record = observation.record
@@ -161,24 +107,6 @@ class LlrObservationReducer:
             observation.station_candidates,
             observation.transmit_epoch,
         )
-        selected = self.uncertainty_models[uncertainty].estimate(
-            record=record,
-            station_candidates=observation.station_candidates,
-            epoch_utc=observation.transmit_epoch,
-        )
-        mini = self.uncertainty_models[UncertaintyKind.MINI].estimate(
-            record=record,
-            station_candidates=observation.station_candidates,
-            epoch_utc=observation.transmit_epoch,
-        )
-        try:
-            wrms = self.uncertainty_models[UncertaintyKind.WRMS_TABLE].estimate(
-                record=record,
-                station_candidates=observation.station_candidates,
-                epoch_utc=observation.transmit_epoch,
-            )
-        except ValueError:
-            wrms = None
 
         computed_raw_s = float(solution.observable_round_trip_time_s)
         computed_s = computed_raw_s - bias.two_way_s
@@ -199,9 +127,6 @@ class LlrObservationReducer:
 
         return ObservationReduction(
             range_bias=bias,
-            selected_uncertainty=selected,
-            mini_uncertainty=mini,
-            wrms_uncertainty=wrms,
             computed_rtt_raw_s=computed_raw_s,
             computed_rtt_s=computed_s,
             observed_minus_computed_raw_rtt_s=oc_raw_s,

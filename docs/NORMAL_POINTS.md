@@ -18,6 +18,18 @@ temperature, humidity, wavelength, epoch, light time, and bin RMS values.
 software. Its fixed-width quantization is not part of the LLROPS computation
 path.
 
+## Observation uncertainty
+
+`NptRecord.uncertainty_two_way_s` is the only observation-uncertainty input.
+MINI readers obtain it from the record uncertainty field, CRD readers obtain it
+from record 11 bin RMS, and LLROPS files store it directly. There is no
+station-period uncertainty model or program-level selector.
+
+The one-way range sigma passed to estimation is always
+`0.5 * c * uncertainty_two_way_s`. Adjustment uncertainty quality control and
+robust/VCE weighting operate on that input-derived sigma; they do not replace it
+with an external lookup value.
+
 ## Canonical LLROPS files
 
 Repeated or production processing can pre-convert source files into a
@@ -63,4 +75,3 @@ the ground transmit epoch. Epoch event 1 is a bounce epoch and is converted to
 an approximate transmit epoch by subtracting half the recorded time of flight;
 this existing approximation is recorded here because `NptRecord` requires a
 transmit epoch.
-

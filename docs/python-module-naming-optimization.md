@@ -48,9 +48,9 @@ Each configurable program has one source file:
 
 ## Domain Models
 
-Range-bias strategies live in `classes/range_bias/models.py`; uncertainty
-strategies live in `classes/uncertainty/models.py`. The observation package
-does not re-export these domain models.
+Range-bias strategies live in `classes/range_bias/models.py`. Observation
+uncertainty is owned by `fileio/normal_points.py` and is not a configurable
+strategy. The observation package does not re-export range-bias domain models.
 
 ## Test Modules
 

@@ -6,7 +6,6 @@ from typing import Iterable
 
 import numpy as np
 
-from llrops.classes.uncertainty.models import UncertaintyKind
 from llrops.fileio.normal_points import NptDataset
 
 from .result_builder import LlrObservationResultBuilder
@@ -29,7 +28,6 @@ class ObservationProcessingOptions:
     reflector_name: str | None = None
     min_elevation_deg: float = 0.0
     include_reflector_position_partial: bool = False
-    uncertainty: UncertaintyKind | str = UncertaintyKind.WRMS_TABLE
     show_progress: bool = False
     progress_description: str | None = None
 
@@ -38,7 +36,6 @@ class ObservationProcessingOptions:
         if not np.isfinite(min_elevation):
             raise ValueError("min_elevation_deg must be finite.")
         object.__setattr__(self, "min_elevation_deg", min_elevation)
-        object.__setattr__(self, "uncertainty", UncertaintyKind.parse(self.uncertainty))
 
     @property
     def catalog_selection(self) -> CatalogSelection:
@@ -133,17 +130,10 @@ class LlrObservationProcessor:
         self,
         dataset: NptDataset,
         *,
-        source_name: str | None = None,
         options: ObservationProcessingOptions | None = None,
     ) -> list[LlrObservationResult]:
         options = options or ObservationProcessingOptions()
-        source_name = source_name or dataset.name or "normal_points"
         observations = self.resolver.validate(dataset.records, options.catalog_selection)
-        self.reducer.validate_uncertainty(
-            observations,
-            options.uncertainty,
-            source_name=source_name,
-        )
         return [
             self.process_one(observation, options=options)
             for observation in self._with_progress(
@@ -166,7 +156,6 @@ class LlrObservationProcessor:
         reduction = self.reducer.reduce(
             observation,
             prediction,
-            uncertainty=options.uncertainty,
             min_elevation_deg=options.min_elevation_deg,
         )
         return self.result_builder.build(observation, prediction, reduction)

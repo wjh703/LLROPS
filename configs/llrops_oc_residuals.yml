@@ -50,10 +50,6 @@ globals:
   rangeBias:
     type: inpop21
 
-  uncertaintyModel:
-    type: wrms-table
-    model: default
-
   stationCatalog: builtin
   reflectorCatalog: builtin
 
@@ -71,9 +67,8 @@ programs:
     startTime: null
     endTime: null
 
-    # wrms-table uses the configured station WRMS uncertainty table;
-    # mini uses the uncertainty contained in each normal point record.
-    uncertainty: wrms-table
+    # Observation uncertainty is read from each input normal-point record.
+    # MINI supplies its uncertainty field; CRD supplies record 11 bin RMS.
 
     # standard = the compact per-normal-point O-C table: identity, observed
     # and computed RTT, O-C, fitted sigma, elevation, and processing status.

@@ -71,16 +71,16 @@ LLROPS now keeps time handling scalar-only at module boundaries: `Epoch` remains
 triples.  Station and reflector catalog records normalize position/velocity
 arrays through the shared validation path.
 
-## classes/range_bias and classes/uncertainty
+## classes/range_bias and normal-point uncertainty
 
-The INPOP21a range-bias table and WRMS uncertainty table now use explicit table
-objects with station-indexed lookup instead of repeated global scans.  In v29 the
-module-level compatibility wrappers were removed; callers now pass explicit
-`RangeBiasTable`, `TableRangeBiasModel`, and `WrmsUncertaintyTable` objects.
+The INPOP21a range-bias table uses an explicit object with station-indexed lookup
+instead of repeated global scans. Callers pass `RangeBiasTable` and
+`TableRangeBiasModel` objects explicitly.
 
-The table objects expose coverage summaries and validation hooks.  This follows
+The range-bias table exposes coverage summaries and validation hooks. This follows
 the useful part of the GROOPS style: configuration/data tables are first-class
-model objects, not loose module-level lists.  The PySHTOOLS lesson applied here
-is explicit metadata and units: entries retain whether a value is two-way range,
-one-way sigma, or raw timing-derived uncertainty, and conversion properties are
-kept close to the value object.
+model objects, not loose module-level lists.
+
+Observation uncertainty is intentionally not a configurable model. Each
+`NptRecord` carries source-owned two-way timing uncertainty, with the one-way
+range conversion defined next to the canonical record fields.
