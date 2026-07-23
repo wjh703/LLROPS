@@ -6,7 +6,7 @@ from typing import Sequence
 
 import numpy as np
 
-from llrops.base.validation import vector3
+from llrops.base.array_validation import vector3
 from llrops.classes.frames.constants import WGS84_A_M, WGS84_E2, WGS84_F
 
 

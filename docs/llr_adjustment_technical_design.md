@@ -1501,13 +1501,13 @@ llrops/estimation/
   adjustment_config.py       # strict schema 与 staged plan
   adjustment_options.py      # 数值不变量
   adjustment_preprocessing.py# 固定域 gross 筛选、误差 floor、MAD 启动
-  adjustment_reporting.py    # 结果类型与纯报告组装
+  adjustment_results.py      # 结果类型与纯报告组装
   adjustment_solver.py       # 非线性外层与随机模型协调
   robust_weights.py          # Igg3WeightModel
   variance_components.py     # 分量定义与严格一对一归属
-  vce.py                     # HelmertVceEstimator
+  helmert_vce.py             # HelmertVceEstimator
   convergence.py             # ParameterConvergencePolicy
-  normal_equation_engine.py  # dense/streaming 法方程核心
+  linearized_least_squares.py# dense/streaming 法方程核心
 ```
 
 公共程序 `LlrAdjustment` 只负责装配和阶段执行。生产路径只有一个调整器和一个经过验证的 Helmert VCE 实现；配置不暴露伪策略选择器。`components` 只描述观测归属。`adjustment.stages` 按参数块类名连续执行多个 estimate 步骤，并复用同一参数对象；随机尺度和因子是否跨阶段继承由 `warmStartStochasticModelAcrossStages` 明确控制。

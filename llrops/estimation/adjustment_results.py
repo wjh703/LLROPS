@@ -10,7 +10,7 @@ import numpy as np
 from llrops.base.parameter_name import ParameterName, names_to_strings
 from llrops.classes.observation.equations import ObservationEquation
 from llrops.classes.parametrization.base import ParametrizationList
-from llrops.estimation.normal_equation_engine import (
+from llrops.estimation.linearized_least_squares import (
     normal_matrix_condition,
     solve_normal_equations,
 )

@@ -7,7 +7,7 @@ import erfa
 import numpy as np
 
 from llrops.base.epoch import Epoch, TimeScale, utc2tt
-from llrops.base.validation import vector3
+from llrops.base.array_validation import vector3
 
 from .earth_orientation import EarthOrientation
 from .iers2010_eop import high_frequency_eop_correction

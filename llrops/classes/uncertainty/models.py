@@ -1,4 +1,4 @@
-"""Observation-level range-bias and uncertainty strategies."""
+"""Observation-level uncertainty models."""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -10,67 +10,7 @@ import numpy as np
 
 from llrops.base.constants import C
 from llrops.base.epoch import Epoch, TimeScale
-from llrops.classes.range_bias.table import RangeBiasTable
 from llrops.classes.uncertainty.wrms_table import WrmsUncertaintyTable
-
-
-@dataclass(frozen=True, slots=True)
-class RangeBiasCorrection:
-    model: str
-    two_way_cm: float
-
-    def __post_init__(self) -> None:
-        model = str(self.model).strip()
-        value = float(self.two_way_cm)
-        if not model:
-            raise ValueError("Range-bias model name must not be empty.")
-        if not np.isfinite(value):
-            raise ValueError("two_way_cm must be finite.")
-        object.__setattr__(self, "model", model)
-        object.__setattr__(self, "two_way_cm", value)
-
-    @property
-    def two_way_m(self) -> float:
-        return 0.01 * self.two_way_cm
-
-    @property
-    def two_way_s(self) -> float:
-        return self.two_way_m / C
-
-    @property
-    def one_way_m(self) -> float:
-        return 0.5 * self.two_way_m
-
-
-class RangeBiasModel(ABC):
-    @abstractmethod
-    def correction(self, station_candidates: Sequence[str], epoch_utc: Epoch) -> RangeBiasCorrection:
-        """Return the correction applied to the calculated two-way observable."""
-
-
-class ZeroRangeBiasModel(RangeBiasModel):
-    def __init__(self, name: str = "none") -> None:
-        self.name = name
-
-    def correction(self, station_candidates: Sequence[str], epoch_utc: Epoch) -> RangeBiasCorrection:
-        return RangeBiasCorrection(self.name, 0.0)
-
-
-class TableRangeBiasModel(RangeBiasModel):
-    def __init__(self, table: RangeBiasTable) -> None:
-        if not isinstance(table, RangeBiasTable):
-            raise TypeError("table must be a RangeBiasTable.")
-        self.table = table
-
-    @property
-    def model_label(self) -> str:
-        return self.table.source or "range-bias table"
-
-    def correction(self, station_candidates: Sequence[str], epoch_utc: Epoch) -> RangeBiasCorrection:
-        return RangeBiasCorrection(
-            self.model_label,
-            self.table.two_way_cm(list(station_candidates), epoch_utc),
-        )
 
 
 class UncertaintyKind(str, Enum):
@@ -86,7 +26,9 @@ class UncertaintyKind(str, Enum):
             return cls(raw)
         except ValueError as exc:
             allowed = ", ".join(item.value for item in cls)
-            raise ValueError(f"Unknown uncertainty model {value!r}; expected one of: {allowed}.") from exc
+            raise ValueError(
+                f"Unknown uncertainty model {value!r}; expected one of: {allowed}."
+            ) from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,7 +64,11 @@ class UncertaintyEstimate:
             raise ValueError("wrms_two_way_m must be positive and finite when supplied.")
         object.__setattr__(self, "kind", kind)
         object.__setattr__(self, "source", source)
-        object.__setattr__(self, "group", None if self.group is None else str(self.group))
+        object.__setattr__(
+            self,
+            "group",
+            None if self.group is None else str(self.group),
+        )
         object.__setattr__(self, "sigma_one_way_m", sigma)
         object.__setattr__(self, "uncertainty_two_way_s", two_way_s)
         object.__setattr__(self, "uncertainty_two_way_ps", two_way_ps)
@@ -150,7 +96,11 @@ class UncertaintyModel(ABC):
         station_candidates: Sequence[str],
         epoch_utc: Epoch,
     ) -> None:
-        self.estimate(record=record, station_candidates=station_candidates, epoch_utc=epoch_utc)
+        self.estimate(
+            record=record,
+            station_candidates=station_candidates,
+            epoch_utc=epoch_utc,
+        )
 
 
 class MiniUncertainty(UncertaintyModel):
@@ -194,8 +144,8 @@ class WrmsTableUncertainty(UncertaintyModel):
         entry = self.table.entry(list(station_candidates), epoch_utc)
         if entry is None:
             raise ValueError(
-                f"WRMS uncertainty table {self.table.source or 'wrms-table'!r} has no match for "
-                f"station_candidates={list(station_candidates)!r}; "
+                f"WRMS uncertainty table {self.table.source or 'wrms-table'!r} "
+                f"has no match for station_candidates={list(station_candidates)!r}; "
                 f"obs_time_utc={epoch_utc.isot(scale=TimeScale.UTC)}"
             )
         return UncertaintyEstimate(
@@ -212,12 +162,8 @@ class WrmsTableUncertainty(UncertaintyModel):
 
 __all__ = [
     "MiniUncertainty",
-    "RangeBiasCorrection",
-    "RangeBiasModel",
-    "TableRangeBiasModel",
     "UncertaintyEstimate",
     "UncertaintyKind",
     "UncertaintyModel",
     "WrmsTableUncertainty",
-    "ZeroRangeBiasModel",
 ]

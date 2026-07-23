@@ -22,7 +22,7 @@
 - Moved relativistic/GM constants, WGS84 constants, and lunar displacement defaults
   to model-owned modules.
 - Kept time handling on the scalar `Epoch` contract; batch facade code has been removed.
-- Routed catalog vector and parameter-vector checks through `base.validation`.
+- Routed catalog vector and parameter-vector checks through `base.array_validation`.
 
 ## Range bias and uncertainty
 

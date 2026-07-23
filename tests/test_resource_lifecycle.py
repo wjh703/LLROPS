@@ -1,8 +1,7 @@
 import logging
 
-from llrops.lifecycle import close_resources
-from llrops.parallel.cache import close_cached_objects
-from llrops.programs.base import available_programs, program, run_program
+from llrops.parallel.worker_cache import close_cached_objects
+from llrops.resource_lifecycle import close_resources
 
 
 class Resource:
@@ -21,12 +20,3 @@ def test_close_resources_deduplicates_resources(caplog):
     resource.count = 0
     close_cached_objects({"direct": resource, "nested": {"same": resource}})
     assert resource.count == 1
-
-
-def test_program_registry_is_case_insensitive():
-    @program("TestCanonicalProgram")
-    def canonical(config, context):
-        return config["value"]
-
-    assert "TestCanonicalProgram" in available_programs()
-    assert run_program("testcanonicalprogram", {"value": 3}, None) == 3

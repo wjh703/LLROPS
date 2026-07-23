@@ -2,7 +2,7 @@
 CRD normal-point reader and explicit MINI interchange converter.
 
 Reads ILRS Consolidated Range Data (CRD, v1/v2) normal-point files directly
-into canonical :class:`llrops.fileio.npt.NptRecord` objects.  The optional
+into canonical :class:`llrops.fileio.normal_points.NptRecord` objects.  The optional
 ``convert_crd_to_mini`` function emits MINI fixed-width lines for external
 interchange only.  The following CRD records are interpreted:
 
@@ -394,7 +394,7 @@ def crd_sessions_to_npt_records(
     sessions: Sequence[_CrdSession],
 ):
     """Convert parsed CRD sessions directly to canonical NptRecord objects."""
-    from llrops.fileio.npt import NptRecord
+    from llrops.fileio.normal_points import NptRecord
 
     return [
         NptRecord(
@@ -417,7 +417,7 @@ def crd_sessions_to_npt_records(
 
 def parse_crd_file(path):
     """Parse a CRD v1/v2 file directly into a canonical NptDataset."""
-    from llrops.fileio.npt import NptDataset
+    from llrops.fileio.normal_points import NptDataset
 
     source = Path(path)
     sessions = parse_crd_sessions(source)

@@ -8,7 +8,7 @@ import numpy as np
 from llrops.base.epoch import Epoch
 from llrops.classes.ephemerides import Ephemeris, require_tdb_epoch
 
-from llrops.base.validation import vector3
+from llrops.base.array_validation import vector3
 
 
 class LunarFrameTransform:

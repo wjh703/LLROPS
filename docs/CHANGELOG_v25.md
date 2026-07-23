@@ -5,7 +5,7 @@
 * Single entry point `python -m llrops run <config.yml>` with variables,
   loops and --set overrides replaces the six run_*.py argparse CLIs
 * LLRPipeline renamed LlrRangeModel (alias kept); model assembly moved to
-  llrops.classes.builders.build_range_model, driven by registered class
+  `llrops.classes.observation_factory.build_observation_processor`, driven by registered class
   categories: ephemerides, earthRotation, troposphere, relativity,
   stationDisplacement, reflectorDisplacement, rangeBias, uncertainty.
 * New GROOPS-style estimation stack: ObservationEquation with named partial

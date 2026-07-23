@@ -7,7 +7,7 @@ from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 import numpy as np
 from llrops.base.parameter_name import ParameterName
 from llrops.base.epoch import Epoch, TimeScale
-from llrops.base.validation import parameter_vector
+from llrops.base.array_validation import parameter_vector
 from llrops.config.registry import register
 from llrops.classes.range_bias.table import normalize_station
 from llrops.classes.observation.equations import ObservationEquation

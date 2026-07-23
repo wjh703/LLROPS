@@ -1,4 +1,4 @@
-"""Normal-point conversion and LLR residual programs.
+"""Compute LLR residuals from normal-point inputs.
 
 ``LlrResiduals`` replaces ``run_llr_np_oc.py``.  Config keys::
 
@@ -23,16 +23,19 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 
 from llrops.config.context import RunContext
-from llrops.programs.base import program
+from llrops.programs.registry import program
 
 
 def load_datasets(config: dict, context: RunContext):
     """Shared input handling: returns ``{source_name: NptDataset}``."""
-    from llrops.fileio.inputs import read_normal_points, resolve_normal_point_inputs
-    from llrops.fileio.npt import combine_npt_datasets
+    from llrops.fileio.normal_point_inputs import (
+        read_normal_points,
+        resolve_normal_point_inputs,
+    )
+    from llrops.fileio.normal_points import combine_npt_datasets
 
     inputs = config.get("inputNormalPoints")
     if not inputs:
@@ -71,7 +74,7 @@ def load_datasets(config: dict, context: RunContext):
 
 
 def build_processor(config: dict, context: RunContext):
-    from llrops.classes.builders import build_observation_processor
+    from llrops.classes.observation_factory import build_observation_processor
 
     return build_observation_processor(context, config)
 
@@ -98,66 +101,9 @@ def output_level(config: dict, *, include_design: bool = False):
     return ObservationOutputLevel.parse(config.get("outputLevel", "standard"))
 
 
-@program("CrdToMini")
-def crd_to_mini(config: dict, context: RunContext):
-    from llrops.fileio.crd import convert_crd_to_mini
-    from llrops.fileio.inputs import iter_input_files, is_crd_file
-
-    out_dir = context.resolve_path(config["outputDir"])
-    out_dir.mkdir(parents=True, exist_ok=True)
-    converted: List[str] = []
-    input_crd = config["inputCrd"]
-    for item in input_crd if isinstance(input_crd, list) else [input_crd]:
-        for path in iter_input_files(Path(str(item))):
-            if not is_crd_file(path):
-                continue
-            mini_path = out_dir / (path.stem + ".mini")
-            convert_crd_to_mini(path, mini_path)
-            converted.append(str(mini_path))
-    print(f"[CrdToMini] converted {len(converted)} file(s) -> {out_dir}")
-    return converted
-
-
-@program("NormalPointsToLlrops")
-def normal_points_to_llrops(config: dict, context: RunContext):
-    """Convert one or more source files into one canonical LLROPS JSONL file."""
-    from llrops.fileio.inputs import read_normal_points, resolve_normal_point_inputs
-    from llrops.fileio.llrops_npt import write_llrops_npt
-    from llrops.fileio.npt import combine_npt_datasets
-
-    inputs = config.get("inputNormalPoints")
-    if not inputs:
-        raise ValueError("inputNormalPoints is required")
-    if not config.get("outputFile"):
-        raise ValueError("outputFile is required")
-    output_path = context.resolve_path(config["outputFile"])
-    values = inputs if isinstance(inputs, list) else [inputs]
-    paths = [
-        path
-        for path in resolve_normal_point_inputs(
-            [context.resolve_path(value) for value in values]
-        )
-        if path.resolve() != output_path.resolve()
-    ]
-    if not paths:
-        raise FileNotFoundError(f"No supported normal-point files found under {inputs!r}")
-    mini_io_log = context.resolve_path(config["miniIoLog"]) if config.get("miniIoLog") else None
-    datasets = [
-        read_normal_points(path, mini_io_log_path=mini_io_log)
-        for path in paths
-    ]
-    combined = combine_npt_datasets(
-        datasets,
-        name=str(config.get("datasetName", "normal-points")),
-    )
-    output = write_llrops_npt(combined, output_path)
-    print(f"[NormalPointsToLlrops] wrote {len(combined.records)} record(s) -> {output}")
-    return str(output)
-
-
 @program("LlrResiduals")
 def llr_residuals(config: dict, context: RunContext):
-    from llrops.fileio import oc_table
+    from llrops.fileio import observation_result_writer
 
     datasets = load_datasets(config, context)
     options = make_processing_options(config)
@@ -194,16 +140,25 @@ def llr_residuals(config: dict, context: RunContext):
             processor.close()
 
     if config.get("outputCsv"):
-        oc_table.write_csv_grouped(
+        observation_result_writer.write_csv_grouped(
             results_by_file,
             context.resolve_path(config["outputCsv"]),
             level=table_level,
         )
     if config.get("outputJson"):
-        oc_table.write_json_grouped(
+        observation_result_writer.write_json_grouped(
             results_by_file,
             context.resolve_path(config["outputJson"]),
             level=table_level,
         )
     print(f"[LlrResiduals] {total} normal points over {len(results_by_file)} source file(s)")
     return results_by_file
+
+
+__all__ = [
+    "build_processor",
+    "llr_residuals",
+    "load_datasets",
+    "make_processing_options",
+    "output_level",
+]

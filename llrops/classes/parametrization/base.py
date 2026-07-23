@@ -20,7 +20,7 @@ from typing import Dict, List, Optional, Sequence
 import numpy as np
 
 from llrops.base.parameter_name import ParameterName, validate_parameter_types
-from llrops.base.validation import parameter_vector
+from llrops.base.array_validation import parameter_vector
 from llrops.classes.observation.equations import ObservationEquation
 
 

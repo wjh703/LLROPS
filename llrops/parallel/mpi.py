@@ -38,7 +38,7 @@ import traceback
 from dataclasses import asdict
 from typing import Callable, Dict, List, Optional, Sequence
 
-from llrops.parallel.cache import close_cached_objects
+from llrops.parallel.worker_cache import close_cached_objects
 from llrops.parallel.observation_spec import (
     apply_catalog_state as _apply_catalog_state,
     build_worker_processor,
@@ -111,7 +111,7 @@ def _observation_spec_for_payload(payload: dict, cache: dict) -> dict:
 
 def _handle_observation_results(payload: dict, cache: dict):
     """NptRecord chunk -> typed observation results or lightweight table rows."""
-    from llrops.fileio.npt import NptDataset
+    from llrops.fileio.normal_points import NptDataset
     from llrops.classes.observation import (
         ObservationOutputLevel,
         ObservationProcessingOptions,

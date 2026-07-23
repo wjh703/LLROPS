@@ -10,7 +10,7 @@ from .earth_orientation import (
 )
 from .lunar import LunarFrameTransform
 from .relativistic import RelativisticFrameTransform
-from .system import ReferenceFrameSystem
+from .reference_frame_system import ReferenceFrameSystem
 from .terrestrial import TerrestrialFrameTransform
 
 __all__ = [

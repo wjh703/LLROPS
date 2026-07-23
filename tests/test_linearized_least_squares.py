@@ -2,7 +2,10 @@ import numpy as np
 import pytest
 
 from llrops.base.parameter_name import ParameterName
-from llrops.estimation.normal_equation_engine import NormalEquationSingularError, solve_normal_equations
+from llrops.estimation.linearized_least_squares import (
+    NormalEquationSingularError,
+    solve_normal_equations,
+)
 from llrops.fileio.normal_equations import NormalEquations
 
 

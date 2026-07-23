@@ -20,8 +20,12 @@ def _import_programs() -> None:
     # Importing registers the @program entries.  This is deliberately called
     # only on rank 0 after MPI rank splitting; worker ranks never need the
     # program registry.
-    import llrops.programs.llr_residuals  # noqa: F401
+    import llrops.programs.crd_to_mini  # noqa: F401
     import llrops.programs.llr_adjustment  # noqa: F401
+    import llrops.programs.llr_normal_equations  # noqa: F401
+    import llrops.programs.llr_residuals  # noqa: F401
+    import llrops.programs.normal_points_to_llrops  # noqa: F401
+    import llrops.programs.normals_combine_solve  # noqa: F401
 
 
 def cmd_run(args) -> int:
@@ -64,7 +68,7 @@ def cmd_run(args) -> int:
             load_config_file,
             parse_set_overrides,
         )
-        from llrops.programs.base import run_program
+        from llrops.programs.registry import run_program
 
         config = load_config_file(args.config)
         overrides = parse_set_overrides(args.set or [])
@@ -101,7 +105,7 @@ def cmd_run(args) -> int:
 
 def cmd_list_programs(_args) -> int:
     _import_programs()
-    from llrops.programs.base import available_programs
+    from llrops.programs.registry import available_programs
 
     for name in available_programs():
         print(name)
@@ -109,7 +113,7 @@ def cmd_list_programs(_args) -> int:
 
 
 def cmd_list_classes(args) -> int:
-    from llrops.classes.builders import ensure_registered
+    from llrops.classes.observation_factory import ensure_registered
     from llrops.config.registry import available
 
     ensure_registered()

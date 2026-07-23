@@ -19,7 +19,7 @@ from llrops.estimation.adjustment_preprocessing import (
     robust_bias_initial_values,
 )
 from llrops.estimation.adjustment_options import LlrAdjustmentOptions
-from llrops.estimation.adjustment_reporting import (
+from llrops.estimation.adjustment_results import (
     LlrAdjustmentIteration,
     LlrAdjustmentResult,
     distribution_summary,
@@ -28,7 +28,7 @@ from llrops.estimation.adjustment_reporting import (
     residual_summary,
     robust_factor_summary,
 )
-from llrops.estimation.normal_equation_engine import (
+from llrops.estimation.linearized_least_squares import (
     DenseLinearization,
     build_normal_equations_streaming,
     normal_matrix_condition,
@@ -40,7 +40,7 @@ from llrops.estimation.robust_weights import (
     Igg3WeightModel,
     maximum_robust_factor_change,
 )
-from llrops.estimation.vce import HelmertVceEstimator
+from llrops.estimation.helmert_vce import HelmertVceEstimator
 from llrops.estimation.variance_components import assign_variance_components
 
 ObsKey = Hashable

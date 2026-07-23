@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from llrops.base.epoch import Epoch, TimeScale
-from llrops.classes.time import TimeScaleConverter
+from llrops.classes.time_scale_converter import TimeScaleConverter
 from llrops.classes.ephemerides import BodyState, Ephemeris
 from llrops.classes.frames import (
     C04EarthOrientation,

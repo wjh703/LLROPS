@@ -8,7 +8,7 @@ import numpy as np
 
 from llrops.base.epoch import Epoch, TimeScale
 
-from .containers import FrozenMapping
+from .frozen_mapping import FrozenMapping
 
 
 @dataclass(frozen=True, slots=True, eq=False)

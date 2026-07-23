@@ -9,7 +9,7 @@ import numpy as np
 from llrops.base.parameter_name import ParameterName
 from llrops.classes.observation.equations import ObservationEquation
 from llrops.classes.parametrization.base import ParametrizationList
-from llrops.estimation.normal_equation_engine import solve_normal_equations
+from llrops.estimation.linearized_least_squares import solve_normal_equations
 from llrops.estimation.variance_components import VarianceComponentDefinition
 from llrops.fileio.normal_equations import NormalEquations
 

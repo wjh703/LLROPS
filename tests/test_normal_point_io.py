@@ -5,10 +5,10 @@ import pytest
 from llrops.base.epoch import Epoch, TimeScale
 from llrops.config.context import RunContext
 from llrops.fileio.crd import convert_crd_to_mini
-from llrops.fileio.inputs import read_normal_points
-from llrops.fileio.llrops_npt import read_llrops_npt, write_llrops_npt
+from llrops.fileio.llrops_normal_point_file import read_llrops_npt, write_llrops_npt
+from llrops.fileio.normal_point_inputs import read_normal_points
 from llrops.fileio.mini import MiniRecord, write_mini_file
-from llrops.programs.llr_residuals import normal_points_to_llrops
+from llrops.programs.normal_points_to_llrops import normal_points_to_llrops
 
 
 def _write_crd(path: Path) -> None:

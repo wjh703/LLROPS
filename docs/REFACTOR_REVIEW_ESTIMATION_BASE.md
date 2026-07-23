@@ -67,7 +67,7 @@ their owning models:
 
 LLROPS now keeps time handling scalar-only at module boundaries: `Epoch` remains the authoritative physical contract.
 
-`base.validation` now also validates parameter vectors and catalog coordinate
+`base.array_validation` now also validates parameter vectors and catalog coordinate
 triples.  Station and reflector catalog records normalize position/velocity
 arrays through the shared validation path.
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from llrops.lifecycle import close_resource
+from llrops.resource_lifecycle import close_resource
 
 
 def close_cached_objects(cache: dict[Any, Any]) -> None:

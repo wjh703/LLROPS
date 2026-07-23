@@ -34,7 +34,7 @@ def _prepare_shared_resources(merged: dict, context) -> dict:
     resources: dict = {}
     earth_rotation_config = merged.get("earthRotation")
     if earth_rotation_config is not None:
-        from llrops.classes.builders import ensure_registered
+        from llrops.classes.observation_factory import ensure_registered
         from llrops.classes.frames import C04EarthOrientation
         from llrops.config.registry import normalize_class_config
 
@@ -107,7 +107,7 @@ def make_observation_spec(
 
 def build_worker_processor(spec: dict, shared_class_cache: Optional[dict] = None):
     from llrops.config.context import RunContext
-    from llrops.classes.builders import build_observation_processor
+    from llrops.classes.observation_factory import build_observation_processor
 
     context = RunContext(
         variables={},
