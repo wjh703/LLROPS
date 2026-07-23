@@ -7,7 +7,7 @@
   - legacy Earth-orientation global-state helpers and aliases;
   - `_first_resolvable_key` catalog alias;
   - lower/camel-case duplicate reflector catalog keys.
-- `TimeScaleConverter` is now imported only from `llrops.classes.time`.
+- `TimeScaleConverter` is now imported only from `llrops.classes.time_scale_converter`.
 - ERFA Earth-orientation loading is explicit: `load_iers_c04(file)` has no
   `install_global` option.
 

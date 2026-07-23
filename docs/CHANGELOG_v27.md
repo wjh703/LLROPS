@@ -8,7 +8,7 @@
 - Replaced the Astropy-dependent runtime time/frame path with ERFA + explicit IERS C04
   interpolation:
   - UTC <-> TT uses ERFA when available, with a bundled leap-second fallback.
-  - TT <-> TDB remains owned by `classes.time.TimeScaleConverter` and the configured
+  - TT <-> TDB remains owned by `classes.time_scale_converter.TimeScaleConverter` and the configured
     ephemeris target-16 table.
   - ITRS <-> GCRS uses ERFA `c2t06a` with interpolated xp, yp and UT1-UTC from the
     configured EOP file.
@@ -19,10 +19,10 @@
 
 ## API and structure
 
-- Moved `TimeScaleConverter` from `llrops.base.epoch` to `llrops.classes.time` to keep
+- Moved `TimeScaleConverter` from `llrops.base.epoch` to `llrops.classes.time_scale_converter` to keep
   `base` as pure foundational value types. A lazy import shim is retained for older
   imports from `llrops.base.epoch`.
-- Added `llrops.base.validation` with shared `vector3`, `readonly_vector3`, `matrix3x3`
+- Added `llrops.base.array_validation` with shared `vector3`, `readonly_vector3`, `matrix3x3`
   and `readonly_matrix3x3`; frame, ephemeris, displacement and light-time modules now
   use the same validators.
 - Added batch hooks for ephemeris, time conversion, Earth orientation and frame transforms

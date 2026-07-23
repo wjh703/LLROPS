@@ -1,3 +1,9 @@
+from .models import (
+    RangeBiasCorrection,
+    RangeBiasModel,
+    TableRangeBiasModel,
+    ZeroRangeBiasModel,
+)
 from .table import (
     BUILTIN_RANGE_BIAS_TABLES,
     DEFAULT_STATION_ALIASES,
@@ -16,8 +22,12 @@ __all__ = [
     "DEFAULT_STATION_ALIASES",
     "INPOP21_RANGE_BIASES",
     "INPOP21_RANGE_BIAS_TABLE",
+    "RangeBiasCorrection",
     "RangeBiasEntry",
+    "RangeBiasModel",
     "RangeBiasTable",
+    "TableRangeBiasModel",
+    "ZeroRangeBiasModel",
     "builtin_range_bias_table",
     "load_range_bias_table",
     "normalize_station",

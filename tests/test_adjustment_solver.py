@@ -10,7 +10,7 @@ from llrops.classes.observation.equations import ObservationEquation
 from llrops.classes.parametrization.base import Parametrization, ParametrizationList
 from llrops.estimation.adjustment_preprocessing import floor_prefit_uncertainties
 from llrops.estimation.convergence import ParameterConvergencePolicy
-from llrops.estimation.normal_equation_engine import (
+from llrops.estimation.linearized_least_squares import (
     DenseLinearization,
     build_normal_equations_streaming,
     solve_normal_equations,
@@ -26,7 +26,7 @@ from llrops.estimation.robust_weights import (
     maximum_robust_factor_change,
     robust_factor_change_quantile,
 )
-from llrops.estimation.vce import HelmertVceEstimator
+from llrops.estimation.helmert_vce import HelmertVceEstimator
 from llrops.estimation.variance_components import (
     VarianceComponentDefinition,
     assign_variance_components,

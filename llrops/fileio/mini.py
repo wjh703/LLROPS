@@ -100,7 +100,7 @@ STATION_FULL_NAMES = {
     "08834": "Wettzell",
 }
 
-# Keys / aliases used by sample_catalogs.py.
+# Keys and aliases used by builtin_catalogs.py.
 STATION_CATALOG_NAMES = {
     "71110": "MCDONALD",
     "71111": "MLRS1",
@@ -315,7 +315,7 @@ class MiniRecord:
 
     @property
     def station_name(self) -> str:
-        """Catalog token used to resolve the station in sample_catalogs."""
+        """Catalog token used to resolve the station in builtin_catalogs."""
         return STATION_CATALOG_NAMES.get(self.station_id, self.station_full_name)
 
 
@@ -491,7 +491,7 @@ def parse_mini_file(path, *, mini_io_log_path=None):
             f"Data lines read={n_input_records}, invalid records skipped={n_invalid_records}."
         )
 
-    from llrops.fileio.npt import NptDataset, npt_records_from_mini
+    from llrops.fileio.normal_points import NptDataset, npt_records_from_mini
 
     return NptDataset(
         records=npt_records_from_mini(records),

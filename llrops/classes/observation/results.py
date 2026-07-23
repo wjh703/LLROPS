@@ -9,7 +9,7 @@ import numpy as np
 
 from llrops.base.epoch import Epoch, TimeScale
 
-from .containers import FrozenMapping
+from .frozen_mapping import FrozenMapping
 
 
 class ObservationOutputLevel(str, Enum):

@@ -4,7 +4,7 @@
 Date plus an explicit scale.  ERFA owns civil parsing/formatting, UTC<->TAI,
 TAI<->TT, leap-second handling, and UTC elapsed-time arithmetic.  TT<->TDB
 conversion intentionally lives outside ``llrops.base`` in
-:class:`llrops.classes.time.TimeScaleConverter`, because that step depends on
+:class:`llrops.classes.time_scale_converter.TimeScaleConverter`, because that step depends on
 the configured ephemeris.
 """
 from __future__ import annotations

@@ -6,7 +6,7 @@ from typing import Iterable, Sequence
 import numpy as np
 
 from llrops.base.epoch import Epoch
-from llrops.classes.time import TimeScaleConverter
+from llrops.classes.time_scale_converter import TimeScaleConverter
 from llrops.classes.ephemerides import Ephemeris
 
 from .earth_orientation import EarthOrientation

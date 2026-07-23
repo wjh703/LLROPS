@@ -16,44 +16,47 @@ modules, import aliases, or deprecated paths will be retained.
 - Follow the GROOPS pattern of one configurable program per source file.
 - Keep test filenames aligned with the production modules they verify.
 
-## Direct Renames
+## Canonical Modules
 
-- `estimation/normal_equation_engine.py` -> `estimation/linearized_least_squares.py`
-- `programs/base.py` -> `programs/registry.py`
-- `fileio/sample_catalogs.py` -> `fileio/builtin_catalogs.py`
-- `fileio/inputs.py` -> `fileio/normal_point_inputs.py`
-- `fileio/npt.py` -> `fileio/normal_points.py`
-- `fileio/llrops_npt.py` -> `fileio/llrops_normal_point_file.py`
-- `fileio/oc_table.py` -> `fileio/observation_result_writer.py`
-- `classes/builders.py` -> `classes/observation_factory.py`
-- `classes/time.py` -> `classes/time_scale_converter.py`
-- `classes/frames/system.py` -> `classes/frames/reference_frame_system.py`
-- `classes/displacement/lunar.py` -> `classes/displacement/lunar_solid_tide.py`
-- `classes/displacement/solid_earth.py` -> `classes/displacement/solid_earth_tide.py`
-- `classes/displacement/geometry.py` -> `classes/displacement/terrestrial_geometry.py`
-- `classes/observation/assembly.py` -> `classes/observation/result_builder.py`
-- `classes/observation/containers.py` -> `classes/observation/frozen_mapping.py`
-- `classes/ephemerides/libration.py` -> `classes/ephemerides/longitude_libration.py`
-- `estimation/adjustment_reporting.py` -> `estimation/adjustment_results.py`
-- `estimation/vce.py` -> `estimation/helmert_vce.py`
-- `base/validation.py` -> `base/array_validation.py`
-- `parallel/cache.py` -> `parallel/worker_cache.py`
-- `lifecycle.py` -> `resource_lifecycle.py`
+- Estimation: `linearized_least_squares.py`, `adjustment_results.py`, and
+  `helmert_vce.py`.
+- Program infrastructure: `programs/registry.py`.
+- Normal-point I/O: `builtin_catalogs.py`, `normal_point_inputs.py`,
+  `normal_points.py`, `llrops_normal_point_file.py`, and
+  `observation_result_writer.py`.
+- Observation construction: `classes/observation_factory.py`,
+  `classes/observation/result_builder.py`, and
+  `classes/observation/frozen_mapping.py`.
+- Time and frames: `classes/time_scale_converter.py` and
+  `classes/frames/reference_frame_system.py`.
+- Displacement: `lunar_solid_tide.py`, `solid_earth_tide.py`, and
+  `terrestrial_geometry.py`.
+- Ephemerides: `classes/ephemerides/longitude_libration.py`.
+- Shared infrastructure: `base/array_validation.py`,
+  `parallel/worker_cache.py`, and `resource_lifecycle.py`.
 
-## Structural Splits
+## Program Modules
 
-- Keep `LlrAdjustment` in `programs/llr_adjustment.py`; extract
-  `llr_normal_equations.py` and `normals_combine_solve.py`.
-- Keep `LlrResiduals` in `programs/llr_residuals.py`; extract
-  `crd_to_mini.py` and `normal_points_to_llrops.py`.
-- Replace `observation/corrections.py` with
-  `range_bias/models.py` and `uncertainty/models.py`.
+Each configurable program has one source file:
 
-## Test Renames and Splits
+- `llr_adjustment.py`
+- `llr_normal_equations.py`
+- `normals_combine_solve.py`
+- `llr_residuals.py`
+- `crd_to_mini.py`
+- `normal_points_to_llrops.py`
 
-Rename or split the vague test modules for observation types, result writing,
-CLI/MPI lifecycle, resource lifecycle, program registry, ephemeris/frame
-components, and normal-equation solving. Other test names remain unchanged.
+## Domain Models
+
+Range-bias strategies live in `classes/range_bias/models.py`; uncertainty
+strategies live in `classes/uncertainty/models.py`. The observation package
+does not re-export these domain models.
+
+## Test Modules
+
+Tests use production-aligned names for observation equations and results,
+result writing, CLI/MPI startup, resource lifecycle, program registration,
+ephemeris/reference-frame integration, and linearized least-squares solving.
 
 ## Verification
 

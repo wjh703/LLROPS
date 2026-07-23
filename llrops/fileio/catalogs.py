@@ -17,9 +17,9 @@ import numpy as np
 
 from llrops.base.constants import SECONDS_PER_DAY
 from llrops.base.epoch import Epoch, TimeScale
-from llrops.base.validation import catalog_vector3
+from llrops.base.array_validation import catalog_vector3
 
-from llrops.classes.displacement.geometry import GeodeticPosition, itrf2geodetic
+from llrops.classes.displacement.terrestrial_geometry import GeodeticPosition, itrf2geodetic
 
 
 
@@ -162,7 +162,7 @@ def load_station_catalog(source) -> Dict[str, StationRecord]:
     """Build a station catalog.
 
     ``source`` may be
-      * ``"builtin"`` -> :data:`llrops.fileio.sample_catalogs.STATIONS`
+      * ``"builtin"`` -> :data:`llrops.fileio.builtin_catalogs.STATIONS`
       * a path to a JSON/YAML file: ``{key: {name, itrf_xyz_m, aliases,
         itrf_velocity_m_per_year, position_epoch_utc}}``
       * an already-built ``Dict[str, StationRecord]`` (passed through).
@@ -170,7 +170,7 @@ def load_station_catalog(source) -> Dict[str, StationRecord]:
     if isinstance(source, dict) and all(isinstance(v, StationRecord) for v in source.values()):
         return source
     if source in (None, "builtin"):
-        from llrops.fileio.sample_catalogs import STATIONS
+        from llrops.fileio.builtin_catalogs import STATIONS
 
         # Builtin catalogs are module-level constants.  Return an independent
         # graph so estimator/model-state updates cannot pollute later programs
@@ -194,7 +194,7 @@ def load_reflector_catalog(source) -> Dict[str, ReflectorRecord]:
     if isinstance(source, dict) and all(isinstance(v, ReflectorRecord) for v in source.values()):
         return source
     if source in (None, "builtin"):
-        from llrops.fileio.sample_catalogs import REFLECTORS
+        from llrops.fileio.builtin_catalogs import REFLECTORS
 
         # See load_station_catalog: reflector coordinates are mutable model
         # state during fitting, so builtin globals must never be handed out.

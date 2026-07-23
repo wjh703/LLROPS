@@ -2,7 +2,7 @@
 
 from .base import BodyState, Ephemeris, require_tdb_epoch
 from .calceph import CalcephEphemeris, load_calceph_ephemeris
-from .libration import (
+from .longitude_libration import (
     Inpop21aLongitudeLibration,
     LongitudeLibrationCorrection,
     LongitudeLibrationModel,

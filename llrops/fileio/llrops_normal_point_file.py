@@ -10,7 +10,7 @@ from typing import Mapping
 
 from llrops.base.epoch import Epoch
 
-from .npt import NptDataset, NptRecord
+from .normal_points import NptDataset, NptRecord
 
 
 SCHEMA_NAME = "llrops.normal_points"

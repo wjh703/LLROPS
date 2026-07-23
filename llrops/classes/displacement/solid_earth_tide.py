@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 
 from .base import StationDisplacementInput
-from .geometry import enu2itrf, itrf2geodetic
+from .terrestrial_geometry import enu2itrf, itrf2geodetic
 
 try:
     import pysolid

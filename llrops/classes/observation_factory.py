@@ -58,9 +58,8 @@ def _register_all() -> None:
     )
     from llrops.classes.ephemerides import load_calceph_ephemeris
     from llrops.classes.frames import C04EarthOrientation, load_iers_c04
-    from llrops.classes.observation.corrections import (
+    from llrops.classes.range_bias.models import (
         TableRangeBiasModel,
-        WrmsTableUncertainty,
         ZeroRangeBiasModel,
     )
     from llrops.classes.range_bias.table import (
@@ -73,6 +72,7 @@ def _register_all() -> None:
         builtin_wrms_uncertainty_table,
         load_wrms_uncertainty_table,
     )
+    from llrops.classes.uncertainty.models import WrmsTableUncertainty
 
     def _calceph(cfg: dict, ctx):
         if "file" not in cfg:
@@ -263,9 +263,8 @@ def build_observation_processor(
         LlrObservationReducer,
         LlrObservationResultBuilder,
         ObservationResolver,
-        MiniUncertainty,
-        UncertaintyKind,
     )
+    from llrops.classes.uncertainty.models import MiniUncertainty, UncertaintyKind
     from llrops.fileio.catalogs import load_station_catalog, load_reflector_catalog
 
     def cfg(category: str):

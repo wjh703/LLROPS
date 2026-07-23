@@ -8,10 +8,10 @@ import numpy as np
 from llrops.classes.relativistic.constants import l_b_minus_l_l_for_ephemeris
 
 from llrops.base.epoch import Epoch, TimeScale
-from llrops.classes.time import TimeScaleConverter
+from llrops.classes.time_scale_converter import TimeScaleConverter
 
 from .base import BodyState, Ephemeris, require_tdb_epoch, readonly_matrix3x3
-from .libration import (
+from .longitude_libration import (
     LongitudeLibrationCorrection,
     make_longitude_libration_correction,
     normalize_longitude_libration_model,

@@ -7,7 +7,7 @@ from typing import Protocol, Sequence, runtime_checkable
 import numpy as np
 
 from llrops.base.epoch import Epoch, TimeScale
-from llrops.base.validation import readonly_vector3
+from llrops.base.array_validation import readonly_vector3
 
 
 def _epoch(value: Epoch, *, scale: TimeScale, name: str) -> Epoch:

@@ -10,7 +10,7 @@ from importlib import import_module
 from .equations import ObservationEquation
 
 _LAZY_EXPORTS = {
-    "FrozenMapping": ("containers", "FrozenMapping"),
+    "FrozenMapping": ("frozen_mapping", "FrozenMapping"),
     "CatalogSelection": ("resolver", "CatalogSelection"),
     "ResolvedObservation": ("resolver", "ResolvedObservation"),
     "ObservationResolver": ("resolver", "ObservationResolver"),
@@ -23,20 +23,11 @@ _LAZY_EXPORTS = {
     "LlrPrediction": ("model", "LlrPrediction"),
     "LlrObservationReducer": ("reduction", "LlrObservationReducer"),
     "ObservationReduction": ("reduction", "ObservationReduction"),
-    "LlrObservationResultBuilder": ("assembly", "LlrObservationResultBuilder"),
+    "LlrObservationResultBuilder": ("result_builder", "LlrObservationResultBuilder"),
     "LlrObservationProcessor": ("processor", "LlrObservationProcessor"),
     "ObservationProcessingOptions": ("processor", "ObservationProcessingOptions"),
     "LlrObservationResult": ("results", "LlrObservationResult"),
     "ObservationOutputLevel": ("results", "ObservationOutputLevel"),
-    "MiniUncertainty": ("corrections", "MiniUncertainty"),
-    "RangeBiasCorrection": ("corrections", "RangeBiasCorrection"),
-    "RangeBiasModel": ("corrections", "RangeBiasModel"),
-    "TableRangeBiasModel": ("corrections", "TableRangeBiasModel"),
-    "UncertaintyEstimate": ("corrections", "UncertaintyEstimate"),
-    "UncertaintyKind": ("corrections", "UncertaintyKind"),
-    "UncertaintyModel": ("corrections", "UncertaintyModel"),
-    "WrmsTableUncertainty": ("corrections", "WrmsTableUncertainty"),
-    "ZeroRangeBiasModel": ("corrections", "ZeroRangeBiasModel"),
 }
 
 

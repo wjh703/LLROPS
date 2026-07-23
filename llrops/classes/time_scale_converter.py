@@ -13,7 +13,7 @@ import numpy as np
 
 from llrops.base.constants import C2
 from llrops.base.epoch import Epoch, TimeScale, tt2utc as _tt2utc, utc2tt as _utc2tt
-from llrops.base.validation import vector3
+from llrops.base.array_validation import vector3
 
 
 class TimeScaleConverter:

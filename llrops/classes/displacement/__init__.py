@@ -9,7 +9,7 @@ from .base import (
     ZeroReflectorDisplacement,
     ZeroStationDisplacement,
 )
-from .lunar import LunarSolidTide
+from .lunar_solid_tide import LunarSolidTide
 from .ocean_pole_tide import (
     Iers2010OceanPoleTide,
     OceanPoleTideCoefficients,
@@ -24,7 +24,7 @@ from .pole_tide import (
     polar_wobble,
     secular_pole_2018_arcsec,
 )
-from .solid_earth import Iers2010SolidEarthTide
+from .solid_earth_tide import Iers2010SolidEarthTide
 
 __all__ = [
     "CompositeStationDisplacement",

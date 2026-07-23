@@ -11,7 +11,7 @@ import numpy as np
 from llrops.classes.frames.earth_orientation import EarthOrientation
 
 from .base import StationDisplacementInput
-from .geometry import enu2itrf, itrf2geodetic
+from .terrestrial_geometry import enu2itrf, itrf2geodetic
 from .pole_tide import PolarWobble, polar_wobble
 
 _GRAVITATIONAL_CONSTANT_M3_KG_S2 = 6.67428e-11

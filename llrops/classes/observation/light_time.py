@@ -8,7 +8,7 @@ import numpy as np
 
 from llrops.base.constants import C
 from llrops.base.epoch import Epoch, TimeScale
-from llrops.base.validation import readonly_vector3, vector3
+from llrops.base.array_validation import readonly_vector3, vector3
 from llrops.classes.delays import (
     GravitationalDelay,
     TroposphereDelay,
@@ -24,7 +24,7 @@ from llrops.classes.displacement import (
     ZeroStationDisplacement,
 )
 from llrops.classes.frames import ReferenceFrameSystem
-from llrops.classes.displacement.geometry import local_up_unit_itrf
+from llrops.classes.displacement.terrestrial_geometry import local_up_unit_itrf
 
 
 @dataclass(frozen=True, slots=True)

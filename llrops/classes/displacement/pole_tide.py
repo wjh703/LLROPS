@@ -9,7 +9,7 @@ from llrops.base.epoch import Epoch, TimeScale
 from llrops.classes.frames.earth_orientation import EarthOrientation
 
 from .base import StationDisplacementInput
-from .geometry import enu2itrf, itrf2geocentric
+from .terrestrial_geometry import enu2itrf, itrf2geocentric
 
 
 @dataclass(frozen=True, slots=True)

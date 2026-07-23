@@ -6,10 +6,10 @@ from typing import Iterable
 
 import numpy as np
 
-from llrops.fileio.npt import NptDataset
+from llrops.classes.uncertainty.models import UncertaintyKind
+from llrops.fileio.normal_points import NptDataset
 
-from .assembly import LlrObservationResultBuilder
-from .corrections import UncertaintyKind
+from .result_builder import LlrObservationResultBuilder
 from .model import LlrObservationModel
 from .reduction import LlrObservationReducer
 from .resolver import CatalogSelection, ObservationResolver, ResolvedObservation

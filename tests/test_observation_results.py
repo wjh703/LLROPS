@@ -4,29 +4,9 @@ import numpy as np
 import pytest
 
 from llrops.base.epoch import Epoch, TimeScale
-from llrops.classes.observation.equations import ObservationEquation
 from llrops.classes.observation.results import LlrObservationResult, ObservationOutputLevel
 
 _UTC_EPOCH = Epoch(2458849.5, 0.0, TimeScale.UTC)
-
-
-def test_observation_equation_normalizes_and_freezes_partials():
-    eq = ObservationEquation(
-        observed_minus_computed_m=0.25,
-        sigma_m=0.01,
-        partials={"geometry": [1.0, 2.0, 3.0]},
-        identity=7,
-        station_key="STA",
-        reflector_key="REF",
-        epoch=_UTC_EPOCH,
-        metadata={"station_name": "Station"},
-    )
-
-    assert eq.observed_minus_computed_m == 0.25
-    assert eq.epoch is _UTC_EPOCH
-    assert np.allclose(eq.partials["geometry"], [1.0, 2.0, 3.0])
-    with pytest.raises(ValueError):
-        eq.partials["geometry"][0] = 9.0
 
 
 def test_typed_result_projects_rows_and_builds_equation():

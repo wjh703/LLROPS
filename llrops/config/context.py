@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .registry import create, normalize_class_config
-from llrops.lifecycle import close_resources
+from llrops.resource_lifecycle import close_resources
 
 
 def _config_key(category: str, config) -> str:

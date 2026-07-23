@@ -6,7 +6,7 @@ from typing import Mapping, Sequence
 
 from llrops.base.epoch import Epoch, TimeScale
 from llrops.fileio.catalogs import ReflectorRecord, StationRecord, first_resolvable_key
-from llrops.fileio.npt import NptRecord
+from llrops.fileio.normal_points import NptRecord
 
 
 @dataclass(frozen=True, slots=True)

@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 
 from llrops.base.epoch import Epoch, TimeScale
-from llrops.base.validation import readonly_matrix3x3, finite_array
+from llrops.base.array_validation import readonly_matrix3x3, finite_array
 
 
 

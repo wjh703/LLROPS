@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable
 
-from .llrops_npt import SUPPORTED_SUFFIXES as LLROPS_NPT_SUFFIXES
+from .llrops_normal_point_file import SUPPORTED_SUFFIXES as LLROPS_NPT_SUFFIXES
 
 
 SUPPORTED_MINI_SUFFIXES = (
@@ -78,7 +78,7 @@ def read_normal_points(path: str | Path, *, mini_io_log_path=None):
         raise FileNotFoundError(f"Normal-point input file not found: {source}")
 
     from .crd import looks_like_crd_file, parse_crd_file
-    from .llrops_npt import is_llrops_npt_file, read_llrops_npt
+    from .llrops_normal_point_file import is_llrops_npt_file, read_llrops_npt
     from .mini import looks_like_mini_file, parse_mini_file
 
     if is_llrops_npt_file(source):

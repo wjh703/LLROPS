@@ -9,10 +9,12 @@ import numpy as np
 from llrops.base.constants import C
 from llrops.classes.ephemerides import Ephemeris
 
-from .corrections import (
-    MiniUncertainty,
+from llrops.classes.range_bias.models import (
     RangeBiasCorrection,
     RangeBiasModel,
+)
+from llrops.classes.uncertainty.models import (
+    MiniUncertainty,
     UncertaintyEstimate,
     UncertaintyKind,
     UncertaintyModel,

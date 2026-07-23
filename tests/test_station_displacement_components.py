@@ -3,7 +3,7 @@ from dataclasses import FrozenInstanceError
 import numpy as np
 import pytest
 
-from llrops.classes.builders import ensure_registered
+from llrops.classes.observation_factory import ensure_registered
 from llrops.classes.displacement import (
     CompositeStationDisplacement,
     Iers2010OceanPoleTide,
