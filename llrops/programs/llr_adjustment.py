@@ -23,78 +23,13 @@ from __future__ import annotations
 import json
 
 from llrops.config.context import RunContext
-from llrops.config.registry import create_list
-from llrops.programs.llr_residuals import (
+from llrops.llr_workflow import (
+    build_equation_source,
+    build_parametrization,
     build_processor,
     load_datasets,
-    make_processing_options,
 )
 from llrops.programs.registry import program
-
-
-def _build_equation_source(config, context, datasets, processor):
-    """Equation-source closure: recompute typed observations each iteration.
-
-    Under ``--mpi`` the typed results of every iteration are computed by worker ranks;
-    the current linearization point (reflector catalog updated by the
-    parametrizations through ``context.shared``) is snapshotted and shipped
-    with each task, so relinearization matches the serial path.
-    """
-    options = make_processing_options(config, include_design=True)
-    runtime = context.shared.get("mpi")
-    progress_prefix = (
-        "linearization"
-        if config.get("program") == "LlrAdjustment"
-        else "adjustment iter"
-    )
-    use_mpi = runtime is not None and runtime.has_workers
-    if use_mpi:
-        from llrops.parallel.mpi import make_observation_spec, mpi_observation_results, snapshot_catalog_state
-
-        spec = make_observation_spec(
-            config,
-            context,
-            station_catalog=processor.station_catalog,
-            reflector_catalog=processor.reflector_catalog,
-        )
-        chunksize = int((config.get("mpi") or {}).get("chunksize", 8))
-
-    def equation_source(iteration: int):
-        if use_mpi:
-            results_by_source = mpi_observation_results(
-                runtime,
-                spec,
-                datasets,
-                options,
-                chunksize=chunksize,
-                catalog_state=snapshot_catalog_state(context),
-                progress_desc=f"{progress_prefix} {iteration}",
-                quiet=not bool(config.get("showProgress", True)),
-            )
-        else:
-            iteration_options = options.with_progress(f"{progress_prefix} {iteration}")
-            results_by_source = {
-                source_name: processor.process(dataset, options=iteration_options)
-                for source_name, dataset in datasets.items()
-            }
-        return [
-            result.to_equation()
-            for results in results_by_source.values()
-            for result in results
-        ]
-
-    return equation_source
-
-
-def _build_parametrization(config: dict, context: RunContext):
-    from llrops.classes.observation_factory import ensure_registered
-    from llrops.classes.parametrization.base import ParametrizationList
-
-    ensure_registered()
-    blocks = create_list("parametrization", config.get("parametrization"), context)
-    if not blocks:
-        raise ValueError("At least one parametrization block is required.")
-    return ParametrizationList(blocks)
 
 
 
@@ -107,7 +42,7 @@ def llr_adjustment(config: dict, context: RunContext):
     plan = parse_adjustment_plan(config)
     options = plan.options
     datasets = load_datasets(config, context)
-    parametrization = _build_parametrization(config, context)
+    parametrization = build_parametrization(config, context)
     processor = build_processor(config, context)
     active_stage = {"name": "joint"}
 
@@ -133,7 +68,7 @@ def llr_adjustment(config: dict, context: RunContext):
     previous_scales = {}
     previous_factors = {}
     try:
-        equation_source = _build_equation_source(config, context, datasets, processor)
+        equation_source = build_equation_source(config, context, datasets, processor)
         for stage in plan.stages:
             stage_name = stage.name
             active_stage["name"] = stage_name
@@ -147,7 +82,7 @@ def llr_adjustment(config: dict, context: RunContext):
                 equation_source=equation_source,
                 parametrization=stage_parametrization,
                 options=stage_options,
-                context=context,
+                model_state=processor.model_state,
                 initial_scales=(previous_scales if warm_start_stochastic else None),
                 initial_factors=(previous_factors if warm_start_stochastic else None),
                 iteration_callback=(

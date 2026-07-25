@@ -10,8 +10,7 @@ from llrops.estimation.adjustment_config import parse_adjustment_plan
 def _component(component_id="A"):
     return {
         "id": component_id,
-        "stationSystem": "A",
-        "stationAliases": ["STA_A"],
+        "station": "STA_A",
         "start": "2020-01-01",
         "endExclusive": None,
     }
@@ -133,6 +132,15 @@ def test_uncertainty_floor_has_no_fake_strategy_selector():
 def test_variance_component_schema_is_strict():
     config = _config()
     config["vce"]["components"][0]["station_system"] = "A"
+
+    with pytest.raises(ValueError, match="unknown key"):
+        parse_adjustment_plan(config)
+
+
+@pytest.mark.parametrize("obsolete_key", ["stationSystem", "stationAliases"])
+def test_variance_component_station_alias_fields_are_rejected(obsolete_key):
+    config = _config()
+    config["vce"]["components"][0][obsolete_key] = "obsolete"
 
     with pytest.raises(ValueError, match="unknown key"):
         parse_adjustment_plan(config)

@@ -6,47 +6,17 @@ from datetime import date
 import math
 from typing import Hashable, Mapping, Optional, Sequence
 
+from llrops.base.station_identity import canonical_station_id
 from llrops.classes.observation.equations import ObservationEquation
 
 ObsKey = Hashable
-
-
-def _normalise(value: object) -> str:
-    return str(value or "").strip().upper().replace("-", "_").replace(" ", "_")
-
-
-def _as_texts(value: object) -> tuple[str, ...]:
-    if value is None:
-        return ()
-    values = (value,) if isinstance(value, str) else value
-    if not isinstance(values, Sequence):
-        raise TypeError("Variance-component aliases must be strings or a sequence.")
-    if any(not isinstance(item, str) for item in values):
-        raise TypeError("Variance-component aliases must contain only strings.")
-    result = tuple(_normalise(item) for item in values)
-    if any(not item for item in result):
-        raise ValueError("Variance-component aliases must be non-empty.")
-    if len(set(result)) != len(result):
-        raise ValueError(
-            "Variance-component aliases must be unique after normalization."
-        )
-    return result
-
-
-def _metadata_candidates(eq: ObservationEquation, *keys: str) -> set[str]:
-    metadata = eq.metadata or {}
-    values = [eq.station_key]
-    values.extend(metadata.get(key) for key in keys)
-    return {_normalise(value) for value in values if _normalise(value)}
 
 
 _COMPONENT_CONFIG_KEYS = {
     "endExclusive",
     "id",
     "start",
-    "stationAliases",
-    "stationSystem",
-    "systemAliases",
+    "station",
     "wavelengthMaxExclusiveNm",
     "wavelengthMinNm",
 }
@@ -73,11 +43,9 @@ def _optional_wavelength(value: object, field: str) -> Optional[float]:
 @dataclass(frozen=True)
 class VarianceComponentDefinition:
     id: str
-    station_system: str
+    station: str
     start: str
     end_exclusive: Optional[str]
-    station_aliases: tuple[str, ...]
-    system_aliases: tuple[str, ...]
     wavelength_min_nm: Optional[float] = None
     wavelength_max_exclusive_nm: Optional[float] = None
 
@@ -92,18 +60,18 @@ class VarianceComponentDefinition:
                 f"Variance component: unknown key(s) {sorted(unknown)}."
             )
         component_id_value = value.get("id")
-        station_system_value = value.get("stationSystem")
+        station_value = value.get("station")
         if not isinstance(component_id_value, str):
             raise TypeError("Variance component id must be a string.")
-        if not isinstance(station_system_value, str):
-            raise TypeError("Variance component stationSystem must be a string.")
+        if not isinstance(station_value, str):
+            raise TypeError("Variance component station must be a string.")
         component_id = component_id_value.strip()
-        station_system = station_system_value.strip()
+        station = canonical_station_id(station_value)
         start_value = value.get("start")
         start = "" if start_value is None else _date_text(start_value, "start")
-        if not component_id or not station_system or not start:
+        if not component_id or not start:
             raise ValueError(
-                "Each variance component requires id, stationSystem, and start."
+                "Each variance component requires id, station, and start."
             )
         end_value = value.get("endExclusive")
         end = None if end_value is None else _date_text(end_value, "endExclusive")
@@ -127,30 +95,20 @@ class VarianceComponentDefinition:
             )
         component = cls(
             id=component_id,
-            station_system=station_system,
+            station=station,
             start=start,
             end_exclusive=end,
-            station_aliases=_as_texts(value.get("stationAliases"))
-            or (_normalise(station_system),),
-            system_aliases=_as_texts(value.get("systemAliases")),
             wavelength_min_nm=wavelength_min,
             wavelength_max_exclusive_nm=wavelength_max,
         )
-        if not all(component.station_aliases):
-            raise ValueError("Variance-component stationAliases must be non-empty.")
         return component
 
     def matches(self, equation: ObservationEquation) -> bool:
         date = equation.epoch.date_iso()
         if date < self.start or (self.end_exclusive is not None and date >= self.end_exclusive):
             return False
-        stations = _metadata_candidates(equation, "station_catalog_key", "station_name", "station_full_name", "station_id")
-        if not stations.intersection(self.station_aliases):
+        if canonical_station_id(equation.station_key) != self.station:
             return False
-        if self.system_aliases:
-            systems = _metadata_candidates(equation, "system_config_id", "system_name", "station_system", "observation_mode")
-            if not systems.intersection(self.system_aliases):
-                return False
         wavelength = (equation.metadata or {}).get("wavelength_nm")
         if self.wavelength_min_nm is not None or self.wavelength_max_exclusive_nm is not None:
             if wavelength is None:

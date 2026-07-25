@@ -131,8 +131,7 @@ def test_vce_assignment_distinguishes_overlapping_cerga_systems_by_wavelength():
         VarianceComponentDefinition.from_config(
             {
                 "id": "CERGA_MEO",
-                "stationSystem": "CERGA_MEO",
-                "stationAliases": ["CERGA"],
+                "station": "GRASSE",
                 "start": "2015-01-01",
                 "endExclusive": "2023-01-01",
                 "wavelengthMaxExclusiveNm": 700.0,
@@ -141,8 +140,7 @@ def test_vce_assignment_distinguishes_overlapping_cerga_systems_by_wavelength():
         VarianceComponentDefinition.from_config(
             {
                 "id": "CERGA_IR",
-                "stationSystem": "CERGA_IR",
-                "stationAliases": ["CERGA"],
+                "station": "GRASSE",
                 "start": "2015-01-01",
                 "endExclusive": None,
                 "wavelengthMinNm": 700.0,
@@ -198,8 +196,7 @@ def test_vce_assignment_rejects_unassigned_observation():
         VarianceComponentDefinition.from_config(
             {
                 "id": "A",
-                "stationSystem": "A",
-                "stationAliases": ["STA_A"],
+                "station": "STA_A",
                 "start": "2010-01-01",
                 "endExclusive": None,
             }
@@ -337,8 +334,7 @@ def test_vce_direct_update_respects_variance_ratio_limit():
         VarianceComponentDefinition.from_config(
             {
                 "id": "A",
-                "stationSystem": "A",
-                "stationAliases": ["STA_A"],
+                "station": "STA_A",
                 "start": "2010-01-01",
                 "endExclusive": None,
             }
@@ -382,8 +378,7 @@ def _two_component_case():
         VarianceComponentDefinition.from_config(
             {
                 "id": name,
-                "stationSystem": name,
-                "stationAliases": [f"STA_{name}"],
+                "station": f"STA_{name}",
                 "start": "2010-01-01",
                 "endExclusive": None,
             }
@@ -525,8 +520,7 @@ def test_llr_adjustment_runs_joint_helmert_vce_cycle():
         VarianceComponentDefinition.from_config(
             {
                 "id": "A",
-                "stationSystem": "A",
-                "stationAliases": ["STA_A"],
+                "station": "STA_A",
                 "start": "2010-01-01",
                 "endExclusive": None,
             }
@@ -534,8 +528,7 @@ def test_llr_adjustment_runs_joint_helmert_vce_cycle():
         VarianceComponentDefinition.from_config(
             {
                 "id": "B",
-                "stationSystem": "B",
-                "stationAliases": ["STA_B"],
+                "station": "STA_B",
                 "start": "2010-01-01",
                 "endExclusive": None,
             }
@@ -607,8 +600,7 @@ def test_adjustment_reports_prefit_uncertainty_floor():
         VarianceComponentDefinition.from_config(
             {
                 "id": "A",
-                "stationSystem": "A",
-                "stationAliases": ["STA_A"],
+                "station": "STA_A",
                 "start": "2010-01-01",
                 "endExclusive": None,
             }
@@ -674,8 +666,7 @@ def test_prefit_gross_rejection_never_reenters():
         VarianceComponentDefinition.from_config(
             {
                 "id": "STA",
-                "stationSystem": "STA",
-                "stationAliases": ["STA"],
+                "station": "STA",
                 "start": "2010-01-01",
                 "endExclusive": None,
             }
@@ -706,8 +697,7 @@ def test_extended_variance_components_cover_mcdonald_1969_and_current_meo():
         VarianceComponentDefinition.from_config(
             {
                 "id": "MCDONALD_1969_1985",
-                "stationSystem": "MCDONALD",
-                "stationAliases": ["MCDONALD"],
+                "station": "MCDONALD",
                 "start": "1969-01-01",
                 "endExclusive": "1986-01-01",
             }
@@ -715,8 +705,7 @@ def test_extended_variance_components_cover_mcdonald_1969_and_current_meo():
         VarianceComponentDefinition.from_config(
             {
                 "id": "CERGA_MEO_2009_PRESENT",
-                "stationSystem": "CERGA_MEO",
-                "stationAliases": ["GRASSE"],
+                "station": "GRASSE",
                 "start": "2009-01-01",
                 "endExclusive": None,
                 "wavelengthMaxExclusiveNm": 700.0,
@@ -748,8 +737,7 @@ def test_stochastic_iterations_do_not_recompute_observation_equations():
         VarianceComponentDefinition.from_config(
             {
                 "id": "A",
-                "stationSystem": "A",
-                "stationAliases": ["STA_A"],
+                "station": "STA_A",
                 "start": "2010-01-01",
                 "endExclusive": None,
             }
@@ -801,8 +789,7 @@ def test_stochastic_iteration_limit_still_applies_parameter_update():
         VarianceComponentDefinition.from_config(
             {
                 "id": "A",
-                "stationSystem": "A",
-                "stationAliases": ["STA_A"],
+                "station": "STA_A",
                 "start": "2010-01-01",
                 "endExclusive": None,
             }
@@ -869,8 +856,7 @@ def test_fixed_domain_observation_can_reenter_after_one_failed_linearization():
         VarianceComponentDefinition.from_config(
             {
                 "id": "A",
-                "stationSystem": "A",
-                "stationAliases": ["STA_A"],
+                "station": "STA_A",
                 "start": "2010-01-01",
                 "endExclusive": None,
             }
@@ -916,8 +902,7 @@ def test_parameter_convergence_requires_two_confirmation_linearizations():
         VarianceComponentDefinition.from_config(
             {
                 "id": "A",
-                "stationSystem": "A",
-                "stationAliases": ["STA_A"],
+                "station": "STA_A",
                 "start": "2010-01-01",
                 "endExclusive": None,
             }
@@ -974,8 +959,7 @@ def test_final_report_matches_the_applied_damped_state():
         VarianceComponentDefinition.from_config(
             {
                 "id": "A",
-                "stationSystem": "A",
-                "stationAliases": ["STA_A"],
+                "station": "STA_A",
                 "start": "2010-01-01",
                 "endExclusive": None,
             }

@@ -26,8 +26,8 @@ as in the serial path.
 
 Task kinds:
 
-``observation_results``
-    chunk of NptRecords -> typed observation results (used by ``LlrResiduals`` and by the
+``observation_equations``
+    chunk of NptRecords -> typed observation equations (used by ``LlrResiduals`` and by the
     equation sources of ``LlrAdjustment`` / ``LlrNormalEquations``).
 """
 
@@ -109,8 +109,8 @@ def _observation_spec_for_payload(payload: dict, cache: dict) -> dict:
         ) from None
 
 
-def _handle_observation_results(payload: dict, cache: dict):
-    """NptRecord chunk -> typed observation results or lightweight table rows."""
+def _handle_observation_equations(payload: dict, cache: dict):
+    """NptRecord chunk -> typed equations or lightweight table rows."""
     from llrops.fileio.normal_points import NptDataset
     from llrops.classes.observation import (
         ObservationOutputLevel,
@@ -131,7 +131,7 @@ def _handle_observation_results(payload: dict, cache: dict):
         n_input_records=len(records),
         n_invalid_records=0,
     )
-    results = processor.process(
+    equations = processor.process(
         local,
         options=options,
     )
@@ -142,14 +142,14 @@ def _handle_observation_results(payload: dict, cache: dict):
     }
     if payload.get("returnRows"):
         level = ObservationOutputLevel.parse(payload.get("outputLevel", "standard"))
-        response["rows"] = [result.to_row(level) for result in results]
+        response["items"] = [equation.to_row(level) for equation in equations]
     else:
-        response["results"] = results
+        response["items"] = equations
     return response
 
 
 TASK_HANDLERS: Dict[str, Callable[[dict, dict], object]] = {
-    "observation_results": _handle_observation_results,
+    "observation_equations": _handle_observation_equations,
 }
 
 
@@ -161,7 +161,7 @@ TASK_HANDLERS: Dict[str, Callable[[dict, dict], object]] = {
 class MpiRuntime:
     """One communicator, one worker loop, one dynamic scheduler.
 
-    Programs never talk MPI directly — they call :func:`mpi_observation_results`, which
+    Programs never talk MPI directly; they call the observation collection helpers, which
     routes through :meth:`map_tasks`.  Workers stay alive across programs and
     Gauss-Newton iterations, keeping their CALCEPH/EOP model caches warm.
     """
@@ -552,7 +552,53 @@ def _prepare_and_initialize_spec(
     runtime.initialize_observation_workers(spec["specId"], quiet=quiet)
 
 
-def mpi_observation_results(
+def _collect_observations(
+    runtime: MpiRuntime,
+    spec: dict,
+    datasets,
+    options,
+    *,
+    chunksize: int = 8,
+    catalog_state: Optional[dict] = None,
+    return_rows: bool,
+    output_level: str,
+    progress_desc: str = "O-C normal points",
+    quiet: bool = False,
+) -> Dict[str, list]:
+    _prepare_and_initialize_spec(runtime, spec, quiet=quiet)
+    tasks = _observation_task_payloads(
+        spec["specId"],
+        datasets,
+        options,
+        chunksize=chunksize,
+        catalog_state=catalog_state,
+        return_rows=return_rows,
+        output_level=output_level,
+    )
+    total = sum(len(dataset.records) for dataset in datasets.values())
+    results = runtime.map_tasks(
+        "observation_equations",
+        tasks,
+        progress_desc=progress_desc,
+        progress_total=total,
+        quiet=quiet,
+    )
+    items_by_source: Dict[str, list] = {str(name): [] for name in datasets}
+    for result in results:
+        items_by_source[result["sourceName"]].extend(result["items"])
+    for items in items_by_source.values():
+        if return_rows:
+            items.sort(
+                key=lambda row: int(
+                    row.get("normal_point_index", row.get("record_index", 0))
+                )
+            )
+        else:
+            items.sort(key=lambda equation: equation.normal_point_index)
+    return items_by_source
+
+
+def mpi_observation_equations(
     runtime: MpiRuntime,
     spec: dict,
     datasets,
@@ -563,29 +609,19 @@ def mpi_observation_results(
     progress_desc: str = "O-C normal points",
     quiet: bool = False,
 ) -> Dict[str, list]:
-    """Compute typed observation results for every dataset over MPI."""
-    _prepare_and_initialize_spec(runtime, spec, quiet=quiet)
-    tasks = _observation_task_payloads(
-        spec["specId"],
+    """Compute typed observation equations for every dataset over MPI."""
+    return _collect_observations(
+        runtime,
+        spec,
         datasets,
         options,
         chunksize=chunksize,
         catalog_state=catalog_state,
-    )
-    total = sum(len(dataset.records) for dataset in datasets.values())
-    results = runtime.map_tasks(
-        "observation_results",
-        tasks,
+        return_rows=False,
+        output_level="standard",
         progress_desc=progress_desc,
-        progress_total=total,
         quiet=quiet,
     )
-    results_by_source: Dict[str, list] = {str(name): [] for name in datasets}
-    for result in results:
-        results_by_source[result["sourceName"]].extend(result["results"])
-    for source_results in results_by_source.values():
-        source_results.sort(key=lambda item: item.normal_point_index)
-    return results_by_source
 
 
 def mpi_observation_rows(
@@ -602,36 +638,19 @@ def mpi_observation_rows(
 ) -> Dict[str, list[dict]]:
     """Compute lightweight O-C table rows over MPI.
 
-    Residual-table production does not need to ship full typed observation
-    objects, partial arrays, or Epoch instances back to rank 0.  Returning rows
-    restores the old MPI transport shape while leaving adjustment code on the
-    typed-result path.
+    Residual-table production does not need to ship full typed equations,
+    partial arrays, or Epoch instances back to rank 0. Adjustment workflows use
+    the typed-equation path; table workflows request projected rows.
     """
-    _prepare_and_initialize_spec(runtime, spec, quiet=quiet)
-    tasks = _observation_task_payloads(
-        spec["specId"],
+    return _collect_observations(
+        runtime,
+        spec,
         datasets,
         options,
         chunksize=chunksize,
         catalog_state=catalog_state,
         return_rows=True,
         output_level=output_level,
-    )
-    total = sum(len(dataset.records) for dataset in datasets.values())
-    results = runtime.map_tasks(
-        "observation_results",
-        tasks,
         progress_desc=progress_desc,
-        progress_total=total,
         quiet=quiet,
     )
-    rows_by_source: Dict[str, list[dict]] = {str(name): [] for name in datasets}
-    for result in results:
-        rows_by_source[result["sourceName"]].extend(result["rows"])
-    for rows in rows_by_source.values():
-        rows.sort(
-            key=lambda row: int(
-                row.get("normal_point_index", row.get("record_index", 0))
-            )
-        )
-    return rows_by_source

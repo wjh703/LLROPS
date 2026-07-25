@@ -25,7 +25,7 @@ modules, import aliases, or deprecated paths will be retained.
   `normal_points.py`, `llrops_normal_point_file.py`, and
   `observation_result_writer.py`.
 - Observation construction: `classes/observation_factory.py`,
-  `classes/observation/result_builder.py`, and
+  `classes/observation/equations.py`, `classes/observation/resolver.py`, and
   `classes/observation/frozen_mapping.py`.
 - Time and frames: `classes/time_scale_converter.py` and
   `classes/frames/reference_frame_system.py`.
@@ -54,7 +54,7 @@ strategy. The observation package does not re-export range-bias domain models.
 
 ## Test Modules
 
-Tests use production-aligned names for observation equations and results,
+Tests use production-aligned names for observation equations and table projection,
 result writing, CLI/MPI startup, resource lifecycle, program registration,
 ephemeris/reference-frame integration, and linearized least-squares solving.
 

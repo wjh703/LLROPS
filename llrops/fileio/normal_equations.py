@@ -19,7 +19,6 @@ File format: ``<stem>.npz`` holding N, W, lPl, obs_count plus a JSON sidecar
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
@@ -28,14 +27,35 @@ import numpy as np
 from llrops.base.parameter_name import ParameterName, names_to_strings, strings_to_names
 
 
-@dataclass
 class NormalEquations:
-    parameter_names: List[ParameterName]
-    N: np.ndarray
-    W: np.ndarray
-    lPl: float = 0.0
-    obs_count: int = 0
-    meta: Dict[str, object] = field(default_factory=dict)
+    """Mutable normal-equation accumulator and persistence object."""
+
+    __slots__ = ("parameter_names", "N", "W", "lPl", "obs_count", "meta")
+
+    def __init__(
+        self,
+        parameter_names: List[ParameterName],
+        N: np.ndarray,
+        W: np.ndarray,
+        lPl: float = 0.0,
+        obs_count: int = 0,
+        meta: Optional[Dict[str, object]] = None,
+    ) -> None:
+        self.parameter_names = parameter_names
+        self.N = N
+        self.W = W
+        self.lPl = lPl
+        self.obs_count = obs_count
+        self.meta = {} if meta is None else meta
+        self.__post_init__()
+
+    def __repr__(self) -> str:
+        return (
+            "NormalEquations("
+            f"parameter_count={len(self.parameter_names)}, "
+            f"obs_count={self.obs_count}, lPl={self.lPl!r}, "
+            f"meta_keys={tuple(self.meta)!r})"
+        )
 
     def __post_init__(self) -> None:
         names = list(self.parameter_names)

@@ -46,7 +46,7 @@ class LlrAdjustmentIteration:
     variance_components: dict[str, dict[str, object]]
 
 
-@dataclass
+@dataclass(eq=False, repr=False, slots=True)
 class LlrAdjustmentResult:
     converged: bool
     termination_reason: str
@@ -254,8 +254,8 @@ def observation_records(
     uncertainty_qc_records: Mapping[ObsKey, Mapping[str, object]],
     active_threshold: float,
 ) -> list[dict[str, object]]:
-    station_systems = {
-        component.id: component.station_system for component in components
+    stations = {
+        component.id: component.station for component in components
     }
     records: list[dict[str, object]] = []
     for equation in equations:
@@ -286,7 +286,7 @@ def observation_records(
                 "observation_id": str(equation.identity),
                 "epoch": equation.epoch.isot(),
                 "station_id": equation.station_key,
-                "station_system": station_systems[component_id],
+                "station": stations[component_id],
                 "vce_component_id": component_id,
                 "reported_sigma_m": float(qc["reported_sigma_m"]),
                 "effective_sigma_m": float(equation.sigma_m),

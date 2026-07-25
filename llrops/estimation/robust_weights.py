@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Hashable, Mapping, Protocol, Sequence
+from typing import Hashable, Mapping, Sequence
 
 import numpy as np
 
@@ -16,18 +16,6 @@ class RobustWeightUpdate:
     target_change_quantile: float
     active_set_change_fraction: float
     maximum_applied_change: float
-
-
-class RobustWeightModel(Protocol):
-    def initial_factors(self, keys: Sequence[ObsKey]) -> dict[ObsKey, float]: ...
-
-    def update(
-        self,
-        standardized_residuals: Mapping[ObsKey, float],
-        current_factors: Mapping[ObsKey, float],
-        previous_target_factors: Mapping[ObsKey, float],
-        keys: Sequence[ObsKey],
-    ) -> RobustWeightUpdate: ...
 
 
 @dataclass(frozen=True)
@@ -47,9 +35,6 @@ class Igg3WeightModel:
             raise ValueError("IGGIII thresholds must satisfy 0 < k0 < k1.")
         if not 0.0 < self.change_quantile <= 1.0:
             raise ValueError("Robust factor change quantile must be in (0, 1].")
-
-    def initial_factors(self, keys: Sequence[ObsKey]) -> dict[ObsKey, float]:
-        return {key: 1.0 for key in keys}
 
     def target_factors(
         self,
@@ -131,7 +116,7 @@ def active_set_change_fraction(old_factors, new_factors, keys, *, active_thresho
 
 
 __all__ = [
-    "Igg3WeightModel", "RobustWeightModel", "RobustWeightUpdate",
+    "Igg3WeightModel", "RobustWeightUpdate",
     "active_set_change_fraction", "igg3_factors",
     "maximum_robust_factor_change",
     "robust_factor_change_quantile",

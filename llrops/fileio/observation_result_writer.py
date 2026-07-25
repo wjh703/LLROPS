@@ -6,11 +6,11 @@ import json
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
-from llrops.classes.observation import LlrObservationResult, ObservationOutputLevel
+from llrops.classes.observation import ObservationEquation, ObservationOutputLevel
 
 
 def _rows(
-    results: Iterable[LlrObservationResult | Mapping[str, object]],
+    results: Iterable[ObservationEquation | Mapping[str, object]],
     level: ObservationOutputLevel | str,
 ) -> list[dict]:
     parsed_level = ObservationOutputLevel.parse(level)
@@ -24,7 +24,7 @@ def _rows(
 
 
 def write_csv(
-    results: Sequence[LlrObservationResult | Mapping[str, object]],
+    results: Sequence[ObservationEquation | Mapping[str, object]],
     path,
     *,
     level: ObservationOutputLevel | str = ObservationOutputLevel.STANDARD,
@@ -48,7 +48,7 @@ def write_csv(
 
 
 def write_json(
-    results: Sequence[LlrObservationResult | Mapping[str, object]],
+    results: Sequence[ObservationEquation | Mapping[str, object]],
     path,
     *,
     level: ObservationOutputLevel | str = ObservationOutputLevel.STANDARD,
@@ -62,7 +62,7 @@ def write_json(
 
 
 def write_csv_grouped(
-    results_by_source: Mapping[str, Sequence[LlrObservationResult | Mapping[str, object]]],
+    results_by_source: Mapping[str, Sequence[ObservationEquation | Mapping[str, object]]],
     path,
     *,
     level: ObservationOutputLevel | str = ObservationOutputLevel.STANDARD,
@@ -76,7 +76,7 @@ def write_csv_grouped(
 
 
 def write_json_grouped(
-    results_by_source: Mapping[str, Sequence[LlrObservationResult | Mapping[str, object]]],
+    results_by_source: Mapping[str, Sequence[ObservationEquation | Mapping[str, object]]],
     path,
     *,
     level: ObservationOutputLevel | str = ObservationOutputLevel.STANDARD,

@@ -9,6 +9,7 @@ from llrops.fileio.crd import convert_crd_to_mini
 from llrops.fileio.llrops_normal_point_file import read_llrops_npt, write_llrops_npt
 from llrops.fileio.normal_point_inputs import read_normal_points
 from llrops.fileio.mini import MiniRecord, write_mini_file
+from llrops.programs.crd_to_mini import crd_to_mini
 from llrops.programs.normal_points_to_llrops import normal_points_to_llrops
 
 
@@ -34,7 +35,7 @@ def test_crd_reads_directly_to_npt_without_mini_quantization_or_side_effect(tmp_
     record = dataset.records[0]
 
     assert len(dataset.records) == 1
-    assert record.station_name == "APOL"
+    assert record.station_name == "APOLLO"
     assert record.station_code == "70610"
     assert record.reflector_name == "Apollo 15"
     assert record.reflector_code == "3"
@@ -84,7 +85,7 @@ def test_mini_reads_directly_to_npt(tmp_path):
     dataset = read_normal_points(source)
     record = dataset.records[0]
 
-    assert record.station_name == "APOL"
+    assert record.station_name == "APOLLO"
     assert record.reflector_name == "Apollo 15"
     assert record.round_trip_time_s == pytest.approx(2.5)
     assert record.uncertainty_two_way_s == pytest.approx(12.3e-12)
@@ -126,6 +127,23 @@ def test_explicit_crd_to_mini_interchange_tool_remains_available(tmp_path):
     assert target.is_file()
     assert len(reread.records) == 1
     assert reread.records[0].round_trip_time_s == pytest.approx(2.500000000123)
+
+
+def test_crd_to_mini_program_resolves_relative_paths_from_working_dir(tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    source = input_dir / "sample.crd"
+    _write_crd(source)
+    context = RunContext(working_dir=tmp_path)
+
+    converted = crd_to_mini(
+        {"inputCrd": "input", "outputDir": "output"},
+        context,
+    )
+
+    target = tmp_path / "output" / "sample.mini"
+    assert converted == [str(target)]
+    assert target.is_file()
 
 
 def test_normal_points_to_llrops_program_is_repeatable_inside_input_directory(tmp_path):

@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import hashlib
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Mapping, MutableMapping, Optional
 
 from .registry import create, normalize_class_config
 from llrops.resource_lifecycle import close_resources
@@ -22,25 +22,36 @@ def _config_key(category: str, config) -> str:
 
 
 class RunContext:
-    """Carries variables, global class configs and a shared object cache."""
+    """Own run configuration, runtime services, and cached class instances."""
 
     def __init__(
         self,
         *,
-        variables: Optional[Dict[str, Any]] = None,
         global_class_configs: Optional[Dict[str, Any]] = None,
         working_dir: Optional[str] = None,
+        runtime: object | None = None,
+        mpi_resources: Mapping[str, object] | None = None,
+        class_cache: MutableMapping[str, Any] | None = None,
     ) -> None:
-        self.variables: Dict[str, Any] = dict(variables or {})
         self.global_class_configs: Dict[str, Any] = dict(global_class_configs or {})
         self.working_dir = Path(working_dir or ".").expanduser()
-        self._cache: Dict[str, Any] = {}
-        # Free-form slots that programs may publish for later programs
-        # (e.g. "stationCatalog", "reflectorCatalog", "observationProcessor").
-        self.shared: Dict[str, Any] = {}
+        self.runtime = runtime
+        self.mpi_resources: Dict[str, object] = dict(mpi_resources or {})
+        self._cache: MutableMapping[str, Any] = (
+            class_cache if class_cache is not None else {}
+        )
+        self._observation_spec_sequence = 0
 
     # -- class instantiation ------------------------------------------------
-    def create_class(self, category: str, config=None, *, cache: bool = True):
+    def create_class(
+        self,
+        category: str,
+        config=None,
+        *,
+        cache: bool = True,
+        factory_context=None,
+        cache_namespace: str = "",
+    ):
         """Instantiate a class; ``config=None`` falls back to ``globals:``.
 
         With ``cache=True`` (default) identical (category, config) pairs share
@@ -54,11 +65,12 @@ class RunContext:
                     f"config nor the run 'globals:' section defines it."
                 )
             config = self.global_class_configs[category]
+        target_context = self if factory_context is None else factory_context
         if not cache:
-            return create(category, config, self)
-        key = _config_key(category, config)
+            return create(category, config, target_context)
+        key = f"{cache_namespace}:{_config_key(category, config)}"
         if key not in self._cache:
-            self._cache[key] = create(category, config, self)
+            self._cache[key] = create(category, config, target_context)
         return self._cache[key]
 
     def class_config(self, category: str, program_config: dict, key: Optional[str] = None):
@@ -74,6 +86,10 @@ class RunContext:
         if not path.is_absolute():
             path = self.working_dir / path
         return path
+
+    def next_observation_spec_id(self) -> str:
+        self._observation_spec_sequence += 1
+        return f"{id(self)}:{self._observation_spec_sequence}"
 
     def close(self) -> None:
         close_resources(self._cache.values(), owner="run-context")

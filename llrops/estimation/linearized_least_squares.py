@@ -1,4 +1,4 @@
-"""Streaming normal-equation utilities shared by adjustment programs.
+"""Dense and streaming linearized least-squares utilities.
 
 The public programs have different responsibilities:
 
@@ -7,9 +7,9 @@ The public programs have different responsibilities:
 * ``LlrNormalEquations`` writes fixed-linearization normal-equation files.
 * ``NormalsCombineSolve`` loads, adds and solves previously written files.
 
-This module contains the common linearized least-squares core.  It never
-materializes the full design matrix; each observation row is converted to a
-weighted contribution and added directly to ``N, W, lPl``.
+The streaming path accumulates rows directly into ``N, W, lPl``.  The dense
+path materializes the design matrix once when repeated reweighting makes that
+time-memory tradeoff worthwhile.
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ class PostfitResidual:
     residual_m: float
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False, repr=False, slots=True)
 class NormalEquationSolution:
     """Solution of one fixed-linearization normal-equation system."""
 
@@ -49,7 +49,7 @@ class NormalEquationSingularError(np.linalg.LinAlgError):
     """Raised when a normal-equation matrix cannot be solved strictly."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False, repr=False, slots=True)
 class DenseLinearization:
     """Materialized fixed-linearization system for repeated reweighting."""
 
@@ -185,37 +185,6 @@ def postfit_residuals_streaming(
             sigma_m=float(eq.sigma_m),
             residual_m=float(l - parametrization.design_value(eq, delta)),
         )
-
-
-def weighted_rms_from_residuals(residuals: Iterable[PostfitResidual], *, use_postfit: bool) -> Optional[float]:
-    """Weighted RMS helper for prefit or postfit residual streams."""
-    sum_w = 0.0
-    sum_w_x2 = 0.0
-    for res in residuals:
-        sigma = float(res.sigma_m)
-        w = 1.0 / (sigma * sigma)
-        x = res.residual_m if use_postfit else res.reduced_observation_m
-        sum_w += w
-        sum_w_x2 += w * x * x
-    if sum_w == 0.0:
-        return None
-    return float(np.sqrt(sum_w_x2 / sum_w))
-
-
-def weighted_rms_pair_from_residuals(residuals: Iterable[PostfitResidual]) -> tuple[Optional[float], Optional[float]]:
-    """Return ``(prefit_wrms, postfit_wrms)`` from one residual pass."""
-    sum_w = 0.0
-    sum_prefit = 0.0
-    sum_postfit = 0.0
-    for res in residuals:
-        sigma = float(res.sigma_m)
-        w = 1.0 / (sigma * sigma)
-        sum_w += w
-        sum_prefit += w * res.reduced_observation_m * res.reduced_observation_m
-        sum_postfit += w * res.residual_m * res.residual_m
-    if sum_w == 0.0:
-        return None, None
-    return float(np.sqrt(sum_prefit / sum_w)), float(np.sqrt(sum_postfit / sum_w))
 
 
 def normal_matrix_condition(normals: NormalEquations) -> Optional[float]:

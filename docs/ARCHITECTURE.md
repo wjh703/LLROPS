@@ -25,7 +25,7 @@ llrops/
 ├── config/        GROOPS "config": class registry, config loader, run context
 │   ├── registry.py    polymorphic class factory: create("troposphere", {...})
 │   ├── loader.py      YAML/JSON scenario files, {var} substitution, loops
-│   └── context.py     shared heavyweight objects (ephemeris, EOP, catalogs)
+│   └── context.py     explicit runtime/MPI dependencies and class cache
 ├── base/          GROOPS "base": constants, Epoch, ParameterName, array validation
 ├── fileio/        GROOPS "files" layer: every on-disk format in one place
 │   ├── mini.py, crd.py                 source adapters: MINI→NPT and CRD→NPT
@@ -57,13 +57,11 @@ llrops/
 │   ├── observation/   typed observation workflow
 │   │   ├── light_time.py   request/solver/solution for two-way propagation
 │   │   ├── model.py        pure theoretical LLR observable + reflector partial
-│   │   ├── resolver.py     catalog resolution boundary
+│   │   ├── resolver.py     catalog resolution + explicit mutable model state
 │   │   ├── reduction.py   deterministic corrections + scalar diagnostics
-│   │   ├── result_builder.py  typed result construction and diagnostics
 │   │   ├── frozen_mapping.py  immutable mappings for transport types
 │   │   ├── processor.py   dataset orchestration only
-│   │   ├── results.py     immutable result + standard/full table projections
-│   │   └── equations.py   immutable equation with NAMED PARTIAL BLOCKS
+│   │   └── equations.py   immutable equation, diagnostics, table projections
 │   ├── parametrization/  base + reflectorPosition + stationRangeBias
 │   └── observation_factory.py  config type registration and workflow assembly
 ├── estimation/
@@ -76,7 +74,7 @@ llrops/
 │   ├── robust_weights.py          IGGIII equivalent-weight model
 │   ├── variance_components.py     component definitions and strict assignment
 │   ├── helmert_vce.py             Helmert trace VCE
-│   └── linearized_least_squares.py  shared linearized least-squares core
+│   └── linearized_least_squares.py  dense/streaming least-squares core
 ├── programs/      GROOPS "programs": one task each, driven by config
 │   ├── crd_to_mini.py, normal_points_to_llrops.py, llr_residuals.py
 │   ├── llr_adjustment.py, llr_normal_equations.py
@@ -151,35 +149,37 @@ NptRecord
   -> ObservationResolver -> ResolvedObservation
   -> LlrObservationModel -> LlrPrediction
   -> LlrObservationReducer -> ObservationReduction
-  -> LlrObservationResultBuilder -> LlrObservationResult
-  -> LlrObservationProcessor (orchestration)
-  -> result.to_equation() / result.to_row(level)
+  -> build_observation_equation() -> ObservationEquation
+  -> LlrObservationProcessor (orchestration and progress)
+  -> equation.to_row(level)
 ```
 
 `LightTimeSolver.solve(LightTimeRequest)` owns only the two-way propagation
 problem. `LlrObservationModel` adds the theoretical observable and optional
 reflector PA partial. Catalog resolution, bias correction, input uncertainty
-propagation, result assembly, progress reporting, and table projection live in
-separate objects.
+propagation, progress reporting, and table projection remain separate concerns.
+`ObservationEquation` is the sole final observation type, so residuals,
+uncertainties, identities, catalog keys, convergence, and partials have one
+source of truth.
 The estimator never reconstructs equations from table dictionaries.
 
 ```python
 ObservationEquation(
-    observed_minus_computed_m=result.observed_minus_computed_m,
-    sigma_m=result.sigma_one_way_m,
+    observed_minus_computed_m=reduction.observed_minus_computed_one_way_m,
+    sigma_m=record.range_uncertainty_one_way_m,
     partials={
         "reflector_position_pa": [d/dx, d/dy, d/dz],
         "station_range_bias": [1.0],
     },
-    identity=result.normal_point_index,
-    station_key=result.station_key,
-    reflector_key=result.reflector_key,
-    epoch=result.epoch,  # UTC Epoch
+    identity=record.index,
+    station_key=observation.station_key,
+    reflector_key=observation.reflector_key,
+    epoch=observation.transmit_epoch,  # UTC Epoch
 )
 ```
 
-`LlrObservationResult` is pickle-safe for MPI transport. CSV/JSON writers
-project it to `standard` or `full` rows only at the file-I/O boundary.
+`ObservationEquation` is pickle-safe for MPI transport. CSV/JSON writers project
+it to `standard` or `full` rows only at the file-I/O boundary.
 
 ### 3.2 Parametrization = columns + update absorption
 
@@ -213,11 +213,11 @@ the applied state so state, residuals, normals, and remaining corrections agree.
 | `uncertainty_model.py` | `fileio/normal_points.py` | external uncertainty models removed; each input record owns its two-way uncertainty |
 | `light_time.py` | `classes/observation/light_time.py` | request/solver/result API; long keyword-list interface removed |
 | `pipeline.py` StationRecord/ReflectorRecord/resolve | `fileio/catalogs.py` | moved + config loaders added |
-| `pipeline.py` observation workflow | `classes/observation/{resolver,model,reduction,result_builder,processor,results}.py` plus domain model packages | split into typed, independently testable stages; assembled by `observation_factory.build_observation_processor` |
-| `pipeline.py` writers | `fileio/observation_result_writer.py` | serializes typed `LlrObservationResult` objects |
+| `pipeline.py` observation workflow | `classes/observation/{resolver,model,reduction,equations,processor}.py` plus domain model packages | split into typed, independently testable stages; assembled by `observation_factory.build_observation_processor` |
+| `pipeline.py` writers | `fileio/observation_result_writer.py` | serializes rows projected from typed `ObservationEquation` objects |
 | `reflector_fit.py` | removed | reflector fitting is now `LlrAdjustment` + `reflectorPosition` (+ optional `stationRangeBias`) |
 | — | `estimation/adjustment_{config,options,preprocessing,results,solver}.py` | typed nonlinear adjustment components |
-| — | `estimation/linearized_least_squares.py` | shared streaming normal-equation core |
+| — | `estimation/linearized_least_squares.py` | shared dense/streaming normal-equation core |
 | `run_llr_np_oc.py` | program `LlrResiduals` | config-driven |
 | `run_llr_reflector_fit.py` | removed | use program `LlrAdjustment` with reflector parametrization |
 | six argparse CLIs | `python -m llrops run config.yml` | one entry point |
@@ -274,9 +274,9 @@ If the model has estimable parameters (e.g. h2/l2), also expose partials — see
 Three-step recipe, all local:
 
 1. **Partial block** — compute the one-way range derivative in
-   `LlrObservationModel` (or a dedicated partial provider), attach it to
-   `LlrObservationResult.partials`, and let `result.to_equation()` carry the
-   named block to the estimator. Table serialization does not participate.
+   `LlrObservationModel` (or a dedicated partial provider), then add it to the
+   named partial blocks passed directly into `ObservationEquation`. Table
+   serialization does not participate.
 2. **Parametrization** — subclass `Parametrization` in
    `classes/parametrization/`: declare `ParameterName`s (use the
    `temporal`/`interval` fields for time-resolved parameters such as daily

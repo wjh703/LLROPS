@@ -78,12 +78,10 @@ def cmd_run(args) -> int:
                 if context is not None:
                     context.close()
                 context = RunContext(
-                    variables={**(config.get("variables") or {}), **overrides},
                     global_class_configs=global_configs,
                     working_dir=args.working_dir,
+                    runtime=runtime,
                 )
-                if runtime is not None:
-                    context.shared["mpi"] = runtime
             n += 1
             print(
                 f"=== [{n}] {name} " + "=" * max(8, 60 - len(name)),

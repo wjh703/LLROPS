@@ -8,22 +8,12 @@ from typing import Hashable, Mapping, Optional, Sequence
 import numpy as np
 
 from llrops.base.parameter_name import ParameterName
+from llrops.base.station_identity import canonical_station_id
 from llrops.classes.observation.equations import ObservationEquation
 from llrops.classes.parametrization.base import ParametrizationList
 from llrops.estimation.variance_components import VarianceComponentDefinition
 
 ObsKey = Hashable
-
-
-def _normalise(value: object) -> str:
-    return str(value or "").strip().upper().replace("-", "_").replace(" ", "_")
-
-
-def _metadata_candidates(eq: ObservationEquation, *keys: str) -> set[str]:
-    metadata = eq.metadata or {}
-    values = [eq.station_key]
-    values.extend(metadata.get(key) for key in keys)
-    return {_normalise(value) for value in values if _normalise(value)}
 
 
 def prefit_gross_threshold(
@@ -32,18 +22,10 @@ def prefit_gross_threshold(
     by_station: Optional[Mapping[str, Optional[float]]],
 ) -> Optional[float]:
     overrides = by_station or {}
-    candidates = _metadata_candidates(
-        equation,
-        "station_catalog_key",
-        "station_name",
-        "station_full_name",
-        "station_id",
-        "station_code",
-    )
-    for key in candidates:
-        if key in overrides:
-            value = overrides[key]
-            return None if value is None else float(value)
+    station = canonical_station_id(equation.station_key)
+    if station in overrides:
+        value = overrides[station]
+        return None if value is None else float(value)
     return None if default is None else float(default)
 
 

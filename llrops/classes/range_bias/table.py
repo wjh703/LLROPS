@@ -5,67 +5,10 @@ from datetime import date, datetime
 import json
 import math
 from pathlib import Path
-import re
 from typing import Iterable, Mapping, Optional, Sequence
 
 from llrops.base.epoch import Epoch
-
-
-DEFAULT_STATION_ALIASES: dict[str, str] = {
-    "APOLLO": "APOLLO",
-    "APOL": "APOLLO",
-    "APACHEPOINT": "APOLLO",
-    "APACHEPOINTOBSERVATORY": "APOLLO",
-    "7045": "APOLLO",
-    "70610": "APOLLO",
-    "GRASSE": "GRASSE",
-    "GRSM": "GRASSE",
-    "COTEDAZUR": "GRASSE",
-    "OCA": "GRASSE",
-    "7845": "GRASSE",
-    "01910": "GRASSE",
-    "HALEAKALA": "HALEAKALA",
-    "HALE": "HALEAKALA",
-    "HALL": "HALEAKALA",
-    "56610": "HALEAKALA",
-    "MATERA": "MATERA",
-    "MATM": "MATERA",
-    "MATE": "MATERA",
-    "07941": "MATERA",
-    "MCDONALD": "MCDONALD",
-    "MDOL": "MCDONALD",
-    "71110": "MCDONALD",
-    "MLRS1": "MLRS1",
-    "71111": "MLRS1",
-    "MLRS2": "MLRS2",
-    "71112": "MLRS2",
-    "WETTZELL": "WETTZELL",
-    "WETZELL": "WETTZELL",
-    "WETL": "WETTZELL",
-    "08834": "WETTZELL",
-}
-
-
-def station_token(value: object) -> str:
-    return re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
-
-
-def normalize_station(value: object) -> Optional[str]:
-    """Map a catalog key, station name, or ILRS code to a canonical station.
-
-    Station aliases are part of the built-in catalog normalization rules, not a
-    per-table YAML schema.
-    """
-    token = station_token(value)
-    if not token:
-        return None
-    normalized = {station_token(alias): str(station).strip().upper() for alias, station in DEFAULT_STATION_ALIASES.items()}
-    if token in normalized:
-        return normalized[token]
-    for alias, station in normalized.items():
-        if alias and alias in token:
-            return station
-    return None
+from llrops.base.station_identity import canonical_station_id
 
 
 def _candidate_list(station_values: Sequence[object] | object) -> list[object]:
@@ -77,11 +20,13 @@ def _candidate_list(station_values: Sequence[object] | object) -> list[object]:
 def _parse_date(value: object) -> date:
     if isinstance(value, date) and not isinstance(value, datetime):
         return value
-    text = str(value).strip().replace("/", "-")[:10]
+    if not isinstance(value, str):
+        raise TypeError("Date must be an ISO date string or datetime.date.")
+    text = value.strip()
     try:
         return date.fromisoformat(text)
-    except ValueError:
-        return datetime.strptime(str(value).strip(), "%Y/%m/%d").date()
+    except ValueError as exc:
+        raise ValueError(f"Date must be written as YYYY-MM-DD, got {value!r}.") from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,7 +44,15 @@ class RangeBiasEntry:
     source: str | None = None
 
     def __post_init__(self) -> None:
-        station = normalize_station(self.station) or str(self.station).strip().upper()
+        if not isinstance(self.station, str):
+            raise TypeError("RangeBiasEntry.station must be a string.")
+        if isinstance(self.bias_two_way_cm, bool) or not isinstance(
+            self.bias_two_way_cm, (int, float)
+        ):
+            raise TypeError("RangeBiasEntry.bias_two_way_cm must be a number.")
+        if self.source is not None and not isinstance(self.source, str):
+            raise TypeError("RangeBiasEntry.source must be a string or null.")
+        station = canonical_station_id(self.station)
         start = _parse_date(self.start)
         end = _parse_date(self.end)
         value = float(self.bias_two_way_cm)
@@ -113,77 +66,41 @@ class RangeBiasEntry:
         object.__setattr__(self, "start", start)
         object.__setattr__(self, "end", end)
         object.__setattr__(self, "bias_two_way_cm", value)
-        object.__setattr__(self, "source", None if self.source is None else str(self.source).strip() or None)
+        object.__setattr__(
+            self,
+            "source",
+            None if self.source is None else self.source.strip() or None,
+        )
 
     @classmethod
     def from_config_item(cls, item: object, *, default_source: str | None = None) -> "RangeBiasEntry":
-        """Parse one declarative bias row.
-
-        Supported row forms are deliberately small and explicit::
-
-            APOLLO 2020-01-01/2021-01-01 1.25
-            [APOLLO, 2020-01-01/2021-01-01, 1.25]
-            [APOLLO, 2020-01-01, 2021-01-01, 1.25]
-            {station: APOLLO, interval: 2020-01-01/2021-01-01, biasCm: 1.25}
-        """
-        source = default_source
-        if isinstance(item, str):
-            parts = item.split()
-            if len(parts) not in {3, 4}:
-                raise ValueError(
-                    "Range-bias string rows must be 'STATION start/end biasCm' "
-                    f"or 'STATION start/end biasCm source', got {item!r}"
-                )
-            station, interval, value = parts[:3]
-            if len(parts) == 4:
-                source = parts[3]
-            start, end = _parse_interval(interval)
-            return cls(station=station, start=start, end=end, bias_two_way_cm=float(value), source=source)
-        if isinstance(item, Sequence) and not isinstance(item, (str, bytes)):
-            values = list(item)
-            if len(values) == 3:
-                station, interval, value = values
-                start, end = _parse_interval(interval)
-                return cls(station=str(station), start=start, end=end, bias_two_way_cm=float(value), source=source)
-            if len(values) in {4, 5}:
-                station, start, end, value = values[:4]
-                if len(values) == 5:
-                    source = str(values[4])
-                return cls(station=str(station), start=_parse_date(start), end=_parse_date(end), bias_two_way_cm=float(value), source=source)
-            raise ValueError(
-                "Range-bias sequence rows must be [station, start/end, biasCm] "
-                "or [station, start, end, biasCm]."
-            )
-        if isinstance(item, Mapping):
-            if "station" not in item:
-                raise ValueError(f"Range-bias row requires 'station': {item!r}")
-            if "interval" in item:
-                start, end = _parse_interval(item["interval"])
-            else:
-                if "start" not in item or "end" not in item:
-                    raise ValueError(f"Range-bias row requires 'interval' or start/end: {item!r}")
-                start, end = _parse_date(item["start"]), _parse_date(item["end"])
-            if "biasCm" not in item:
-                raise ValueError(f"Range-bias row requires 'biasCm': {item!r}")
-            item_source = item.get("source")
-            return cls(
-                station=str(item["station"]),
-                start=start,
-                end=end,
-                bias_two_way_cm=float(item["biasCm"]),
-                source=source if item_source is None else str(item_source) or source,
-            )
-        raise TypeError(f"Unsupported range-bias row: {item!r}")
-
-
-def _parse_interval(value: object) -> tuple[date, date]:
-    text = str(value).strip()
-    if "/" not in text:
-        raise ValueError(f"Interval must be written as 'start/end', got {value!r}")
-    start, end = [part.strip() for part in text.split("/", 1)]
-    if not start or not end:
-        raise ValueError(f"Interval must be written as 'start/end', got {value!r}")
-    return _parse_date(start), _parse_date(end)
+        """Parse the one canonical mapping form for a bias row."""
+        if not isinstance(item, Mapping):
+            raise TypeError("Each range-bias row must be a mapping.")
+        allowed = {"station", "start", "end", "biasCm", "source"}
+        unknown = set(item) - allowed
+        if unknown:
+            raise ValueError(f"Range-bias row has unknown key(s) {sorted(unknown)}.")
+        required = {"station", "start", "end", "biasCm"}
+        missing = required - set(item)
+        if missing:
+            raise ValueError(f"Range-bias row is missing key(s) {sorted(missing)}.")
+        station = item["station"]
+        bias = item["biasCm"]
+        if not isinstance(station, str):
+            raise TypeError("Range-bias row station must be a string.")
+        if isinstance(bias, bool) or not isinstance(bias, (int, float)):
+            raise TypeError("Range-bias row biasCm must be a number.")
+        item_source = item.get("source")
+        if item_source is not None and not isinstance(item_source, str):
+            raise TypeError("Range-bias row source must be a string or null.")
+        return cls(
+            station=station,
+            start=_parse_date(item["start"]),
+            end=_parse_date(item["end"]),
+            bias_two_way_cm=bias,
+            source=default_source if item_source is None else item_source,
+        )
 
 def _d(value: str) -> date:
     return datetime.strptime(value, "%Y/%m/%d").date()
@@ -248,7 +165,10 @@ class RangeBiasTable:
         )
 
     def canonical_station(self, value: object) -> Optional[str]:
-        return normalize_station(value)
+        try:
+            return canonical_station_id(value)
+        except ValueError:
+            return None
 
     def station_from_candidates(self, station_values: Sequence[object] | object) -> Optional[str]:
         for candidate in _candidate_list(station_values):
@@ -275,23 +195,22 @@ class RangeBiasTable:
 
     @classmethod
     def from_mapping(cls, config: Mapping[str, object], *, source_file: str | Path | None = None) -> "RangeBiasTable":
-        forbidden = sorted({"name", "aliases"} & set(config))
-        if forbidden:
-            raise ValueError(
-                "Range-bias table config no longer accepts top-level "
-                f"{', '.join(repr(key) for key in forbidden)}; use only 'file', 'source', and 'biases'."
-            )
+        unknown = set(config) - {"type", "source", "biases"}
+        if unknown:
+            raise ValueError(f"Range-bias table has unknown key(s) {sorted(unknown)}.")
         source = config.get("source") or (str(source_file) if source_file else None)
+        if source is not None and not isinstance(source, str):
+            raise TypeError("Range-bias table source must be a string or null.")
         raw_biases = config.get("biases")
         if raw_biases is None:
             raise ValueError("Range-bias table config requires a 'biases' list.")
-        if not isinstance(raw_biases, Sequence) or isinstance(raw_biases, (str, bytes)):
+        if not isinstance(raw_biases, list):
             raise TypeError("Range-bias 'biases' must be a list of rows.")
         entries = tuple(
-            RangeBiasEntry.from_config_item(item, default_source=str(source) if source else None)
+            RangeBiasEntry.from_config_item(item, default_source=source)
             for item in raw_biases
         )
-        return cls(entries=entries, source=None if source is None else str(source))
+        return cls(entries=entries, source=source)
 
 
 def _utc_date(epoch: Epoch) -> date:
@@ -336,13 +255,10 @@ def load_range_bias_table(path: str | Path) -> RangeBiasTable:
 
 __all__ = [
     "BUILTIN_RANGE_BIAS_TABLES",
-    "DEFAULT_STATION_ALIASES",
     "INPOP21_RANGE_BIASES",
     "INPOP21_RANGE_BIAS_TABLE",
     "RangeBiasEntry",
     "RangeBiasTable",
     "builtin_range_bias_table",
     "load_range_bias_table",
-    "normalize_station",
-    "station_token",
 ]

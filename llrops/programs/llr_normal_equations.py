@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 from llrops.config.context import RunContext
-from llrops.programs.llr_adjustment import (
-    _build_equation_source,
-    _build_parametrization,
+from llrops.llr_workflow import (
+    build_equation_source,
+    build_parametrization,
+    build_processor,
+    load_datasets,
 )
-from llrops.programs.llr_residuals import build_processor, load_datasets
 from llrops.programs.registry import program
 
 
@@ -17,13 +18,13 @@ def llr_normal_equations(config: dict, context: RunContext):
     )
 
     datasets = load_datasets(config, context)
-    parametrization = _build_parametrization(config, context)
+    parametrization = build_parametrization(config, context)
     processor = build_processor(config, context)
 
     try:
-        equation_source = _build_equation_source(config, context, datasets, processor)
+        equation_source = build_equation_source(config, context, datasets, processor)
         equations = equation_source(1)
-        parametrization.setup(equations, context)
+        parametrization.setup(equations, processor.model_state)
         names = parametrization.parameter_names()
         normals = build_normal_equations_streaming(
             equations,

@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 import math
 
+from llrops.base.station_identity import canonical_station_id
 from llrops.estimation.adjustment_options import LlrAdjustmentOptions
 from llrops.estimation.variance_components import VarianceComponentDefinition
 
@@ -271,6 +272,15 @@ def parse_adjustment_plan(config: Mapping[str, object]) -> LlrAdjustmentPlan:
         "adjustment.prefitGrossThresholdByStationM",
         allow_none=True,
     )
+    canonical_thresholds = {
+        canonical_station_id(station): threshold
+        for station, threshold in station_thresholds.items()
+    }
+    if len(canonical_thresholds) != len(station_thresholds):
+        raise ValueError(
+            "adjustment.prefitGrossThresholdByStationM contains duplicate "
+            "canonical station identifiers."
+        )
     block_tolerances = _number_mapping(
         adjustment.get("updateToleranceByBlockM"),
         "adjustment.updateToleranceByBlockM",
@@ -284,7 +294,7 @@ def parse_adjustment_plan(config: Mapping[str, object]) -> LlrAdjustmentPlan:
             if prefit_threshold is None
             else _number(prefit_threshold, "adjustment.prefitGrossThresholdM")
         ),
-        prefit_gross_threshold_by_station_m=station_thresholds or None,
+        prefit_gross_threshold_by_station_m=canonical_thresholds or None,
         maximum_linearizations=_integer(
             adjustment.get("maximumLinearizations", 20),
             "adjustment.maximumLinearizations",

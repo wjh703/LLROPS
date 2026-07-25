@@ -64,6 +64,7 @@ from pathlib import Path
 from typing import List, Optional, Sequence
 
 from llrops.base.epoch import Epoch, TimeScale
+from llrops.base.station_identity import canonical_station_id, station_display_name
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -88,30 +89,6 @@ REFLECTOR_NAMES = {
     3: "Apollo 15",
     4: "Lunokhod 2",
 }
-
-STATION_FULL_NAMES = {
-    "71110": "McDonald 2.70",
-    "71111": "McDonald MLRS1",
-    "71112": "McDonald MLRS2",
-    "01910": "Grasse",
-    "56610": "Haleakala",
-    "07941": "Matera",
-    "70610": "Apache Point Observatory",
-    "08834": "Wettzell",
-}
-
-# Keys and aliases used by builtin_catalogs.py.
-STATION_CATALOG_NAMES = {
-    "71110": "MCDONALD",
-    "71111": "MLRS1",
-    "71112": "MLRS2",
-    "01910": "GRASSE",
-    "56610": "HALEAKALA",
-    "07941": "MATERA",
-    "70610": "APOL",
-    "08834": "WETTZELL",
-}
-
 
 DEFAULT_MINI_IO_WARNING_LOG = "llr_mini_io_warnings.log"
 _LOGGER = logging.getLogger(__name__)
@@ -311,12 +288,12 @@ class MiniRecord:
 
     @property
     def station_full_name(self) -> str:
-        return STATION_FULL_NAMES.get(self.station_id, self.station_id)
+        return station_display_name(self.station_id)
 
     @property
     def station_name(self) -> str:
         """Catalog token used to resolve the station in builtin_catalogs."""
-        return STATION_CATALOG_NAMES.get(self.station_id, self.station_full_name)
+        return canonical_station_id(self.station_id)
 
 
 # ---------------------------------------------------------------------------

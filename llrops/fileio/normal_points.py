@@ -77,12 +77,28 @@ class NptRecord:
         return float(self.wavelength_nm) / 1000.0
 
 
-@dataclass
 class NptDataset:
-    records: List[NptRecord]
-    name: Optional[str] = None
-    n_input_records: int = 0
-    n_invalid_records: int = 0
+    __slots__ = ("records", "name", "n_input_records", "n_invalid_records")
+
+    def __init__(
+        self,
+        records: List[NptRecord],
+        name: Optional[str] = None,
+        n_input_records: int = 0,
+        n_invalid_records: int = 0,
+    ) -> None:
+        self.records = records
+        self.name = name
+        self.n_input_records = n_input_records
+        self.n_invalid_records = n_invalid_records
+
+    def __repr__(self) -> str:
+        return (
+            "NptDataset("
+            f"record_count={len(self.records)}, name={self.name!r}, "
+            f"n_input_records={self.n_input_records}, "
+            f"n_invalid_records={self.n_invalid_records})"
+        )
 
     @property
     def n_valid_records(self) -> int:
