@@ -22,12 +22,64 @@ inside the returned ``LlrObservationProcessor`` instance.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Mapping
 
 from llrops.config.registry import register_factory, normalize_class_config
 
 
 _REMOVED_UNCERTAINTY_CONFIG_KEYS = frozenset({"uncertainty", "uncertaintyModel"})
+_MODEL_CATEGORIES = (
+    "ephemerides",
+    "earthRotation",
+    "troposphere",
+    "relativity",
+    "stationDisplacement",
+    "reflectorDisplacement",
+    "rangeBias",
+)
+
+
+@dataclass(frozen=True, slots=True, eq=False, repr=False)
+class ObservationAssembly:
+    """Resolved model configuration and catalogs shared by serial and MPI."""
+
+    program_config: dict
+    station_catalog: Mapping[str, object]
+    reflector_catalog: Mapping[str, object]
+
+
+class _ObservationFactoryContext:
+    __slots__ = ("run_context", "ephemeris", "earth_orientation", "cache_namespace")
+
+    def __init__(
+        self,
+        run_context: object,
+        ephemeris: object,
+        earth_orientation: object,
+        cache_namespace: str,
+    ) -> None:
+        self.run_context = run_context
+        self.ephemeris = ephemeris
+        self.earth_orientation = earth_orientation
+        self.cache_namespace = cache_namespace
+
+    @property
+    def mpi_resources(self):
+        return self.run_context.mpi_resources
+
+    def resolve_path(self, value):
+        return self.run_context.resolve_path(value)
+
+    def create_class(self, category: str, config=None, *, cache: bool = True):
+        return self.run_context.create_class(
+            category,
+            config,
+            cache=cache,
+            factory_context=self,
+            cache_namespace=self.cache_namespace,
+        )
 
 
 def validate_observation_config(
@@ -96,8 +148,7 @@ def _register_all() -> None:
         )
 
     def _iers_c04(cfg: dict, ctx):
-        mpi_resources = getattr(ctx, "shared", {}).get("mpiResources", {})
-        payload = mpi_resources.get("earthRotation")
+        payload = ctx.mpi_resources.get("earthRotation")
         if payload is not None:
             return C04EarthOrientation.from_mpi_payload(payload)
         if "file" not in cfg:
@@ -117,23 +168,23 @@ def _register_all() -> None:
     register_factory(
         "relativity",
         "iersshapiro",
-        lambda cfg, ctx: Iers2010ShapiroDelay(ephemeris=_shared_ephemeris(ctx)),
+        lambda cfg, ctx: Iers2010ShapiroDelay(ephemeris=_required_ephemeris(ctx)),
     )
 
-    def _shared_earth_orientation(ctx):
+    def _required_earth_orientation(ctx):
         try:
-            return ctx.shared["earthOrientation"]
-        except (AttributeError, KeyError) as exc:
+            return ctx.earth_orientation
+        except AttributeError as exc:
             raise RuntimeError(
-                "stationDisplacement requires the shared Earth-orientation source."
+                "stationDisplacement requires an explicit Earth-orientation source."
             ) from exc
 
-    def _shared_ephemeris(ctx):
+    def _required_ephemeris(ctx):
         try:
-            return ctx.shared["ephemeris"]
-        except (AttributeError, KeyError) as exc:
+            return ctx.ephemeris
+        except AttributeError as exc:
             raise RuntimeError(
-                "reflectorDisplacement requires the shared ephemeris."
+                "reflectorDisplacement requires an explicit ephemeris."
             ) from exc
 
     def _station_sum(cfg: dict, ctx) -> CompositeStationDisplacement:
@@ -154,7 +205,7 @@ def _register_all() -> None:
             )
         return Iers2010OceanPoleTide(
             grid=OceanPoleTideGrid(coefficient_file),
-            earth_orientation=_shared_earth_orientation(ctx),
+            earth_orientation=_required_earth_orientation(ctx),
         )
 
     register_factory(
@@ -173,7 +224,9 @@ def _register_all() -> None:
     register_factory(
         "stationDisplacement",
         "iers2010poletide",
-        lambda cfg, ctx: Iers2010PoleTide(earth_orientation=_shared_earth_orientation(ctx)),
+        lambda cfg, ctx: Iers2010PoleTide(
+            earth_orientation=_required_earth_orientation(ctx)
+        ),
     )
     register_factory(
         "stationDisplacement",
@@ -190,7 +243,7 @@ def _register_all() -> None:
         "reflectorDisplacement",
         "lunarsolidtide",
         lambda cfg, ctx: LunarSolidTide(
-            ephemeris=_shared_ephemeris(ctx),
+            ephemeris=_required_ephemeris(ctx),
             h2=float(cfg.get("h2", 0.0423)),
             l2=float(cfg.get("l2", 0.0107)),
             moon_radius_m=float(cfg.get("moonRadiusM", 1_737_400.0)),
@@ -227,6 +280,42 @@ def ensure_registered() -> None:
         _REGISTERED = True
 
 
+def resolve_observation_assembly(
+    context,
+    program_config: dict,
+    *,
+    station_catalog=None,
+    reflector_catalog=None,
+) -> ObservationAssembly:
+    """Resolve configs, paths, and catalogs once for every execution backend."""
+    from llrops.fileio.catalogs import load_reflector_catalog, load_station_catalog
+
+    validate_observation_config(program_config, context.global_class_configs)
+    merged = {
+        category: value
+        for category in _MODEL_CATEGORIES
+        if (value := context.class_config(category, program_config)) is not None
+    }
+
+    def catalog_source(name: str):
+        value = program_config.get(name, context.global_class_configs.get(name))
+        if isinstance(value, str) and value not in ("builtin", ""):
+            return context.resolve_path(value)
+        return value
+
+    stations = (
+        load_station_catalog(catalog_source("stationCatalog"))
+        if station_catalog is None
+        else station_catalog
+    )
+    reflectors = (
+        load_reflector_catalog(catalog_source("reflectorCatalog"))
+        if reflector_catalog is None
+        else reflector_catalog
+    )
+    return ObservationAssembly(merged, stations, reflectors)
+
+
 def build_observation_processor(
     context,
     program_config: dict,
@@ -248,7 +337,6 @@ def build_observation_processor(
 
     Observation uncertainty is read directly from each normal-point record.
     """
-    validate_observation_config(program_config, context.global_class_configs)
     ensure_registered()
     from llrops.classes.frames import ReferenceFrameSystem
     from llrops.classes.observation import (
@@ -256,10 +344,17 @@ def build_observation_processor(
         LlrObservationModel,
         LlrObservationProcessor,
         LlrObservationReducer,
-        LlrObservationResultBuilder,
+        ObservationModelState,
         ObservationResolver,
     )
-    from llrops.fileio.catalogs import load_station_catalog, load_reflector_catalog
+
+    assembly = resolve_observation_assembly(
+        context,
+        program_config,
+        station_catalog=station_catalog,
+        reflector_catalog=reflector_catalog,
+    )
+    program_config = assembly.program_config
 
     def cfg(category: str):
         return normalize_class_config(context.class_config(category, program_config))
@@ -269,50 +364,51 @@ def build_observation_processor(
         raise ValueError(f"Only ephemerides type 'calceph' is available, got {eph_cfg['type']!r}")
     eop_cfg = cfg("earthRotation")
 
-    def catalog_source(name: str):
-        value = program_config.get(name, context.global_class_configs.get(name))
-        if isinstance(value, str) and value not in ("builtin", ""):
-            return context.resolve_path(value)
-        return value
-
-    station_catalog = station_catalog or load_station_catalog(catalog_source("stationCatalog"))
-    reflector_catalog = reflector_catalog or load_reflector_catalog(catalog_source("reflectorCatalog"))
-    context.shared["stationCatalog"] = station_catalog
-    context.shared["reflectorCatalog"] = reflector_catalog
-
     ephemeris = context.create_class("ephemerides", eph_cfg, cache=True)
     earth_orientation = context.create_class("earthRotation", eop_cfg, cache=True)
-    context.shared["ephemeris"] = ephemeris
-    context.shared["earthOrientation"] = earth_orientation
+    factory_context = _ObservationFactoryContext(
+        run_context=context,
+        ephemeris=ephemeris,
+        earth_orientation=earth_orientation,
+        cache_namespace=f"observation:{id(ephemeris)}:{id(earth_orientation)}",
+    )
 
     frames = ReferenceFrameSystem(
         ephemeris=ephemeris,
         earth_orientation=earth_orientation,
         owns_ephemeris=False,
     )
-    station_displacement = context.create_class(
+    station_displacement = factory_context.create_class(
         "stationDisplacement",
         normalize_class_config(context.class_config("stationDisplacement", program_config)),
         cache=True,
     )
-    reflector_displacement = context.create_class(
+    reflector_displacement = factory_context.create_class(
         "reflectorDisplacement",
         cfg("reflectorDisplacement"),
         cache=True,
     )
     solver = LightTimeSolver(
         frames,
-        gravitational_delay=context.create_class("relativity", cfg("relativity"), cache=False),
-        troposphere_delay=context.create_class("troposphere", cfg("troposphere"), cache=True),
+        gravitational_delay=factory_context.create_class(
+            "relativity", cfg("relativity"), cache=False
+        ),
+        troposphere_delay=factory_context.create_class(
+            "troposphere", cfg("troposphere"), cache=True
+        ),
         station_displacement=station_displacement,
         reflector_displacement=reflector_displacement,
     )
     model = LlrObservationModel(frames, solver)
-    resolver = ObservationResolver(station_catalog, reflector_catalog)
+    model_state = ObservationModelState.from_catalogs(
+        assembly.station_catalog,
+        assembly.reflector_catalog,
+    )
+    resolver = ObservationResolver(model_state)
     range_bias_cfg = context.class_config("rangeBias", program_config)
     if range_bias_cfg is None:
         raise KeyError("Observation processing requires explicit 'rangeBias' in the program or globals config.")
-    range_bias = context.create_class(
+    range_bias = factory_context.create_class(
         "rangeBias",
         normalize_class_config(range_bias_cfg),
         cache=True,
@@ -325,8 +421,14 @@ def build_observation_processor(
         resolver=resolver,
         model=model,
         reducer=reducer,
-        result_builder=LlrObservationResultBuilder(),
     )
-    context.shared["observationModel"] = model
-    context.shared["observationProcessor"] = processor
     return processor
+
+
+__all__ = [
+    "ObservationAssembly",
+    "build_observation_processor",
+    "ensure_registered",
+    "resolve_observation_assembly",
+    "validate_observation_config",
+]

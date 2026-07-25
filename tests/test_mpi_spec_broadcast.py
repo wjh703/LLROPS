@@ -1,3 +1,6 @@
+import json
+
+from llrops.classes.observation_factory import resolve_observation_assembly
 from llrops.config.context import RunContext
 from llrops.parallel.mpi import (
     MpiRuntime,
@@ -173,6 +176,44 @@ def test_observation_specs_are_unique_and_use_explicit_catalogs():
     assert second["reflectorCatalog"] is second_reflectors
 
 
+def test_serial_and_mpi_catalog_resolution_share_working_directory(tmp_path):
+    (tmp_path / "stations.json").write_text(
+        json.dumps(
+            {
+                "TEST": {
+                    "name": "Test station",
+                    "itrf_xyz_m": [1.0, 2.0, 3.0],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "reflectors.json").write_text(
+        json.dumps(
+            {
+                "REF": {
+                    "name": "Test reflector",
+                    "moon_fixed_xyz_m": [4.0, 5.0, 6.0],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = {
+        "stationCatalog": "stations.json",
+        "reflectorCatalog": "reflectors.json",
+    }
+    context = RunContext(working_dir=tmp_path)
+
+    serial = resolve_observation_assembly(context, config)
+    mpi = make_observation_spec(config, context)
+
+    assert set(serial.station_catalog) == {"TEST"}
+    assert set(serial.reflector_catalog) == {"REF"}
+    assert set(mpi["stationCatalog"]) == set(serial.station_catalog)
+    assert set(mpi["reflectorCatalog"]) == set(serial.reflector_catalog)
+
+
 def test_worker_processors_share_only_the_immutable_class_cache(monkeypatch):
     cache = {}
     class_caches = []
@@ -299,7 +340,7 @@ def test_progress_rate_clock_starts_after_initial_task_dispatch(monkeypatch, cap
     monkeypatch.setattr(mpi_module.time, "perf_counter", fake_perf_counter)
 
     results = runtime.map_tasks(
-        "observation_results",
+        "observation_equations",
         [{}, {}, {}],
         progress_desc="records",
         progress_total=30,

@@ -192,7 +192,7 @@ class _IterationState:
     iterations: int
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class _StationEventState:
     epoch_utc: Epoch
     reference_itrf_m: np.ndarray

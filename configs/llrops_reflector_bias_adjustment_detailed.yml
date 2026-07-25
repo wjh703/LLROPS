@@ -22,7 +22,7 @@
 # - Do not use the old "parallel: {enabled, workers, chunksize}" block.
 # - In MPI mode, only the "mpi.chunksize" option below controls O-C task size.
 # - rangeBias is the forward-model range-bias class config.
-# - stationRangeBias per=station+interval requires explicit intervals/periods.
+# - stationRangeBias per=station+interval requires explicit intervals.
 # - Override variables.* when running with a different data or output directory.
 # - Time/Earth-rotation transforms now use ERFA + explicit IERS C04 EOP; Astropy is not required.
 
@@ -192,16 +192,8 @@ programs:
       # Mode B: one bias per station + explicit interval.
       # This is active by default below.
       #
-      # Accepted interval forms:
-      #   1) Mapping station -> list:
-      #        APOLLO:
-      #          - 2006-04-07/2010-11-01
-      #          - {start: 2010-11-01, end: 2012-04-07, name: APO_2010_2012}
-      #
-      #   2) List form:
-      #        - {station: APOLLO, start: 2006-04-07, end: 2010-11-01, name: APO_2006_2010}
-      #
-      # The list form is used here because it lets you assign stable names.
+      # Each interval is a mapping with station, start, and end_exclusive;
+      # optional name assigns a stable parameter label.
       # Overlapping intervals are allowed by the code; observations inside an
       # overlap activate multiple bias columns. If a solve becomes singular,
       # reduce overlapping intervals or narrow the estimated station set.
@@ -348,17 +340,17 @@ programs:
       # CERGA MeO/IR overlap is separated by laser wavelength. The strict one-match rule is
       # enforced directly and is not a configurable policy.
       components:
-        - {id: MCDONALD_1969_1985, stationSystem: MCDONALD, stationAliases: [MCDONALD], start: 1969-01-01, endExclusive: 1986-01-01}
-        - {id: MLRS1_1983_1988, stationSystem: MLRS1, stationAliases: [MLRS1], start: 1983-01-01, endExclusive: 1989-01-01}
-        - {id: MLRS2_1988_2015, stationSystem: MLRS2, stationAliases: [MLRS2], start: 1988-01-01, endExclusive: 2016-01-01}
-        - {id: HALEAKALA_1984_1990, stationSystem: HALEAKALA, stationAliases: [HALEAKALA], start: 1984-01-01, endExclusive: 1991-01-01}
-        - {id: CERGA_RUBY_1984_1986, stationSystem: CERGA_RUBY, stationAliases: [GRASSE, CERGA], start: 1984-01-01, endExclusive: 1987-01-01}
-        - {id: CERGA_YAG_1987_2005, stationSystem: CERGA_YAG, stationAliases: [GRASSE, CERGA], start: 1987-01-01, endExclusive: 2006-01-01}
-        - {id: CERGA_MEO_2009_PRESENT, stationSystem: CERGA_MEO, stationAliases: [GRASSE, CERGA], start: 2009-01-01, endExclusive: null, wavelengthMaxExclusiveNm: 700.0}
-        - {id: CERGA_IR_2015_PRESENT, stationSystem: CERGA_IR, stationAliases: [GRASSE, CERGA], start: 2015-01-01, endExclusive: null, wavelengthMinNm: 700.0}
-        - {id: APACHE_2006_PRESENT, stationSystem: APACHE, stationAliases: [APOLLO, APACHE, APOL], start: 2006-01-01, endExclusive: null}
-        - {id: MATERA_2003_PRESENT, stationSystem: MATERA, stationAliases: [MATERA], start: 2003-01-01, endExclusive: null}
-        - {id: WETTZELL_2018_PRESENT, stationSystem: WETTZELL, stationAliases: [WETTZELL], start: 2018-01-01, endExclusive: null}
+        - {id: MCDONALD_1969_1985, station: MCDONALD, start: 1969-01-01, endExclusive: 1986-01-01}
+        - {id: MLRS1_1983_1988, station: MLRS1, start: 1983-01-01, endExclusive: 1989-01-01}
+        - {id: MLRS2_1988_2015, station: MLRS2, start: 1988-01-01, endExclusive: 2016-01-01}
+        - {id: HALEAKALA_1984_1990, station: HALEAKALA, start: 1984-01-01, endExclusive: 1991-01-01}
+        - {id: CERGA_RUBY_1984_1986, station: GRASSE, start: 1984-01-01, endExclusive: 1987-01-01}
+        - {id: CERGA_YAG_1987_2005, station: GRASSE, start: 1987-01-01, endExclusive: 2006-01-01}
+        - {id: CERGA_MEO_2009_PRESENT, station: GRASSE, start: 2009-01-01, endExclusive: null, wavelengthMaxExclusiveNm: 700.0}
+        - {id: CERGA_IR_2015_PRESENT, station: GRASSE, start: 2015-01-01, endExclusive: null, wavelengthMinNm: 700.0}
+        - {id: APACHE_2006_PRESENT, station: APOLLO, start: 2006-01-01, endExclusive: null}
+        - {id: MATERA_2003_PRESENT, station: MATERA, start: 2003-01-01, endExclusive: null}
+        - {id: WETTZELL_2018_PRESENT, station: WETTZELL, start: 2018-01-01, endExclusive: null}
 
     # MPI task granularity; ignored in normal serial execution.
     mpi:

@@ -268,7 +268,8 @@ sigma_np is finite
 
 ### 6.2 系统识别要求
 
-VCE 分组不能只依据日期。
+VCE 分组不能只依据日期。当前实现只使用方程中的 canonical station key、
+UTC 日期和可选波长范围，不再从自由格式 metadata 猜测测站或系统别名。
 
 以下分组存在年份重叠：
 
@@ -276,99 +277,99 @@ VCE 分组不能只依据日期。
 - MLRS1 与 MLRS2 的 1988 年；
 - CERGA MeO 与 CERGA IR 的 2015 年至今。
 
-分组键必须优先使用：
+分组条件为：
 
 $$
 \boxed{
-\text{station identifier}
-+
-\text{system/configuration identifier}
+\text{canonical station identifier}
 +
 \text{epoch}
++
+\text{optional wavelength domain}
 }
 $$
 
-推荐读取字段：
+直接读取的强类型字段为：
 
 ```text
-station_id
-station_name
-system_config_id
-system_name
-wavelength
-observation_mode
-epoch
+ObservationEquation.station_key
+ObservationEquation.epoch
+ObservationEquation.metadata["wavelength_nm"]  # 仅配置波长边界时需要
 ```
 
-CERGA MeO 和 CERGA IR 必须依靠系统配置、波长或数据产品中的明确模式字段区分，禁止只按日期猜测。
+CERGA MeO 和 CERGA IR 使用互不重叠的波长域区分。缺少波长或同时匹配多个
+分量都会在解算前报错，不允许按名称或自由格式字段猜测。
 
 ### 6.3 方差分量配置示例
 
 ```yaml
 vce:
-  method: helmert
   components:
   - id: MCDONALD_1969_1985
-    station_system: MCDONALD
+    station: MCDONALD
     start: 1969-01-01
-    end_exclusive: 1986-01-01
+    endExclusive: 1986-01-01
 
   - id: MLRS1_1983_1988
-    station_system: MLRS1
+    station: MLRS1
     start: 1983-01-01
-    end_exclusive: 1989-01-01
+    endExclusive: 1989-01-01
 
   - id: MLRS2_1988_2015
-    station_system: MLRS2
+    station: MLRS2
     start: 1988-01-01
-    end_exclusive: 2016-01-01
+    endExclusive: 2016-01-01
 
   - id: HALEAKALA_1984_1990
-    station_system: HALEAKALA
+    station: HALEAKALA
     start: 1984-01-01
-    end_exclusive: 1991-01-01
+    endExclusive: 1991-01-01
 
   - id: CERGA_RUBY_1984_1986
-    station_system: CERGA_RUBY
+    station: GRASSE
     start: 1984-01-01
-    end_exclusive: 1987-01-01
+    endExclusive: 1987-01-01
 
   - id: CERGA_YAG_1987_2005
-    station_system: CERGA_YAG
+    station: GRASSE
     start: 1987-01-01
-    end_exclusive: 2006-01-01
+    endExclusive: 2006-01-01
 
   - id: CERGA_MEO_2009_PRESENT
-    station_system: CERGA_MEO
+    station: GRASSE
     start: 2009-01-01
-    end_exclusive: null
+    endExclusive: null
+    wavelengthMaxExclusiveNm: 700.0
 
   - id: CERGA_IR_2015_PRESENT
-    station_system: CERGA_IR
+    station: GRASSE
     start: 2015-01-01
-    end_exclusive: null
+    endExclusive: null
+    wavelengthMinNm: 700.0
 
   - id: APACHE_2006_PRESENT
-    station_system: APACHE
+    station: APOLLO
     start: 2006-01-01
-    end_exclusive: null
+    endExclusive: null
 
   - id: MATERA_2003_PRESENT
-    station_system: MATERA
+    station: MATERA
     start: 2003-01-01
-    end_exclusive: null
+    endExclusive: null
 
   - id: WETTZELL_2018_PRESENT
-    station_system: WETTZELL
+    station: WETTZELL
     start: 2018-01-01
-    end_exclusive: null
+    endExclusive: null
 ```
 
 ### 6.4 全观测覆盖
 
 McDonald VCE 组从 1969-01-01 开始，与其长期 Bias 区间保持一致，因此当前输入中的 1969 年观测参与 `MCDONALD_1969_1985` 组。
 
-当前输入还包含 2023 年后的 532.1 nm CERGA 观测。它们由波长明确识别为 MeO，因此 `CERGA_MEO_2009_PRESENT` 保持开放结束端点；CERGA IR 同样保持开放端点。两组仍必须按系统配置、波长或明确模式字段区分，禁止只按日期猜测。
+当前输入还包含 2023 年后的 532.1 nm CERGA 观测。它们由波长明确识别为
+MeO，因此 `CERGA_MEO_2009_PRESENT` 保持开放结束端点；CERGA IR 同样保持
+开放端点。两组只通过不重叠的波长范围区分。
 
 ### 6.5 未分组处理
 
@@ -479,20 +480,21 @@ end_exclusive: null
 ### 7.4 Bias 配置示例
 
 ```yaml
-bias_intervals:
-  - id: 1
-    name: APACHE_20060407_20101101
-    station: APACHE
-    start: 2006-04-07
-    end_exclusive: 2010-11-02
+parametrization:
+  - type: stationRangeBias
+    per: station+interval
+    intervals:
+      - name: APOLLO_20060407_20101101
+        station: APOLLO
+        start: 2006-04-07
+        end_exclusive: 2010-11-02
 
-  # 中间区间按完整表配置
+      # 中间区间按完整表配置
 
-  - id: 29
-    name: WETTZELL_2018_PRESENT
-    station: WETTZELL
-    start: 2018-01-01
-    end_exclusive: null
+      - name: WETTZELL_2018_PRESENT
+        station: WETTZELL
+        start: 2018-01-01
+        end_exclusive: null
 ```
 
 ### 7.5 全时段 Bias 的相关性
@@ -1488,8 +1490,7 @@ vce:
   maximumVarianceRatioPerIteration: 4.0
   components:
     - id: APACHE_2006_PRESENT
-      stationSystem: APACHE
-      stationAliases: [APOLLO, APACHE]
+      station: APOLLO
       start: 2006-01-01
       endExclusive: null
 ```
@@ -1567,7 +1568,7 @@ llrops/estimation/
 observation_id
 epoch
 station_id
-station_system
+station
 vce_component_id
 reported_sigma_m
 effective_sigma_m
@@ -1928,7 +1929,7 @@ u = numerical_rank(normal_matrix)
 - [ ] 添加 11 个 VCE 组；
 - [ ] 支持 `end_exclusive: null`；
 - [ ] 添加完整 29 个 Bias；
-- [ ] 建立 station/system alias 映射；
+- [ ] 使用中央 canonical station identity 映射；
 - [ ] 校验 CERGA MeO/IR；
 - [ ] 校验 MLRS1/MLRS2；
 - [ ] 输出未分组报告。
@@ -1984,7 +1985,7 @@ $$
 \boxed{
 \begin{aligned}
 &\text{读取并校验 LLR NP}\\
-&\rightarrow\text{按测站、系统和时间分配唯一 VCE 组}\\
+&\rightarrow\text{按 canonical 测站、时间和可选波长分配唯一 VCE 组}\\
 &\rightarrow\text{按 29 个区间建立可重叠 Bias 矩阵}\\
 &\rightarrow\text{稳健估计 Bias 初值}\\
 &\rightarrow\text{对去 Bias 的 }(O-C)/\sigma_{\mathrm{NP}}\text{ 做 MAD}\\

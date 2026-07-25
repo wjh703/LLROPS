@@ -25,9 +25,9 @@ Caveats (documented, by design of the MINI format):
     (transmit) converts directly, event 1 (bounce) is shifted by half the
     time of flight (an approximation good to ~ (tau_up - tau_down)/2; refine
     with a light-time solution if you need it exact).
-  * The MINI 5-character station code is looked up from the CRD station name
-    through ``MINI_STATION_CODE_BY_NAME`` (extend it for new stations); when
-    no match is found the CRD pad id is zero-padded to 5 characters.
+  * Known station names and aliases are resolved by the central station
+    identity registry. When no match is found, the CRD pad id is zero-padded
+    to 5 characters.
   * MINI's temperature field is written with the same convention used by the
     reader in :mod:`.mini_io` (0.1 deg C).  Flip ``_temperature_raw_from_k``
     together with the reader if your archive uses 0.1 K.
@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import List, Optional, Sequence
 
 from llrops.base.epoch import Epoch, TimeScale
+from llrops.base.station_identity import canonical_station_id, station_ilrs_code
 
 from llrops.fileio.mini import (
     MiniRecord,
@@ -55,26 +56,6 @@ CRD_REFLECTOR_IDENTITY_BY_NAME = {
     "APOLLO15": ("Apollo 15", 3), "A15": ("Apollo 15", 3), "AP15": ("Apollo 15", 3),
     "LUNOKHOD2": ("Lunokhod 2", 4), "LUNA21": ("Lunokhod 2", 4), "L2": ("Lunokhod 2", 4),
 }
-
-# CRD station token -> (canonical catalog name, ILRS station code).
-CRD_STATION_IDENTITY_BY_NAME = {
-    "MCDONALD": ("MCDONALD", "71110"),
-    "MDOL": ("MCDONALD", "71110"),
-    "MLRS1": ("MLRS1", "71111"),
-    "MLRS2": ("MLRS2", "71112"),
-    "GRASSE": ("GRASSE", "01910"),
-    "GRSM": ("GRASSE", "01910"),
-    "HALEAKALA": ("HALEAKALA", "56610"),
-    "HALL": ("HALEAKALA", "56610"),
-    "MATERA": ("MATERA", "07941"),
-    "MATM": ("MATERA", "07941"),
-    "APOLLO": ("APOL", "70610"),
-    "APOL": ("APOL", "70610"),
-    "WETTZELL": ("WETTZELL", "08834"),
-    "WETL": ("WETTZELL", "08834"),
-    "WLRS": ("WETTZELL", "08834"),
-}
-
 
 def _canonical(token: str) -> str:
     return "".join(ch for ch in str(token or "").upper() if ch.isalnum())
@@ -249,15 +230,18 @@ def parse_crd_sessions(path) -> List[_CrdSession]:
 
 
 def _station_identity(session: _CrdSession) -> tuple[str, str]:
-    token = _canonical(session.station_name)
-    if token in CRD_STATION_IDENTITY_BY_NAME:
-        return CRD_STATION_IDENTITY_BY_NAME[token]
     pad = str(session.station_pad_id or "").strip()
+    for candidate in (session.station_name, pad):
+        try:
+            station = canonical_station_id(candidate)
+            return station, station_ilrs_code(station)
+        except ValueError:
+            pass
     if pad.isdigit():
-        return session.station_name, pad.zfill(5)[:5]
+        return canonical_station_id(session.station_name), pad.zfill(5)[:5]
     raise ValueError(
         f"Cannot map CRD station {session.station_name!r} (pad {session.station_pad_id!r}) "
-        f"to a canonical identity; extend CRD_STATION_IDENTITY_BY_NAME."
+        "to a canonical identity."
     )
 
 

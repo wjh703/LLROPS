@@ -25,27 +25,23 @@ globals:
     type: none
 ```
 
-A custom declarative table can be supplied inline.  The preferred compact form is
-one row per bias:
+A custom declarative table can be supplied inline. Each row has one canonical
+schema:
 
 ```yaml
 globals:
   rangeBias:
     type: table
     biases:
-      - APOLLO 2020-01-01/2021-01-01 1.25
-      - GRASSE 2009-11-01/2014-01-01 -0.99
-```
-
-The same table can be written with one-line mappings when a per-row source or
-stable machine-readable key is useful:
-
-```yaml
-globals:
-  rangeBias:
-    type: table
-    biases:
-      - {station: APOLLO, interval: 2020-01-01/2021-01-01, biasCm: 1.25}
+      - station: APOLLO
+        start: 2020-01-01
+        end: 2021-01-01
+        biasCm: 1.25
+      - station: GRASSE
+        start: 2009-11-01
+        end: 2014-01-01
+        biasCm: -0.99
+        source: local-calibration
 ```
 
 External YAML/JSON files use the same minimal `biases` schema:
@@ -75,9 +71,13 @@ parametrization:
   - type: stationRangeBias
     per: station+interval
     intervals:
-      APOLLO:
-        - 2006-04-07/2010-11-01
-        - {start: 2010-11-01, end: 2012-04-07}
+      - station: APOLLO
+        start: 2006-04-07
+        end_exclusive: 2010-11-01
+      - station: APOLLO
+        start: 2010-11-01
+        end_exclusive: 2012-04-07
+        name: apollo-era-2
 ```
 
 This estimates one one-way range-bias parameter for each declared
@@ -87,6 +87,9 @@ forward-model `rangeBias` table.
 
 ## Table schema notes
 
-Forward range-bias tables deliberately do not accept top-level `name` or
-`aliases` fields.  Station-code normalization is handled by the built-in station
-catalog rules; the table itself only declares rows of physical corrections.
+Forward range-bias tables accept only `type`, `source`, and `biases`; each bias
+accepts only `station`, `start`, `end`, `biasCm`, and optional `source`.
+`stationRangeBias` intervals accept only `station`, `start`, `end_exclusive`,
+and optional `name`. Station identity normalization is centralized in
+`llrops.base.station_identity`; tables and parametrizations do not define local
+aliases.

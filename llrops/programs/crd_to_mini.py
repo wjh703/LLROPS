@@ -1,7 +1,6 @@
 """Convert CRD normal-point files to MINI files."""
 from __future__ import annotations
 
-from pathlib import Path
 from typing import List
 
 from llrops.config.context import RunContext
@@ -18,7 +17,7 @@ def crd_to_mini(config: dict, context: RunContext):
     converted: List[str] = []
     input_crd = config["inputCrd"]
     for item in input_crd if isinstance(input_crd, list) else [input_crd]:
-        for path in iter_input_files(Path(str(item))):
+        for path in iter_input_files(context.resolve_path(item)):
             if not is_crd_file(path):
                 continue
             mini_path = out_dir / (path.stem + ".mini")

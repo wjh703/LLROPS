@@ -2,20 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import Optional
-
-import numpy as np
-
-_MODEL_CATEGORIES = (
-    "ephemerides",
-    "earthRotation",
-    "troposphere",
-    "relativity",
-    "stationDisplacement",
-    "reflectorDisplacement",
-    "rangeBias",
-)
 
 
 # ---------------------------------------------------------------------------
@@ -50,7 +37,6 @@ def _prepare_shared_resources(merged: dict, context) -> dict:
                     "MPI earthRotation resource preparation expected "
                     "C04EarthOrientation."
                 )
-            context.shared["earthOrientation"] = earth_orientation
             resources["earthRotation"] = earth_orientation.to_mpi_payload()
     return resources
 
@@ -68,42 +54,24 @@ def make_observation_spec(
     referenced by ``specId`` in individual tasks.  This avoids repeatedly
     pickling catalogs and EOP arrays for every small chunk.
     """
-    from llrops.classes.observation_factory import validate_observation_config
+    from llrops.classes.observation_factory import resolve_observation_assembly
 
-    validate_observation_config(config, context.global_class_configs)
-    merged: dict = {}
-    for category in _MODEL_CATEGORIES:
-        value = context.class_config(category, config)
-        if value is not None:
-            merged[category] = value
-
-    if station_catalog is None:
-        from llrops.fileio.catalogs import load_station_catalog
-
-        station_catalog = load_station_catalog(
-            config.get(
-                "stationCatalog", context.global_class_configs.get("stationCatalog")
-            )
-        )
-    if reflector_catalog is None:
-        from llrops.fileio.catalogs import load_reflector_catalog
-
-        reflector_catalog = load_reflector_catalog(
-            config.get(
-                "reflectorCatalog", context.global_class_configs.get("reflectorCatalog")
-            )
-        )
-
-    sequence = int(context.shared.get("mpiObservationSpecSequence", 0)) + 1
-    context.shared["mpiObservationSpecSequence"] = sequence
-    spec_id = f"{id(context)}:{sequence}"
+    assembly = resolve_observation_assembly(
+        context,
+        config,
+        station_catalog=station_catalog,
+        reflector_catalog=reflector_catalog,
+    )
     return {
-        "specId": spec_id,
-        "programConfig": merged,
+        "specId": context.next_observation_spec_id(),
+        "programConfig": assembly.program_config,
         "workingDir": str(context.working_dir),
-        "stationCatalog": station_catalog,
-        "reflectorCatalog": reflector_catalog,
-        "sharedResources": _prepare_shared_resources(merged, context),
+        "stationCatalog": assembly.station_catalog,
+        "reflectorCatalog": assembly.reflector_catalog,
+        "sharedResources": _prepare_shared_resources(
+            assembly.program_config,
+            context,
+        ),
     }
 
 
@@ -112,15 +80,11 @@ def build_worker_processor(spec: dict, shared_class_cache: Optional[dict] = None
     from llrops.classes.observation_factory import build_observation_processor
 
     context = RunContext(
-        variables={},
         global_class_configs={},
         working_dir=spec.get("workingDir", "."),
+        mpi_resources=spec.get("sharedResources"),
+        class_cache=shared_class_cache,
     )
-    context.shared["mpiResources"] = dict(spec.get("sharedResources") or {})
-    if shared_class_cache is not None:
-        # Reuse immutable/heavy classes (CALCEPH ephemeris, Earth-orientation source, immutable
-        # observation components) without caching the mutable LlrObservationProcessor itself.
-        context._cache = shared_class_cache
     return build_observation_processor(
         context,
         spec["programConfig"],
@@ -129,17 +93,10 @@ def build_worker_processor(spec: dict, shared_class_cache: Optional[dict] = None
     )
 
 
-def snapshot_catalog_state(context) -> dict:
+def snapshot_catalog_state(model_state) -> dict:
     """Pickle-light snapshot of the mutable per-iteration model state."""
-    reflectors = context.shared.get("reflectorCatalog") or {}
     return {
-        "reflectorPositions": {
-            str(key): [
-                float(x)
-                for x in np.asarray(rec.moon_fixed_xyz_m, dtype=float).reshape(3)
-            ]
-            for key, rec in reflectors.items()
-        }
+        "reflectorPositions": model_state.reflector_positions(),
     }
 
 
@@ -148,14 +105,7 @@ def apply_catalog_state(processor, catalog_state: Optional[dict]) -> None:
         return
     positions = catalog_state.get("reflectorPositions") or {}
     if positions:
-        new_catalog = {}
-        for key, rec in processor.reflector_catalog.items():
-            if key in positions:
-                rec = replace(
-                    rec, moon_fixed_xyz_m=np.asarray(positions[key], dtype=float)
-                )
-            new_catalog[key] = rec
-        processor.reflector_catalog = new_catalog
+        processor.model_state.apply_reflector_positions(positions)
 
 
 __all__ = [

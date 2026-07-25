@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from llrops.base.epoch import Epoch, TimeScale
 from llrops.classes.observation.equations import ObservationEquation
@@ -15,10 +16,8 @@ def _eq(station_key, epoch, station_id=None):
         reflector_key="apollo15",
         epoch=epoch,
         metadata={
-            "station_catalog_key": station_key,
             "station_id": station_id,
             "station_name": station_key,
-            "station_full_name": station_key,
         },
     )
 
@@ -42,12 +41,18 @@ def test_station_interval_mode_keeps_overlapping_explicit_intervals():
     eq = _eq("APOLLO", Epoch(2454466.5, 0.0, TimeScale.UTC), station_id="7045")
     block = StationRangeBiasParametrization(
         per="station+interval",
-        intervals={
-            "APOLLO": [
-                "2006-04-07/2010-11-01",
-                "2007-12-15/2008-06-30",
-            ]
-        },
+        intervals=[
+            {
+                "station": "APOLLO",
+                "start": "2006-04-07",
+                "end_exclusive": "2010-11-01",
+            },
+            {
+                "station": "APOLLO",
+                "start": "2007-12-15",
+                "end_exclusive": "2008-06-30",
+            },
+        ],
     )
     block.setup([eq], None)
 
@@ -73,3 +78,11 @@ def test_station_mode_requested_alias_matches_canonical_observation():
     assert block.keys == ["APOLLO"]
     assert [str(name) for name in block.parameter_names()] == ["APOLLO:rangeBias::"]
     assert np.allclose(block.design_columns(eq), [1.0])
+
+
+def test_station_range_bias_rejects_alias_schema():
+    with pytest.raises(TypeError, match="list of mappings"):
+        StationRangeBiasParametrization(
+            per="station+interval",
+            intervals={"APOLLO": ["2006-04-07/2010-11-01"]},
+        )

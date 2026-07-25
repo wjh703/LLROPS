@@ -30,7 +30,7 @@ class Parametrization:
     #: overridden by subclasses
     category = "parametrization"
 
-    def setup(self, equations: Sequence[ObservationEquation], context) -> None:
+    def setup(self, equations: Sequence[ObservationEquation], model_state) -> None:
         """Inspect the dataset once before the first iteration (e.g. discover
         which reflectors / stations actually occur).  Default: no-op."""
 
@@ -102,11 +102,11 @@ class ParametrizationList:
         validate_parameter_types(self._parameter_names)
         self._slices = slices
 
-    def setup(self, equations: Sequence[ObservationEquation], context) -> None:
+    def setup(self, equations: Sequence[ObservationEquation], model_state) -> None:
         self._parameter_names = None
         self._slices = []
         for block in self.blocks:
-            block.setup(equations, context)
+            block.setup(equations, model_state)
         self._ensure_layout()
 
     def parameter_names(self) -> List[ParameterName]:

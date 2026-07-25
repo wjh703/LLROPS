@@ -26,7 +26,7 @@ from llrops.classes.displacement.terrestrial_geometry import GeodeticPosition, i
 # ---------------------------------------------------------------------------
 # Catalog records
 # ---------------------------------------------------------------------------
-@dataclass
+@dataclass(eq=False, repr=False)
 class StationRecord:
     name: str
     itrf_xyz_m: Sequence[float]
@@ -88,7 +88,7 @@ class StationRecord:
         return self.geodetic_at(obstime_utc).height_m
 
 
-@dataclass
+@dataclass(eq=False, repr=False)
 class ReflectorRecord:
     name: str
     moon_fixed_xyz_m: Sequence[float]

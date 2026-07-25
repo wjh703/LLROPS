@@ -1,7 +1,7 @@
 """Catalog resolution for source-independent normal-point observations."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Mapping, Sequence
 
 from llrops.base.epoch import Epoch, TimeScale
@@ -15,7 +15,7 @@ class CatalogSelection:
     reflector_name: str | None = None
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False, repr=False)
 class ResolvedObservation:
     record: NptRecord
     station_key: str
@@ -40,7 +40,11 @@ class ResolvedObservation:
         return tuple(str(value) for value in values if value is not None and str(value).strip())
 
 
-class ObservationResolver:
+class ObservationModelState:
+    """Mutable catalog state shared explicitly by model and parametrizations."""
+
+    __slots__ = ("station_catalog", "reflector_catalog")
+
     def __init__(
         self,
         station_catalog: Mapping[str, StationRecord],
@@ -49,16 +53,50 @@ class ObservationResolver:
         self.station_catalog = dict(station_catalog)
         self.reflector_catalog = dict(reflector_catalog)
 
-    def replace_catalogs(
+    @classmethod
+    def from_catalogs(
+        cls,
+        station_catalog: Mapping[str, StationRecord],
+        reflector_catalog: Mapping[str, ReflectorRecord],
+    ) -> "ObservationModelState":
+        return cls(station_catalog, reflector_catalog)
+
+    def reflector_positions(self) -> dict[str, tuple[float, float, float]]:
+        return {
+            key: tuple(float(value) for value in record.moon_fixed_xyz_m)
+            for key, record in self.reflector_catalog.items()
+        }
+
+    def apply_reflector_positions(
         self,
-        *,
-        station_catalog: Mapping[str, StationRecord] | None = None,
-        reflector_catalog: Mapping[str, ReflectorRecord] | None = None,
+        positions: Mapping[str, Sequence[float]],
     ) -> None:
-        if station_catalog is not None:
-            self.station_catalog = dict(station_catalog)
-        if reflector_catalog is not None:
-            self.reflector_catalog = dict(reflector_catalog)
+        unknown = set(positions) - set(self.reflector_catalog)
+        if unknown:
+            raise KeyError(f"Unknown reflector state key(s): {sorted(unknown)}")
+        for key, values in positions.items():
+            self.reflector_catalog[key] = replace(
+                self.reflector_catalog[key],
+                moon_fixed_xyz_m=values,
+            )
+
+
+class ObservationResolver:
+    def __init__(
+        self,
+        model_state: ObservationModelState,
+    ) -> None:
+        if not isinstance(model_state, ObservationModelState):
+            raise TypeError("model_state must be an ObservationModelState.")
+        self.model_state = model_state
+
+    @property
+    def station_catalog(self) -> dict[str, StationRecord]:
+        return self.model_state.station_catalog
+
+    @property
+    def reflector_catalog(self) -> dict[str, ReflectorRecord]:
+        return self.model_state.reflector_catalog
 
     @staticmethod
     def _candidates(
@@ -118,4 +156,9 @@ class ObservationResolver:
         return resolved
 
 
-__all__ = ["CatalogSelection", "ObservationResolver", "ResolvedObservation"]
+__all__ = [
+    "CatalogSelection",
+    "ObservationModelState",
+    "ObservationResolver",
+    "ResolvedObservation",
+]

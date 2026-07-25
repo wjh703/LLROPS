@@ -46,7 +46,7 @@ from llrops.estimation.variance_components import assign_variance_components
 ObsKey = Hashable
 
 
-@dataclass
+@dataclass(eq=False, repr=False, slots=True)
 class _InnerSolution:
     equations: list[ObservationEquation]
     residuals: dict[ObsKey, float]
@@ -65,7 +65,7 @@ class LlrAdjustmentSolver:
         equation_source: Callable[[int], list[ObservationEquation]],
         parametrization: ParametrizationList,
         options: LlrAdjustmentOptions,
-        context=None,
+        model_state=None,
         initial_scales: Optional[Mapping[str, float]] = None,
         initial_factors: Optional[Mapping[ObsKey, float]] = None,
         iteration_callback: Optional[Callable[[LlrAdjustmentIteration], None]] = None,
@@ -73,7 +73,7 @@ class LlrAdjustmentSolver:
         self.equation_source = equation_source
         self.parametrization = parametrization
         self.options = options
-        self.context = context
+        self.model_state = model_state
         self.initial_scales = dict(initial_scales or {})
         self.initial_factors = dict(initial_factors or {})
         self.iteration_callback = iteration_callback
@@ -172,14 +172,9 @@ class LlrAdjustmentSolver:
         linearization: DenseLinearization,
         scales: Mapping[str, float],
         factors: Mapping[ObsKey, float],
-        *,
-        include_robust_factors: bool = True,
     ) -> np.ndarray:
         factor_values = np.asarray(
-            [
-                float(factors[key]) if include_robust_factors else 1.0
-                for key in linearization.identities
-            ],
+            [float(factors[key]) for key in linearization.identities],
             dtype=float,
         )
         scale_values = np.asarray(
@@ -207,10 +202,10 @@ class LlrAdjustmentSolver:
     ) -> _InnerSolution:
         equations = list(equations)
         dense = self._dense_linearization
+        started = perf_counter()
         if dense is not None:
             if tuple(eq.identity for eq in equations) != dense.identities:
                 raise RuntimeError("Dense linearization does not match equations.")
-            started = perf_counter()
             weights = self._dense_weights(dense, scales, factors)
             active = (
                 np.asarray(
@@ -226,86 +221,68 @@ class LlrAdjustmentSolver:
             solved = solve_normal_equations(normals)
             delta = np.asarray(solved.delta, dtype=float)
             residual_vector = dense.reduced_observations - dense.design @ delta
-            sum_weight = float(np.sum(weights))
-            wrms = (
-                None
-                if sum_weight <= 0.0
-                else float(np.sqrt(np.dot(weights, residual_vector**2) / sum_weight))
+            identities = dense.identities
+        else:
+            usable = [
+                equation
+                for equation in equations
+                if factors[equation.identity]
+                > self.options.minimum_nonzero_robust_factor
+            ]
+            if len(usable) < len(self._names):
+                raise RuntimeError(
+                    "Too few non-zero-factor observations for the current parameter set."
+                )
+            normals = build_normal_equations_streaming(
+                usable,
+                self.parametrization,
+                parameter_names=self._names,
+                weight_for=lambda equation: self._weight(
+                    scales, factors, equation
+                ),
             )
-            self._performance_seconds["normal_solve"] += perf_counter() - started
-            return _InnerSolution(
-                equations=equations,
-                residuals={
-                    key: float(value)
-                    for key, value in zip(dense.identities, residual_vector)
-                },
-                normals=normals,
-                delta=delta,
-                wrms_m=wrms,
-                covariance=solved.covariance,
-                residual_vector=residual_vector,
-                weights=weights,
+            solved = solve_normal_equations(normals)
+            delta = np.asarray(solved.delta, dtype=float)
+            residual_items = list(
+                postfit_residuals_streaming(
+                    equations,
+                    self.parametrization,
+                    delta,
+                )
             )
+            residual_vector = np.asarray(
+                [item.residual_m for item in residual_items], dtype=float
+            )
+            weights = np.asarray(
+                [
+                    self._weight(scales, factors, item.equation)
+                    for item in residual_items
+                ],
+                dtype=float,
+            )
+            identities = tuple(item.equation.identity for item in residual_items)
 
-        started = perf_counter()
-        usable = [
-            eq
-            for eq in equations
-            if factors[eq.identity] > self.options.minimum_nonzero_robust_factor
-        ]
-        if len(usable) < len(self._names):
-            raise RuntimeError(
-                "Too few non-zero-factor observations for the current parameter set."
-            )
-
-        normals = build_normal_equations_streaming(
-            usable,
-            self.parametrization,
-            parameter_names=self._names,
-            weight_for=lambda eq: self._weight(scales, factors, eq),
-        )
-        solved = solve_normal_equations(normals)
-        delta = np.asarray(solved.delta, dtype=float)
-        residual_items = list(
-            postfit_residuals_streaming(equations, self.parametrization, delta)
-        )
-        sum_weight = sum(
-            self._weight(scales, factors, item.equation) for item in residual_items
-        )
+        sum_weight = float(np.sum(weights))
         wrms = (
             None
             if sum_weight <= 0.0
             else float(
-                np.sqrt(
-                    sum(
-                        self._weight(scales, factors, item.equation)
-                        * item.residual_m**2
-                        for item in residual_items
-                    )
-                    / sum_weight
-                )
+                np.sqrt(np.dot(weights, residual_vector**2) / sum_weight)
             )
-        )
-        residual_vector = np.asarray(
-            [item.residual_m for item in residual_items], dtype=float
-        )
-        weight_vector = np.asarray(
-            [self._weight(scales, factors, item.equation) for item in residual_items],
-            dtype=float,
         )
         self._performance_seconds["normal_solve"] += perf_counter() - started
         return _InnerSolution(
             equations=equations,
             residuals={
-                item.equation.identity: float(item.residual_m)
-                for item in residual_items
+                key: float(value)
+                for key, value in zip(identities, residual_vector)
             },
             normals=normals,
             delta=delta,
             wrms_m=wrms,
             covariance=solved.covariance,
             residual_vector=residual_vector,
-            weights=weight_vector,
+            weights=weights,
         )
 
     def _standardized_residuals(
@@ -314,21 +291,25 @@ class LlrAdjustmentSolver:
         scales: Mapping[str, float],
         residuals: Optional[Mapping[ObsKey, float]] = None,
     ) -> tuple[dict[ObsKey, float], dict[ObsKey, float]]:
+        started = perf_counter()
         dense = self._dense_linearization
         if dense is not None:
             if solution.residual_vector is None:
                 raise RuntimeError("Dense residual vector is unavailable.")
-            started = perf_counter()
+            identities = dense.identities
             residual_values = (
                 solution.residual_vector
                 if residuals is None
                 else np.asarray(
-                    [residuals[key] for key in dense.identities], dtype=float
+                    [residuals[key] for key in identities], dtype=float
                 )
             )
-            base_weights_array = self._dense_weights(
-                dense, scales, {}, include_robust_factors=False
+            scale_values = np.asarray(
+                [float(scales[self._assignments[key]]) for key in identities],
+                dtype=float,
             )
+            base_variances = scale_values**2 * dense.sigmas**2
+            base_weights_array = 1.0 / base_variances
             base_normals = dense.normal_equations(base_weights_array)
             covariance = solve_normal_equations(base_normals).covariance
             if covariance is None:
@@ -337,71 +318,68 @@ class LlrAdjustmentSolver:
             leverage = base_weights_array * np.einsum(
                 "ij,ij->i", projected, dense.design
             )
-            if not np.all(np.isfinite(leverage)):
-                raise RuntimeError("Dense leverage contains non-finite values.")
-            one_minus = np.maximum(
-                1.0 - leverage, self.options.minimum_one_minus_leverage
+        else:
+            equations = solution.equations
+            identities = tuple(equation.identity for equation in equations)
+            residual_by_identity = (
+                solution.residuals if residuals is None else residuals
             )
-            scale_values = np.asarray(
-                [float(scales[self._assignments[key]]) for key in dense.identities],
+            residual_values = np.asarray(
+                [residual_by_identity[key] for key in identities], dtype=float
+            )
+            base_variances = np.asarray(
+                [
+                    scales[self._assignments[equation.identity]] ** 2
+                    * equation.sigma_m**2
+                    for equation in equations
+                ],
                 dtype=float,
             )
-            sigma_v = np.sqrt(scale_values**2 * dense.sigmas**2 * one_minus)
-            standardized_values = residual_values / sigma_v
-            self._performance_seconds["leverage"] += perf_counter() - started
-            return (
-                {
-                    key: float(value)
-                    for key, value in zip(dense.identities, standardized_values)
-                },
-                {key: float(value) for key, value in zip(dense.identities, sigma_v)},
+            base_weights_array = 1.0 / base_variances
+            base_weights = dict(zip(identities, base_weights_array))
+            base_normals = build_normal_equations_streaming(
+                equations,
+                self.parametrization,
+                parameter_names=self._names,
+                weight_for=lambda equation: base_weights[equation.identity],
             )
+            covariance = solve_normal_equations(base_normals).covariance
+            if covariance is None:
+                raise RuntimeError("Base normal equation covariance is unavailable.")
+            leverage_values: list[float] = []
+            for equation in equations:
+                row = self.parametrization.design_row(equation)
+                leverage_values.append(
+                    base_weights[equation.identity]
+                    * float(row @ covariance @ row)
+                )
+            leverage = np.asarray(leverage_values, dtype=float)
 
-        started = perf_counter()
-        base_weights = {
-            eq.identity: 1.0
-            / (scales[self._assignments[eq.identity]] ** 2 * eq.sigma_m**2)
-            for eq in solution.equations
-        }
-        base_normals = build_normal_equations_streaming(
-            solution.equations,
-            self.parametrization,
-            parameter_names=self._names,
-            weight_for=lambda eq: base_weights[eq.identity],
+        if not np.all(np.isfinite(leverage)):
+            raise RuntimeError("Observation leverage contains non-finite values.")
+        one_minus_leverage = np.maximum(
+            1.0 - leverage,
+            self.options.minimum_one_minus_leverage,
         )
-        covariance = solve_normal_equations(base_normals).covariance
-        if covariance is None:
-            raise RuntimeError("Base normal equation covariance is unavailable.")
-
-        standardized: dict[ObsKey, float] = {}
-        residual_by_identity = solution.residuals if residuals is None else residuals
-        residual_sigmas: dict[ObsKey, float] = {}
-        for equation in solution.equations:
-            row = self.parametrization.design_row(equation)
-            leverage = base_weights[equation.identity] * float(row @ covariance @ row)
-            if not np.isfinite(leverage):
-                raise RuntimeError(
-                    f"Invalid leverage for observation {equation.identity!r}: "
-                    f"{leverage!r}."
-                )
-            one_minus_leverage = max(
-                1.0 - leverage,
-                self.options.minimum_one_minus_leverage,
+        residual_sigma_values = np.sqrt(base_variances * one_minus_leverage)
+        if not np.all(np.isfinite(residual_sigma_values)) or np.any(
+            residual_sigma_values <= 0.0
+        ):
+            raise RuntimeError(
+                "Residual standard deviations must be positive and finite."
             )
-            component_id = self._assignments[equation.identity]
-            base_variance = scales[component_id] ** 2 * equation.sigma_m**2
-            sigma_v = float(np.sqrt(base_variance * one_minus_leverage))
-            if not np.isfinite(sigma_v) or sigma_v <= 0.0:
-                raise RuntimeError(
-                    "Invalid residual standard deviation for "
-                    f"observation {equation.identity!r}: {sigma_v!r}."
-                )
-            residual_sigmas[equation.identity] = sigma_v
-            standardized[equation.identity] = (
-                residual_by_identity[equation.identity] / sigma_v
-            )
+        standardized_values = residual_values / residual_sigma_values
         self._performance_seconds["leverage"] += perf_counter() - started
-        return standardized, residual_sigmas
+        return (
+            {
+                key: float(value)
+                for key, value in zip(identities, standardized_values)
+            },
+            {
+                key: float(value)
+                for key, value in zip(identities, residual_sigma_values)
+            },
+        )
 
     def _update_scales(
         self,
@@ -529,7 +507,7 @@ class LlrAdjustmentSolver:
 
     def run(self) -> LlrAdjustmentResult:
         initial_equations = self._equations("initialization")
-        self.parametrization.setup(initial_equations, self.context)
+        self.parametrization.setup(initial_equations, self.model_state)
         self._names = self.parametrization.parameter_names()
         self._gross_rejected = prefit_gross_rejections(
             initial_equations,
@@ -556,7 +534,7 @@ class LlrAdjustmentSolver:
             ),
         )
         self._retained_keys = {eq.identity for eq in active_initial}
-        self.parametrization.setup(active_initial, self.context)
+        self.parametrization.setup(active_initial, self.model_state)
         self._names = self.parametrization.parameter_names()
         self._assignments = dict(initial_assignments)
 

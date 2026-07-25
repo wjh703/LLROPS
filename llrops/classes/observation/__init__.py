@@ -13,6 +13,7 @@ _LAZY_EXPORTS = {
     "FrozenMapping": ("frozen_mapping", "FrozenMapping"),
     "CatalogSelection": ("resolver", "CatalogSelection"),
     "ResolvedObservation": ("resolver", "ResolvedObservation"),
+    "ObservationModelState": ("resolver", "ObservationModelState"),
     "ObservationResolver": ("resolver", "ObservationResolver"),
     "LightTimeLeg": ("light_time", "LightTimeLeg"),
     "LightTimeRequest": ("light_time", "LightTimeRequest"),
@@ -23,11 +24,9 @@ _LAZY_EXPORTS = {
     "LlrPrediction": ("model", "LlrPrediction"),
     "LlrObservationReducer": ("reduction", "LlrObservationReducer"),
     "ObservationReduction": ("reduction", "ObservationReduction"),
-    "LlrObservationResultBuilder": ("result_builder", "LlrObservationResultBuilder"),
     "LlrObservationProcessor": ("processor", "LlrObservationProcessor"),
     "ObservationProcessingOptions": ("processor", "ObservationProcessingOptions"),
-    "LlrObservationResult": ("results", "LlrObservationResult"),
-    "ObservationOutputLevel": ("results", "ObservationOutputLevel"),
+    "ObservationOutputLevel": ("equations", "ObservationOutputLevel"),
 }
 
 

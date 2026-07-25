@@ -1,6 +1,7 @@
 """Parametrization: lunar reflector PA-frame coordinates (3 per reflector)."""
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Dict, List, Optional, Sequence
 
 import numpy as np
@@ -9,6 +10,7 @@ from llrops.base.parameter_name import ParameterName
 from llrops.base.array_validation import parameter_vector
 from llrops.config.registry import register
 from llrops.classes.observation.equations import ObservationEquation
+from llrops.classes.observation.resolver import ObservationModelState
 from .base import Parametrization
 
 _AXES = ("x", "y", "z")
@@ -23,11 +25,8 @@ class ReflectorPositionParametrization(Parametrization):
     reflectors :
         Optional explicit list of reflector catalog keys to estimate; default
         is every reflector present in the observation set.
-    catalog :
-        Injected at setup time through ``context.shared["reflectorCatalog"]``;
-        :meth:`apply_update` writes the corrected positions back into it, so
-        the forward model of the next Gauss–Newton iteration directly
-        relinearizes about the updated coordinates.
+    The explicit :class:`ObservationModelState` supplied to :meth:`setup`
+    owns the coordinates updated between nonlinear iterations.
     """
 
     def __init__(self, *, reflectors: Optional[Sequence[str]] = None) -> None:
@@ -35,16 +34,25 @@ class ReflectorPositionParametrization(Parametrization):
         self.keys: List[str] = []
         self._index_by_key: Dict[str, int] = {}
         self._names: List[ParameterName] = []
-        self._catalog: Dict[str, object] = {}
+        self._model_state: ObservationModelState | None = None
 
     @classmethod
     def from_config(cls, config: dict, context) -> "ReflectorPositionParametrization":
         return cls(reflectors=config.get("reflectors"))
 
-    def setup(self, equations: Sequence[ObservationEquation], context) -> None:
-        self._catalog = context.shared["reflectorCatalog"]
+    def setup(
+        self,
+        equations: Sequence[ObservationEquation],
+        model_state: ObservationModelState,
+    ) -> None:
+        if not isinstance(model_state, ObservationModelState):
+            raise TypeError(
+                "reflectorPosition requires an ObservationModelState."
+            )
+        self._model_state = model_state
+        catalog = model_state.reflector_catalog
         observed = sorted({eq.reflector_key for eq in equations})
-        self.keys = [k for k in (self.requested or observed) if k in self._catalog]
+        self.keys = [k for k in (self.requested or observed) if k in catalog]
         missing = set(self.requested or []) - set(self.keys)
         if missing:
             raise KeyError(f"reflectorPosition: unknown reflector key(s) {sorted(missing)}")
@@ -82,10 +90,16 @@ class ReflectorPositionParametrization(Parametrization):
 
     def apply_update(self, delta: np.ndarray) -> None:
         delta = parameter_vector(delta, expected_size=3 * len(self.keys), name="reflectorPosition update")
+        if self._model_state is None:
+            raise RuntimeError("reflectorPosition has not been set up.")
         for j, key in enumerate(self.keys):
-            record = self._catalog[key]
-            record.moon_fixed_xyz_m = (
-                np.asarray(record.moon_fixed_xyz_m, dtype=float) + delta[3 * j : 3 * j + 3]
+            record = self._model_state.reflector_catalog[key]
+            self._model_state.reflector_catalog[key] = replace(
+                record,
+                moon_fixed_xyz_m=(
+                    np.asarray(record.moon_fixed_xyz_m, dtype=float)
+                    + delta[3 * j : 3 * j + 3]
+                ),
             )
 
     def max_update_norm(self, delta: np.ndarray) -> float:
@@ -96,7 +110,15 @@ class ReflectorPositionParametrization(Parametrization):
         )
 
     def state(self) -> Dict[str, object]:
+        if self._model_state is None:
+            return {}
         return {
-            key: [float(v) for v in np.asarray(self._catalog[key].moon_fixed_xyz_m, dtype=float)]
+            key: [
+                float(value)
+                for value in np.asarray(
+                    self._model_state.reflector_catalog[key].moon_fixed_xyz_m,
+                    dtype=float,
+                )
+            ]
             for key in self.keys
         }

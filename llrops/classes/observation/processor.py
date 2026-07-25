@@ -8,11 +8,10 @@ import numpy as np
 
 from llrops.fileio.normal_points import NptDataset
 
-from .result_builder import LlrObservationResultBuilder
+from .equations import ObservationEquation, build_observation_equation
 from .model import LlrObservationModel
 from .reduction import LlrObservationReducer
 from .resolver import CatalogSelection, ObservationResolver, ResolvedObservation
-from .results import LlrObservationResult
 
 try:
     from tqdm import tqdm as _tqdm  # type: ignore
@@ -63,30 +62,21 @@ class LlrObservationProcessor:
         resolver: ObservationResolver,
         model: LlrObservationModel,
         reducer: LlrObservationReducer,
-        result_builder: LlrObservationResultBuilder | None = None,
     ) -> None:
         if reducer.ephemeris is not model.ephemeris:
             raise ValueError("reducer.ephemeris and model.ephemeris must be the same object.")
         self.resolver = resolver
+        self.model_state = resolver.model_state
         self.model = model
         self.reducer = reducer
-        self.result_builder = result_builder or LlrObservationResultBuilder()
 
     @property
     def station_catalog(self):
         return self.resolver.station_catalog
 
-    @station_catalog.setter
-    def station_catalog(self, value) -> None:
-        self.resolver.replace_catalogs(station_catalog=value)
-
     @property
     def reflector_catalog(self):
         return self.resolver.reflector_catalog
-
-    @reflector_catalog.setter
-    def reflector_catalog(self, value) -> None:
-        self.resolver.replace_catalogs(reflector_catalog=value)
 
     @property
     def ephemeris_file(self) -> str:
@@ -131,7 +121,7 @@ class LlrObservationProcessor:
         dataset: NptDataset,
         *,
         options: ObservationProcessingOptions | None = None,
-    ) -> list[LlrObservationResult]:
+    ) -> list[ObservationEquation]:
         options = options or ObservationProcessingOptions()
         observations = self.resolver.validate(dataset.records, options.catalog_selection)
         return [
@@ -148,7 +138,7 @@ class LlrObservationProcessor:
         observation: ResolvedObservation,
         *,
         options: ObservationProcessingOptions,
-    ) -> LlrObservationResult:
+    ) -> ObservationEquation:
         prediction = self.model.predict(
             observation,
             include_reflector_position_partial=options.include_reflector_position_partial,
@@ -158,7 +148,7 @@ class LlrObservationProcessor:
             prediction,
             min_elevation_deg=options.min_elevation_deg,
         )
-        return self.result_builder.build(observation, prediction, reduction)
+        return build_observation_equation(observation, prediction, reduction)
 
 
 __all__ = ["LlrObservationProcessor", "ObservationProcessingOptions"]

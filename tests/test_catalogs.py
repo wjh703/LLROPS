@@ -1,6 +1,11 @@
 import numpy as np
 import pytest
 
+from llrops.base.station_identity import (
+    canonical_station_id,
+    station_display_name,
+    station_ilrs_code,
+)
 from llrops.fileio.catalogs import (
     StationRecord,
     load_reflector_catalog,
@@ -41,3 +46,15 @@ def test_builtin_catalog_loaders_return_deep_copies():
     reflectors_1[reflector_key].moon_fixed_xyz_m = np.array([1.0, 2.0, 3.0])
     assert np.allclose(reflectors_2[reflector_key].moon_fixed_xyz_m, original)
     assert reflectors_1[reflector_key] is not reflectors_2[reflector_key]
+
+
+def test_builtin_station_identity_has_one_canonical_catalog_key():
+    stations = load_station_catalog("builtin")
+
+    assert "APOLLO" in stations
+    assert "APOL" not in stations
+    assert canonical_station_id("Apache Point Observatory") == "APOLLO"
+    assert canonical_station_id("70610") == "APOLLO"
+    assert station_ilrs_code("APOL") == "70610"
+    assert station_display_name("APOLLO") == "Apache Point Observatory"
+    assert resolve_catalog_key("APOL", stations, "Station") == "APOLLO"
