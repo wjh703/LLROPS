@@ -48,7 +48,7 @@ globals:
   # Fixed forward-model O-C range-bias correction.
   # Use {type: none} if you want raw model residuals without this correction.
   rangeBias:
-    type: inpop21
+    type: none
 
   stationCatalog: builtin
   reflectorCatalog: builtin
@@ -80,7 +80,7 @@ programs:
 
     # MPI task granularity. Ignored in normal serial execution.
     mpi:
-      chunksize: 8
+      chunksize: 32
 
-    outputCsv: "{outputDir}/oc_residuals1.csv"
+    outputCsv: "{outputDir}/oc_residuals_w_libration_correction_wo_bias.csv"
     outputJson: null
