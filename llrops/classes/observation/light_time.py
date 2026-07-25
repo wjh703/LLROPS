@@ -211,7 +211,7 @@ class LightTimeSolver:
         station_displacement: StationDisplacement | None = None,
         reflector_displacement: ReflectorDisplacement | None = None,
         max_iterations: int = 12,
-        tolerance_s: float = 1e-13,
+        tolerance_s: float = 1e-12,
     ) -> None:
         if not isinstance(frames, ReferenceFrameSystem):
             raise TypeError("frames must be a ReferenceFrameSystem.")

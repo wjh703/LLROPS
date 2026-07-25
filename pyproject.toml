@@ -18,6 +18,7 @@ dependencies = [
     "tqdm>=4.68.4",
     "coverage",
     "pytest-cov",
+    "matplotlib>=3.11.1",
 ]
 
 
