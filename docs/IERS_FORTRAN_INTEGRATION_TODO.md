@@ -207,13 +207,19 @@ Official Chapter 9 software index:
 - [x] Verify the final two-way delay in the light-time solution, not only the
       two low-level routines.
 
-### 6.4 Optional atmospheric gradient
+### 6.4 APG applicability decision
 
-- [ ] Evaluate adding official `APG.F` as a separate asymmetric-delay model.
-- [ ] Extend the atmospheric input with station longitude and line-of-sight
-      azimuth before enabling `APG`.
-- [ ] Keep this optional model separate from the basic `FCUL` replacement so it
-      does not silently change existing results.
+- [x] Evaluate official `APG.F` as a separate asymmetric-delay model.
+- [x] Confirm that `APG.F` is outside the current optical LLR propagation path.
+      The routine is documented in the Chapter 9 radio-techniques material and
+      its test case is a Kashima VLBI station. It models empirical north/east
+      atmospheric gradients from latitude, longitude, azimuth, and elevation;
+      it is not part of the wavelength-dependent optical `FCUL` model.
+- [x] Keep `APG` separate from the basic `FCUL` replacement so it cannot
+      silently change optical results or expand the optical atmospheric input.
+- [ ] If a future LLROPS radio/VLBI observation model is added, implement and
+      validate `APG` there as an explicitly selected model with its own gradient
+      parameters and low-elevation estimation policy.
 
 Official source:
 

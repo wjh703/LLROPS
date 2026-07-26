@@ -162,6 +162,30 @@ Its largest change was `14.84 mm` at the 3-degree boundary. A future
 geoid-backed orthometric height remains necessary for low-elevation precision
 work.
 
+## APG scope decision
+
+The official `APG.F` routine is not part of the production optical LLR model.
+The Chapter 9 index places it in the tropospheric material for radio
+techniques. Its interface accepts station latitude and longitude plus line-of-
+sight azimuth and elevation, and returns an empirical asymmetric delay and
+north/east gradients. It does not accept optical wavelength, pressure, or water
+vapour pressure, which are required by the optical `FCUL_ZD_HPA` and `FCUL_A`
+models. The supplied test case is the Kashima 11 VLBI station, and the source
+references the Chen-Herring radio space-geodetic gradient model.
+
+LLROPS therefore keeps the optical atmospheric input and residual path limited
+to the wavelength-dependent zenith delay and `FCUL_A` mapping. No APG source,
+Fortran binding, azimuth/longitude fields, or implicit gradient correction is
+added. If a radio/VLBI observation path is introduced later, APG should be
+implemented as a separately selected model with its own gradient estimation and
+low-elevation policy.
+
+References:
+
+- <https://iers-conventions.obspm.fr/chapter9.php>
+- <https://iers-conventions.obspm.fr/content/chapter9/software/APG.F>
+- <https://doi.org/10.1029/97JB01739>
+
 ## Build and verification
 
 A development environment can be prepared and installed with:
