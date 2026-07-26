@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from llrops import _iers2010
 
 
-_MICRO = 1.0e-6
+_MICROARCSECOND_TO_ARCSECOND = 1.0e-6
+_MICROSECOND_TO_SECOND = 1.0e-6
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,9 +21,9 @@ def ocean_tide_correction(mjd: float) -> HighFrequencyEopCorrection:
     """Return official ORTHO_EOP ocean-tide corrections."""
     delta_xp, delta_yp, delta_ut1 = _iers2010.ortho_eop(float(mjd))
     return HighFrequencyEopCorrection(
-        delta_xp * _MICRO,
-        delta_yp * _MICRO,
-        delta_ut1 * _MICRO,
+        delta_xp * _MICROARCSECOND_TO_ARCSECOND,
+        delta_yp * _MICROARCSECOND_TO_ARCSECOND,
+        delta_ut1 * _MICROSECOND_TO_SECOND,
     )
 
 
@@ -31,9 +32,9 @@ def libration_correction(mjd: float) -> HighFrequencyEopCorrection:
     delta_xp, delta_yp = _iers2010.pmsdnut2(float(mjd))
     delta_ut1, _delta_lod = _iers2010.utlibr(float(mjd))
     return HighFrequencyEopCorrection(
-        delta_xp * _MICRO,
-        delta_yp * _MICRO,
-        delta_ut1 * _MICRO,
+        delta_xp * _MICROARCSECOND_TO_ARCSECOND,
+        delta_yp * _MICROARCSECOND_TO_ARCSECOND,
+        delta_ut1 * _MICROSECOND_TO_SECOND,
     )
 
 
