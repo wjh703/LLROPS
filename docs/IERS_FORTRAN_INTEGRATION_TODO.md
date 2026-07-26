@@ -269,10 +269,14 @@ Official source directory:
       and GCRS-to-ITRF path, plus fixed-seed random WGS84 stations. Across eight
       cases the displacement-vector norm differences are `0.044--0.342 mm`;
       the two 2017 cases differ by `0.195 mm` and `0.175 mm`.
-- [ ] Benchmark a true single-epoch call. It must not generate or allocate a
-      full-day, one-minute time series.
-- [ ] Add an end-to-end regression for transmit and receive station positions
-      inside the iterative light-time solution.
+- [x] Benchmark a true single-epoch call. The native model evaluates one
+      `DEHANTTIDEINEL` epoch without generating a time series; the complete
+      station-displacement call is about 3.7x faster than the former `pysolid`
+      path in the recorded benchmark.
+- [x] Add an end-to-end regression for transmit and receive station positions
+      inside the iterative light-time solution. The regression verifies both
+      displacement vectors are non-zero, both UTC legs are evaluated, and the
+      native contribution changes the converged round-trip observable.
 - [x] Remove `samplingIntervalSeconds`, the `pysolid` runtime import, and the
       obsolete `physics` optional dependency after accepting the native
       implementation.

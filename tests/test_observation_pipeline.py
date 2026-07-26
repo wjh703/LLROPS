@@ -6,6 +6,7 @@ import pytest
 from llrops.base.constants import C
 from llrops.base.epoch import Epoch, TimeScale
 from llrops.classes.delays import Iers2010MendesPavlisTroposphere, ZeroTroposphereDelay
+from llrops.classes.displacement import Iers2010SolidEarthTide
 from llrops.classes.ephemerides import BodyState, Ephemeris
 from llrops.classes.frames import EarthOrientation, PolarMotion, ReferenceFrameSystem
 from llrops.classes.observation import (
@@ -89,13 +90,15 @@ def _record(index: int = 4) -> NptRecord:
     )
 
 
-def _pipeline(troposphere_delay=None):
-    frames = ReferenceFrameSystem(_Ephemeris(), _EarthOrientation())
+def _pipeline(troposphere_delay=None, *, frames=None, station_displacement=None):
+    if frames is None:
+        frames = ReferenceFrameSystem(_Ephemeris(), _EarthOrientation())
     solver = LightTimeSolver(
         frames,
         troposphere_delay=(
             ZeroTroposphereDelay() if troposphere_delay is None else troposphere_delay
         ),
+        station_displacement=station_displacement,
     )
     state = ObservationModelState.from_catalogs(
         {
@@ -126,6 +129,16 @@ def _pipeline(troposphere_delay=None):
     )
 
 
+class _RecordingStationDisplacement:
+    def __init__(self, delegate):
+        self.delegate = delegate
+        self.calls = []
+
+    def displacement_itrf_m(self, data):
+        self.calls.append(data)
+        return self.delegate.displacement_itrf_m(data)
+
+
 def test_full_observation_pipeline_builds_one_equation():
     processor = _pipeline()
     equation = processor.process(
@@ -146,6 +159,29 @@ def test_full_observation_pipeline_builds_one_equation():
     assert equation.metadata["status"] == "ok"
     assert equation.to_row("standard")["oc_one_way_m"] == pytest.approx(
         equation.observed_minus_computed_m
+    )
+
+
+def test_native_solid_earth_tide_enters_transmit_and_receive_light_time():
+    frames = ReferenceFrameSystem(_Ephemeris(), _EarthOrientation())
+    recorder = _RecordingStationDisplacement(Iers2010SolidEarthTide(frames))
+    with_tide = _pipeline(frames=frames, station_displacement=recorder)
+    observation = with_tide.resolver.resolve(_record())
+
+    native_prediction = with_tide.model.predict(observation)
+    zero_prediction = _pipeline().model.predict(observation)
+    solution = native_prediction.light_time
+
+    assert solution.converged
+    assert len(recorder.calls) >= 3
+    assert recorder.calls[0].epoch_utc == observation.transmit_epoch
+    assert any(call.epoch_utc != observation.transmit_epoch for call in recorder.calls)
+    assert np.linalg.norm(solution.station_displacement_transmit_itrf_m) > 1.0e-6
+    assert np.linalg.norm(solution.station_displacement_receive_itrf_m) > 1.0e-6
+    assert solution.observable_round_trip_time_s != pytest.approx(
+        zero_prediction.light_time.observable_round_trip_time_s,
+        rel=0.0,
+        abs=1.0e-15,
     )
 
 
