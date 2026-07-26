@@ -1,11 +1,13 @@
 import erfa
 import numpy as np
+import pytest
 
 from llrops.base.epoch import Epoch, TimeScale, utc2tt
 from llrops.classes.frames import C04EarthOrientation, EarthOrientationSample
 from llrops.classes.frames.earth_orientation import read_iers_c04
 from llrops.classes.frames.high_frequency_eop import (
     HighFrequencyEopCorrection,
+    high_frequency_eop_correction,
     libration_correction,
     ocean_tide_correction,
 )
@@ -16,7 +18,7 @@ _ARCSEC_TO_RAD = np.deg2rad(1.0 / 3600.0)
 
 
 def test_ocean_tide_correction_matches_iers_ortho_eop_reference():
-    correction = ocean_tide_correction(47_100.0)
+    correction = ocean_tide_correction(Epoch.from_mjd(47_100.0, scale=TimeScale.UTC))
 
     np.testing.assert_allclose(
         correction.xp_arcsec * 1.0e6,
@@ -39,7 +41,7 @@ def test_ocean_tide_correction_matches_iers_ortho_eop_reference():
 
 
 def test_libration_corrections_match_iers_reference_values():
-    polar_motion = libration_correction(54_335.0)
+    polar_motion = libration_correction(Epoch.from_mjd(54_335.0, scale=TimeScale.TT))
     np.testing.assert_allclose(
         [polar_motion.xp_arcsec * 1.0e6, polar_motion.yp_arcsec * 1.0e6],
         [24.83144238273364834, -14.09240692041837661],
@@ -48,17 +50,41 @@ def test_libration_corrections_match_iers_reference_values():
     )
 
     np.testing.assert_allclose(
-        libration_correction(44_239.1).ut1_sec * 1.0e6,
+        libration_correction(Epoch.from_mjd(44_239.1, scale=TimeScale.TT)).ut1_sec * 1.0e6,
         2.441143834386761746,
         rtol=0.0,
         atol=2.0e-8,
     )
     np.testing.assert_allclose(
-        libration_correction(55_227.4).ut1_sec * 1.0e6,
+        libration_correction(Epoch.from_mjd(55_227.4, scale=TimeScale.TT)).ut1_sec * 1.0e6,
         -2.655705844335680244,
         rtol=0.0,
         atol=2.0e-8,
     )
+
+
+def test_high_frequency_result_retains_named_components_and_lod():
+    epoch = Epoch.from_mjd(55_227.4, scale=TimeScale.UTC)
+    result = high_frequency_eop_correction(epoch)
+    ocean = ocean_tide_correction(epoch)
+    libration = libration_correction(utc2tt(epoch))
+
+    assert result.ocean_delta_xp_arcsec == ocean.ocean_delta_xp_arcsec
+    assert result.libration_delta_yp_arcsec == libration.libration_delta_yp_arcsec
+    assert result.libration_delta_lod_sec_per_day == libration.libration_delta_lod_sec_per_day
+    assert result.xp_arcsec == ocean.xp_arcsec + libration.xp_arcsec
+    assert result.yp_arcsec == ocean.yp_arcsec + libration.yp_arcsec
+    assert result.ut1_sec == ocean.ut1_sec + libration.ut1_sec
+    np.testing.assert_allclose(result.libration_delta_lod_sec_per_day, 27.0861697892672e-6)
+
+
+def test_high_frequency_requires_explicit_utc_epoch():
+    with pytest.raises(TypeError, match="requires an Epoch"):
+        ocean_tide_correction(47_100.0)
+    with pytest.raises(ValueError, match="epoch_utc must use the UTC scale"):
+        ocean_tide_correction(Epoch.from_mjd(47_100.0, scale=TimeScale.TT))
+    with pytest.raises(ValueError, match="requires a TT or TDB Epoch"):
+        libration_correction(Epoch.from_mjd(47_100.0, scale=TimeScale.UTC))
 
 
 def test_c04_parser_retains_dx_dy_for_supported_layouts(tmp_path):
@@ -105,7 +131,7 @@ def test_terrestrial_matrix_applies_celestial_pole_offsets(monkeypatch):
     monkeypatch.setattr(
         terrestrial_module,
         "high_frequency_eop_correction",
-        lambda mjd: HighFrequencyEopCorrection(0.0, 0.0, 0.0),
+        lambda epoch, **kwargs: HighFrequencyEopCorrection(),
     )
 
     actual = TerrestrialFrameTransform(eop).celestial_to_terrestrial_matrix(epoch)
@@ -123,3 +149,25 @@ def test_terrestrial_matrix_applies_celestial_pole_offsets(monkeypatch):
 
     np.testing.assert_allclose(actual, expected, rtol=0.0, atol=2.0e-15)
     np.testing.assert_allclose(actual @ actual.T, np.eye(3), rtol=0.0, atol=2.0e-15)
+
+
+def test_terrestrial_matrix_applies_native_high_frequency_eop():
+    epoch = Epoch.from_calendar(2020, 1, 1, 6, scale=TimeScale.UTC)
+    eop = C04EarthOrientation(
+        (EarthOrientationSample(epoch.mjd, 0.076, 0.282, -0.177),)
+    )
+    actual = TerrestrialFrameTransform(eop).celestial_to_terrestrial_matrix(epoch)
+
+    high_frequency = high_frequency_eop_correction(epoch, ut1_minus_utc_sec=-0.177)
+    tt = utc2tt(epoch)
+    dut1_s = -0.177 + high_frequency.ut1_sec
+    ut11, ut12 = erfa.utcut1(epoch.jd1, epoch.jd2, dut1_s)
+    x, y, s = erfa.xys06a(tt.jd1, tt.jd2)
+    rc2i = erfa.c2ixys(x, y, s)
+    rpom = erfa.pom00(
+        (0.076 + high_frequency.xp_arcsec) * _ARCSEC_TO_RAD,
+        (0.282 + high_frequency.yp_arcsec) * _ARCSEC_TO_RAD,
+        erfa.sp00(tt.jd1, tt.jd2),
+    )
+    expected = np.asarray(erfa.c2tcio(rc2i, erfa.era00(ut11, ut12), rpom), dtype=float)
+    np.testing.assert_allclose(actual, expected, rtol=0.0, atol=2.0e-15)

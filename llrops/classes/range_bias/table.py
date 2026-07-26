@@ -226,6 +226,7 @@ INPOP21_RANGE_BIAS_TABLE = RangeBiasTable(
 
 BUILTIN_RANGE_BIAS_TABLES: dict[str, RangeBiasTable] = {
     "inpop21": INPOP21_RANGE_BIAS_TABLE,
+    "inpop21a": INPOP21_RANGE_BIAS_TABLE,
 }
 
 

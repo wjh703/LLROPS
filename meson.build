@@ -38,6 +38,17 @@ iers_fortran_sources = files(
     'external/iers2010/src/PMSDNUT2.F',
     'external/iers2010/src/UTLIBR.F',
     'external/iers2010/src/FUNDARG.F',
+    'external/iers2010/src/DEHANTTIDEINEL.F',
+    'external/iers2010/src/CAL2JD.F',
+    'external/iers2010/src/DAT.F',
+    'external/iers2010/src/NORM8.F',
+    'external/iers2010/src/SPROD.F',
+    'external/iers2010/src/ST1IDIU.F',
+    'external/iers2010/src/ST1ISEM.F',
+    'external/iers2010/src/ST1L1.F',
+    'external/iers2010/src/STEP2DIU.F',
+    'external/iers2010/src/STEP2LON.F',
+    'external/iers2010/src/ZERO_VEC8.F',
 )
 iers_bindings = custom_target(
   '_iers2010module.c',

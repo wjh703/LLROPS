@@ -4,10 +4,15 @@ import pytest
 
 from llrops.base.epoch import Epoch, TimeScale
 from llrops.classes.range_bias.table import (
+    BUILTIN_RANGE_BIAS_TABLES,
     INPOP21_RANGE_BIAS_TABLE,
     RangeBiasTable,
     load_range_bias_table,
 )
+
+
+def test_inpop21a_is_the_explicit_name_for_the_builtin_table():
+    assert BUILTIN_RANGE_BIAS_TABLES["inpop21a"] is INPOP21_RANGE_BIAS_TABLE
 
 
 def test_builtin_range_bias_table_lookup_and_summary():

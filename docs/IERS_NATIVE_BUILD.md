@@ -1,7 +1,7 @@
 # IERS native build and source policy
 
-Status: the production optical troposphere and high-frequency EOP models use
-the official Fortran routines.
+Status: the production optical troposphere, high-frequency EOP, and
+solid-Earth tide models use the official Fortran routines.
 
 Last verified (UTC): 2026-07-26
 
@@ -27,15 +27,36 @@ The selected source hashes are:
 | `PMSDNUT2.F` | `0818b58bc2a420e1eb3f951d8a74646e5fe7b5371c9beb5e89fa37c12dd0d965` |
 | `UTLIBR.F` | `f523335d552ac14b661121a081ad799382312d819853c674bc0102484b5e2406` |
 | `FUNDARG.F` | `18263cbb1289e222e6ee6e59d52beb343eb77a63ed3212e4f05a4c85d475ae78` |
+| `DEHANTTIDEINEL.F` | `bc6039a1704761881bb785ce44ce084ea82783107ff64c576e69155a4914e2cb` |
+| `CAL2JD.F` (derived) | `7634fafdbc761e9e97699102b0d43fdb564916d556497c98505a3205b3aef923` |
+| `DAT.F` (derived) | `4692aa5b784070cab731dd05d541f819d6ae01b20ba339a96d85ced0ffb643dc` |
+| `NORM8.F` | `636b6399dc6ab273a7b6104dd9341bf3c36995754aeee696511dbf19c9e909b6` |
+| `SPROD.F` | `817761a92bb5416eb38322ea2d43d41cf8ea435e208a0ce229acf94311e9fa1e` |
+| `ST1IDIU.F` | `d2976b8b76be8dd1d57e57a8d6b48f5764676126515bada3592753a07d3acd1e` |
+| `ST1ISEM.F` | `efdf284bd977826a1f4aea4c79c5dbd0c38fc1c403a2376010048b511a11f2c6` |
+| `ST1L1.F` | `b1dfd0e797a3ce950631ad7dbbf5f576bf6b58dc515688253a3d84ca059bc282` |
+| `STEP2DIU.F` | `898c70d4b8d50e09e0c717c911c4117b3ad1ca4996d369c258b68d00ea3a5674` |
+| `STEP2LON.F` | `f9d3bf0317222986d22e53557020bb13a6fbb90f8e3c9915137da6184d82813a` |
+| `ZERO_VEC8.F` | `5ea9ab87e298d377f6dbe69c46b040906b6575a9132fab3830a4dc02c9139cef` |
 
-The official files are unchanged. Each contains the complete IERS Conventions Software
-License and is included in both source and binary distributions.
+The official IERS files are unchanged and retain their complete IERS
+Conventions Software License. The nine non-SOFA Chapter 7 files are likewise
+unchanged. The two bundled SOFA support routines retain their complete SOFA
+license but are derived works: `CAL2JD.F` renames `iau_CAL2JD` to `CAL2JD`, and
+`DAT.F` renames `iau_DAT` to `DAT` and its one internal call to `CAL2JD`.
+These names match the calls made by the unchanged `DEHANTTIDEINEL.F`, removing
+the need for a separate compatibility source. Their original v1.3.0 archive
+hashes are `686af399ea3a493e6c0ca659d2d64f367280f5bb331584ded0800ae8d45964d3`
+and `64a5a69c38d41f6d9b64204f353f5ce46750d59a1067ca507cb9b6e71e934462`.
+All source files are included in both source and binary distributions.
 
 When another routine is added:
 
 1. Extract it from the pinned archive identified above.
 2. Put the unchanged Fortran source directly in `external/iers2010/src`.
-3. Do not edit it, including its source header or license.
+3. Do not edit it, including its source header or license, except for a
+   documented license-compliant derived-work adaptation when an upstream
+   linkage defect cannot otherwise be resolved.
 4. Add its SHA-256 and purpose to the source table above.
 5. Put project-specific signatures and adaptations in
    `external/iers2010/bindings` under a project-specific name.
@@ -73,27 +94,66 @@ repository.
 
 The extension is private. The production troposphere and terrestrial-frame
 models call it through their existing interfaces. The extension exposes
-selected official Chapter 5, Chapter 8, and Chapter 9 routines:
+selected official Chapter 5, Chapter 7, Chapter 8, and Chapter 9 routines:
 
 | Entry point | Inputs | Output | Time/frame/sign convention |
 |---|---|---|---|
 | `fcul_a` | north geodetic latitude in degrees; height above mean sea level in metres; temperature in kelvin; elevation in degrees | dimensionless mapping factor | no epoch or coordinate frame; positive path scale |
 | `fculzd_hpa` | north geodetic latitude in degrees; ellipsoidal height in metres; total pressure and water-vapour pressure in hPa; wavelength in micrometres | total, hydrostatic, and non-hydrostatic zenith delays in metres | no epoch or coordinate frame; positive excess path |
-| `ortho_eop` | MJD (`TIME`, scale to be resolved by the next EOP API PR) | NumPy array `[delta_xp, delta_yp, delta_ut1]`, in microarcseconds/microseconds | official ORTHO_EOP array order |
-| `pmsdnut2` | MJD (`RMJD`, scale to be resolved by the next EOP API PR) | NumPy array `[delta_xp, delta_yp]`, in microarcseconds | official PMSDNUT2 array order |
-| `utlibr` | MJD (`RMJD`, scale to be resolved by the next EOP API PR) | scalar `delta_ut1` in microseconds; scalar `delta_lod` in microseconds/day | official UTLIBR units |
+| `ortho_eop` | explicit UTC `Epoch` plus `UT1-UTC`; Fortran receives UT1 MJD (`TIME`) | NumPy array `[delta_xp, delta_yp, delta_ut1]`, in microarcseconds/microseconds | ocean-tide phase follows UT1/GMST |
+| `pmsdnut2` | TT `Epoch` (TT is the accepted approximation to TDB); Fortran receives MJD (`RMJD`) | NumPy array `[delta_xp, delta_yp]`, in microarcseconds | official source converts MJD to TDB centuries for FUNDARG |
+| `utlibr` | TT `Epoch` (TT is the accepted approximation to TDB); Fortran receives MJD (`RMJD`) | scalar `delta_ut1` in microseconds; scalar `delta_lod` in microseconds/day | official source converts MJD to TDB centuries for FUNDARG |
 | `fundarg` | Julian centuries since J2000 (`T`) | `L`, `LP`, `F`, `D`, `OM` in radians | official FUNDARG convention |
+| `dehanttideinel` | station, Sun, and Moon geocentric ITRF/ECEF vectors in metres; UTC calendar date and fractional hour | NumPy array `[dX, dY, dZ]` in metres | official Chapter 7 UTC input and permanent-tide convention |
 
 `CNMTX.F` is compiled as the private helper used by `ORTHO_EOP.F`. The Chapter
 5 and Chapter 8 `FUNDARG.F` files are byte-identical; the Chapter 5 copy is the
 single canonical source. The official array outputs are unpacked at the Python
-facade boundary; no project-specific Fortran adapter is required.
+facade boundary; no project-specific Fortran adapter is required. The v1.3.0
+Chapter 7 source calls `CAL2JD` and `DAT`, while its bundled SOFA support
+routines define `iau_CAL2JD` and `iau_DAT`. The two SOFA files are renamed in
+place, with their required derived-work notices, so the extension links the
+official `DEHANTTIDEINEL` interface directly.
 
 There is no Python transcription or fallback for these selected routines. The
-Python facades retain only application-level work: converting relative humidity
+Python facades retain only application-level work: requiring an explicit UTC
+observation epoch, applying C04 `UT1-UTC` to the ocean-tide input, converting
+UTC to TT for the libration routines, and converting relative humidity
 to water-vapour pressure, converting radians to degrees, applying the minimum
 elevation policy, and converting official micro-units to SI units before
 calling or returning Fortran results.
+
+## C04 convention and double-counting policy
+
+The production configuration uses the IERS 20 C04 file
+`eopc04.1962-now.txt`. Its upstream readme identifies this product as a daily
+combined Earth-orientation series sampled at 0h UTC. It contains observed
+`UT1-UTC`, LOD, and celestial-pole offsets, among other fields. The same readme
+documents Vondrak combined smoothing for UT1 and LOD from 1984 onward; this is
+not a declaration that the tidal terms have been removed.
+
+IERS Conventions (2010), Chapter 8, Section 8.1, states that `RG_ZONT2` gives
+the zonal-tide corrections and that subtracting those corrections from observed
+`UT1-UTC`, LOD, and rotation rate produces a tide-free series. The conventions
+also recommend exchanging ordinary UT1 and LOD rather than an ambiguous
+regularized variant. LLROPS therefore treats C04 as the observed series and
+does not call or apply `RG_ZONT2`. Subtracting its output from observed C04
+would intentionally produce a tide-free series, which is not the convention
+used by the current frame transform; adding its output to C04 would double
+count the zonal-tide contribution.
+
+The C04 celestial-pole-offset columns are observed offsets relative to the
+product's declared precession-nutation reference model. `FCNNUT` is a separate
+free-core-nutation prediction model, so it is not added on top of those observed
+`dX/dY` values. A future input explicitly documented as tide-free or model-only
+must be handled by a separate, named policy rather than silently changing the
+C04 path.
+
+References:
+
+- <https://hpiers.obspm.fr/eoppc/eop/eopc04/readme>
+- <https://iers-conventions.obspm.fr/chapter8.php>, Section 8.1 and `RG_ZONT2.F`
+- <https://iers-conventions.obspm.fr/chapter5.php>, `FCNNUT.F`
 
 ## Atmospheric input policy
 
@@ -128,12 +188,36 @@ Its largest change was `14.84 mm` at the 3-degree boundary. A future
 geoid-backed orthometric height remains necessary for low-elevation precision
 work.
 
+## APG scope decision
+
+The official `APG.F` routine is not part of the production optical LLR model.
+The Chapter 9 index places it in the tropospheric material for radio
+techniques. Its interface accepts station latitude and longitude plus line-of-
+sight azimuth and elevation, and returns an empirical asymmetric delay and
+north/east gradients. It does not accept optical wavelength, pressure, or water
+vapour pressure, which are required by the optical `FCUL_ZD_HPA` and `FCUL_A`
+models. The supplied test case is the Kashima 11 VLBI station, and the source
+references the Chen-Herring radio space-geodetic gradient model.
+
+LLROPS therefore keeps the optical atmospheric input and residual path limited
+to the wavelength-dependent zenith delay and `FCUL_A` mapping. No APG source,
+Fortran binding, azimuth/longitude fields, or implicit gradient correction is
+added. If a radio/VLBI observation path is introduced later, APG should be
+implemented as a separately selected model with its own gradient estimation and
+low-elevation policy.
+
+References:
+
+- <https://iers-conventions.obspm.fr/chapter9.php>
+- <https://iers-conventions.obspm.fr/content/chapter9/software/APG.F>
+- <https://doi.org/10.1029/97JB01739>
+
 ## Build and verification
 
 A development environment can be prepared and installed with:
 
 ```bash
-uv sync --extra build --extra test --extra mpi --extra physics
+uv sync --extra build --extra test --extra mpi
 uv pip install --no-build-isolation --editable .
 python -m pytest
 ```
@@ -186,6 +270,59 @@ ZWD = 0.002233748255158703871 m
 This is treated as an upstream test-header input discrepancy. The official
 source remains unchanged; the corrected input and the reason for it are
 explicit in the regression test.
+
+## Upstream DEHANTTIDEINEL 2017 test input
+
+The v1.3.0 `DEHANTTIDEINEL.F` header's fourth test case, dated 2017-01-15,
+lists a Sun vector whose length is only `14,474,543,400.36 m`. That is about
+one tenth of the expected geocentric Sun distance and produces the following
+result when passed unchanged to the official source:
+
+```text
+DXTIDE = [-18.217357581922339, -23.505348376537949, 12.097611382175685] m
+```
+
+The published expected output instead repeats the preceding 2015 test case's
+centimetre-scale vector. The first three official test cases reproduce their
+published vectors, confirming the f2py boundary and complete dependency link.
+The fourth is retained as a regression of the source input and documented as
+an upstream test-header discrepancy. The DEHANT tide algorithm and its listed
+inputs are unchanged; the only local source adaptations are the documented
+support-routine symbol renames above.
+
+## DEHANTTIDEINEL and pysolid comparison
+
+`pysolid 0.3.4` wraps Dennis Milbert's independent `solid.for` implementation.
+The comparison must use consistent epochs and celestial geometry. For each UTC
+epoch, the native call receives Sun and Moon positions computed from the
+configured INPOP21a CALCEPH kernel, converted from BCRS to GCRS and then through
+the production GCRS-to-ITRF transformation. `pysolid` computes its own
+low-precision Sun and Moon positions for that same epoch. Its ENU displacement
+is rotated into ITRF before comparison.
+
+Eight WGS84 stations were generated with NumPy seed `20260726`: longitude was
+sampled uniformly, latitude uniformly in `sin(latitude)` within 80 degrees of
+the equator, and ellipsoidal height between -300 m and 4000 m. The resulting
+ITRF displacement-vector differences are:
+
+| UTC epoch | Latitude | Longitude | Height | Native minus pysolid norm |
+|---|---:|---:|---:|---:|
+| 2009-04-13 00:00 | 24.287029 deg | -63.589793 deg | -178.263 m | `0.219665 mm` |
+| 2012-07-13 06:14 | 46.615893 deg | 62.805271 deg | 818.685 m | `0.095969 mm` |
+| 2015-07-15 12:31 | 9.706040 deg | 90.442026 deg | 2439.386 m | `0.119653 mm` |
+| 2017-01-15 00:00 | 22.246531 deg | 32.642419 deg | 1206.685 m | `0.195429 mm` |
+| 2017-01-15 18:47 | 26.164800 deg | 45.810002 deg | 1607.483 m | `0.175227 mm` |
+| 2020-06-21 05:43 | -9.137010 deg | -123.595304 deg | 2699.411 m | `0.341612 mm` |
+| 2024-03-20 12:00 | 27.292041 deg | -74.777061 deg | 2976.987 m | `0.043587 mm` |
+| 2025-12-31 23:59 | 4.460520 deg | 85.424868 deg | -117.222 m | `0.163799 mm` |
+
+The vector-norm difference ranges from `0.043587 mm` to `0.341612 mm`, with a
+median of `0.169513 mm`; the largest absolute ITRF component difference is
+`0.271390 mm`. This is consistent with the different celestial ephemerides and
+independent tide implementations. In particular, both 2017 production-geometry
+cases remain below 0.2 mm. The tens-of-metres result above is only a regression
+of the anomalous Sun vector copied into the official source header and is not a
+production-model discrepancy.
 
 ## Replacement comparison
 

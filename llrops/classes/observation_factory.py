@@ -51,7 +51,13 @@ class ObservationAssembly:
 
 
 class _ObservationFactoryContext:
-    __slots__ = ("run_context", "ephemeris", "earth_orientation", "cache_namespace")
+    __slots__ = (
+        "run_context",
+        "ephemeris",
+        "earth_orientation",
+        "frames",
+        "cache_namespace",
+    )
 
     def __init__(
         self,
@@ -63,6 +69,7 @@ class _ObservationFactoryContext:
         self.run_context = run_context
         self.ephemeris = ephemeris
         self.earth_orientation = earth_orientation
+        self.frames = None
         self.cache_namespace = cache_namespace
 
     @property
@@ -187,6 +194,14 @@ def _register_all() -> None:
                 "reflectorDisplacement requires an explicit ephemeris."
             ) from exc
 
+    def _required_frames(ctx):
+        frames = getattr(ctx, "frames", None)
+        if frames is None:
+            raise RuntimeError(
+                "stationDisplacement requires an explicit reference-frame system."
+            )
+        return frames
+
     def _station_sum(cfg: dict, ctx) -> CompositeStationDisplacement:
         components_cfg = cfg.get("components", [])
         if isinstance(components_cfg, (str, dict)):
@@ -217,9 +232,7 @@ def _register_all() -> None:
     register_factory(
         "stationDisplacement",
         "iers2010solidearthtide",
-        lambda cfg, ctx: Iers2010SolidEarthTide(
-            sampling_interval_s=float(cfg.get("samplingIntervalSeconds", 60.0))
-        ),
+        lambda cfg, ctx: Iers2010SolidEarthTide(frames=_required_frames(ctx)),
     )
     register_factory(
         "stationDisplacement",
@@ -263,6 +276,7 @@ def _register_all() -> None:
 
     register_factory("rangeBias", "none", lambda cfg, ctx: ZeroRangeBiasModel())
     register_factory("rangeBias", "inpop21", lambda cfg, ctx: TableRangeBiasModel(builtin_range_bias_table("inpop21")))
+    register_factory("rangeBias", "inpop21a", lambda cfg, ctx: TableRangeBiasModel(builtin_range_bias_table("inpop21a")))
     register_factory("rangeBias", "table", _range_bias_table)
 
     # Parametrizations register themselves on import.
@@ -378,6 +392,7 @@ def build_observation_processor(
         earth_orientation=earth_orientation,
         owns_ephemeris=False,
     )
+    factory_context.frames = frames
     station_displacement = factory_context.create_class(
         "stationDisplacement",
         normalize_class_config(context.class_config("stationDisplacement", program_config)),

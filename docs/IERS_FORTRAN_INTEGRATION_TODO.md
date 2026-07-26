@@ -34,11 +34,11 @@ Atmospheric propagation delay and atmospheric loading are different effects:
       license.
 - [x] Keep official files unchanged. Put project-specific adaptations in
       separately named wrapper routines.
-- [ ] Compile only one canonical copy of duplicate dependencies such as
+- [x] Compile only one canonical copy of duplicate dependencies such as
       `FUNDARG.F`, after confirming the Chapter 5 and Chapter 8 copies match.
 - [x] Document every native entry point with its time scale, coordinate frame,
       input units, output units, and sign convention.
-- [ ] Do not silently fall back to the old implementation after the production
+- [x] Do not silently fall back to the old implementation after the production
       backend has been changed. Missing native support must fail explicitly.
 
 Official package index:
@@ -52,7 +52,7 @@ Official package index:
 | Ocean-tide high-frequency EOP | NumPy implementation | `ORTHO_EOP`, `CNMTX` | Replace | Low |
 | Polar-motion libration | NumPy implementation | `PMSDNUT2`, `FUNDARG` | Replace | Low |
 | UT1 libration | NumPy implementation | `UTLIBR`, `FUNDARG` | Replace and expose `delta LOD` | Low |
-| Solid-Earth tide | `pysolid` high-level API | `DEHANTTIDEINEL` package | Replace | Medium |
+| Solid-Earth tide | Direct `DEHANTTIDEINEL` call | `DEHANTTIDEINEL` package | Complete | Medium |
 | Optical atmospheric delay | Python transcription | `FCUL_ZD_HPA`, `FCUL_A` | Replace | Low |
 | Ocean tidal loading | Not implemented | `HARDISP` package | Add | High |
 | Solid-Earth pole tide | Python implementation | No complete official routine | Keep and validate | Low |
@@ -107,15 +107,17 @@ Official source pages:
 
 ### 5.2 Interface and combination
 
-- [ ] Resolve and document the intended MJD time scale for each routine. Do not
-      pass an unlabelled `Epoch.mjd` value through the model boundary.
+- [x] Resolve and document the intended MJD time scale for each routine: use
+      UT1 for `ORTHO_EOP/CNMTX` tidal phase, and TT (accepted for TDB) for
+      `PMSDNUT2/UTLIBR/FUNDARG`. Do not pass an unlabelled `Epoch.mjd` value
+      through the model boundary.
 - [x] Convert official outputs at the Python boundary:
       microarcseconds to arcseconds or radians, and microseconds to seconds.
-- [ ] Return the following components separately for diagnostics:
+- [x] Return the following components separately for diagnostics:
       `ocean_delta_xp`, `ocean_delta_yp`, `ocean_delta_ut1`,
       `libration_delta_xp`, `libration_delta_yp`,
       `libration_delta_ut1`, and `libration_delta_lod`.
-- [ ] Form the corrections applied to C04 as:
+- [x] Form the corrections applied to C04 as:
 
   ```text
   xp  = xp_C04  + ocean_delta_xp  + libration_delta_xp
@@ -123,20 +125,26 @@ Official source pages:
   UT1 = UT1_C04 + ocean_delta_ut1 + libration_delta_ut1
   ```
 
-- [ ] Extend the typed correction result to retain `delta LOD`, even if the
+- [x] Extend the typed correction result to retain `delta LOD`, even if the
       position-only terrestrial rotation currently does not consume it.
-- [ ] Keep C04 interpolation in Python. Continue interpolating `UT1-TAI`
+- [x] Keep C04 interpolation in Python. Continue interpolating `UT1-TAI`
       internally across leap seconds before reconstructing `UT1-UTC`.
 
 ### 5.3 Double-counting audit
 
-- [ ] Determine from the selected C04 product documentation whether its UT1
+- [x] Determine from the selected C04 product documentation whether its UT1
       and LOD fields are regularized and exactly when `RG_ZONT2` is required.
-- [ ] Do not enable `RG_ZONT2` by default. Applying it to an already restored
-      UT1 series would double count zonal-tide effects.
-- [ ] Do not apply `FCNNUT` on top of observed C04 `dX/dY`. C04 celestial pole
-      offsets already contain the observed residual relative to IAU 2006/2000A,
-      including FCN contributions.
+      The selected IERS 20 C04 readme describes a combined observed series with
+      Vondrak smoothing from 1984, but does not state that zonal tides were
+      removed. Chapter 8 defines `RG_ZONT2` as a subtraction from observed
+      UT1/LOD to form a tide-free series.
+- [x] Do not enable `RG_ZONT2` by default. Applying it to an already restored
+      UT1 series would double count zonal-tide effects. LLROPS keeps the
+      observed C04 UT1/LOD convention and records this decision in
+      `IERS_NATIVE_BUILD.md`.
+- [x] Do not apply `FCNNUT` on top of observed C04 `dX/dY`. C04 celestial pole
+      offsets are observed residuals relative to the product's reference
+      precession-nutation model and already include the physical FCN signal.
 
 ### 5.4 Verification
 
@@ -147,7 +155,7 @@ Official source pages:
 - [x] Reproduce all official `PMSDNUT2` and `UTLIBR` test cases.
 - [x] Differential-test the native and former NumPy implementations over
       historical, leap-second-adjacent, and modern epochs.
-- [ ] Verify the complete C04 plus high-frequency EOP plus ERFA matrix against
+- [x] Verify the complete C04 plus high-frequency EOP plus ERFA matrix against
       an independent reference case.
 
 ## 6. Phase 2: optical atmospheric propagation delay
@@ -199,13 +207,19 @@ Official Chapter 9 software index:
 - [x] Verify the final two-way delay in the light-time solution, not only the
       two low-level routines.
 
-### 6.4 Optional atmospheric gradient
+### 6.4 APG applicability decision
 
-- [ ] Evaluate adding official `APG.F` as a separate asymmetric-delay model.
-- [ ] Extend the atmospheric input with station longitude and line-of-sight
-      azimuth before enabling `APG`.
-- [ ] Keep this optional model separate from the basic `FCUL` replacement so it
-      does not silently change existing results.
+- [x] Evaluate official `APG.F` as a separate asymmetric-delay model.
+- [x] Confirm that `APG.F` is outside the current optical LLR propagation path.
+      The routine is documented in the Chapter 9 radio-techniques material and
+      its test case is a Kashima VLBI station. It models empirical north/east
+      atmospheric gradients from latitude, longitude, azimuth, and elevation;
+      it is not part of the wavelength-dependent optical `FCUL` model.
+- [x] Keep `APG` separate from the basic `FCUL` replacement so it cannot
+      silently change optical results or expand the optical atmospheric input.
+- [ ] If a future LLROPS radio/VLBI observation model is added, implement and
+      validate `APG` there as an explicitly selected model with its own gradient
+      parameters and low-elevation estimation policy.
 
 Official source:
 
@@ -215,12 +229,15 @@ Official source:
 
 ### 7.1 Source routines
 
-- [ ] Vendor the complete Chapter 7 `DEHANTTIDEINEL` package:
+- [x] Vendor the complete Chapter 7 `DEHANTTIDEINEL` package:
       `DEHANTTIDEINEL.F`, `CAL2JD.F`, `DAT.F`, `NORM8.F`, `SPROD.F`,
       `ST1IDIU.F`, `ST1ISEM.F`, `ST1L1.F`, `STEP2DIU.F`, `STEP2LON.F`, and
       `ZERO_VEC8.F`.
-- [ ] Keep the official source unchanged and expose one project wrapper for a
-      single station and epoch.
+- [x] Expose the official `DEHANTTIDEINEL` entry point directly to the private
+      f2py extension. Keep the other nine Chapter 7 files byte-identical; in
+      the bundled SOFA `CAL2JD.F` and `DAT.F`, rename `iau_CAL2JD`/`iau_DAT`
+      to the unprefixed names called by `DEHANTTIDEINEL`, including `DAT`'s
+      internal `CAL2JD` call. The files carry explicit derived-work notices.
 
 Official source directory:
 
@@ -243,16 +260,22 @@ Official source directory:
 
 ### 7.3 Replacement and verification
 
-- [ ] Reproduce every official `DEHANTTIDEINEL` vector test case.
-- [ ] Compare the direct native result against the existing `pysolid` result at
-      representative stations and epochs, explaining expected ephemeris or
-      epoch-sampling differences.
+- [x] Reproduce the first three published `DEHANTTIDEINEL` vectors. The fourth
+      (2017) header input does not produce its copied expected output; preserve
+      and regression-test the source calculation while documenting the upstream
+      inconsistency.
+- [x] Compare the direct native result against `pysolid` using INPOP21a/CALCEPH
+      Sun and Moon positions transformed through the production BCRS-to-GCRS
+      and GCRS-to-ITRF path, plus fixed-seed random WGS84 stations. Across eight
+      cases the displacement-vector norm differences are `0.044--0.342 mm`;
+      the two 2017 cases differ by `0.195 mm` and `0.175 mm`.
 - [ ] Benchmark a true single-epoch call. It must not generate or allocate a
       full-day, one-minute time series.
 - [ ] Add an end-to-end regression for transmit and receive station positions
       inside the iterative light-time solution.
-- [ ] Remove `samplingIntervalSeconds`, the `pysolid` runtime import, and the
-      `physics` optional dependency after the native implementation is accepted.
+- [x] Remove `samplingIntervalSeconds`, the `pysolid` runtime import, and the
+      obsolete `physics` optional dependency after accepting the native
+      implementation.
 
 ## 8. Phase 4: ocean tidal loading
 
@@ -368,7 +391,7 @@ complete routine for it.
 1. Pin the IERS source package and establish the native build layer.
 2. Replace `FCUL_ZD_HPA` and `FCUL_A` as a small end-to-end build proof.
 3. Replace `ORTHO_EOP`, `PMSDNUT2`, and `UTLIBR`.
-4. Replace `pysolid` with direct single-epoch `DEHANTTIDEINEL` calls.
+4. Complete the direct single-epoch `DEHANTTIDEINEL` replacement.
 5. Add BLQ ingestion and ocean tidal loading through `HARDISP`.
 6. Validate the Python pole-tide and ocean pole-tide implementations.
 7. Design atmospheric tidal and non-tidal loading as a separate project.
