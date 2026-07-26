@@ -132,13 +132,19 @@ Official source pages:
 
 ### 5.3 Double-counting audit
 
-- [ ] Determine from the selected C04 product documentation whether its UT1
+- [x] Determine from the selected C04 product documentation whether its UT1
       and LOD fields are regularized and exactly when `RG_ZONT2` is required.
-- [ ] Do not enable `RG_ZONT2` by default. Applying it to an already restored
-      UT1 series would double count zonal-tide effects.
-- [ ] Do not apply `FCNNUT` on top of observed C04 `dX/dY`. C04 celestial pole
-      offsets already contain the observed residual relative to IAU 2006/2000A,
-      including FCN contributions.
+      The selected IERS 20 C04 readme describes a combined observed series with
+      Vondrak smoothing from 1984, but does not state that zonal tides were
+      removed. Chapter 8 defines `RG_ZONT2` as a subtraction from observed
+      UT1/LOD to form a tide-free series.
+- [x] Do not enable `RG_ZONT2` by default. Applying it to an already restored
+      UT1 series would double count zonal-tide effects. LLROPS keeps the
+      observed C04 UT1/LOD convention and records this decision in
+      `IERS_NATIVE_BUILD.md`.
+- [x] Do not apply `FCNNUT` on top of observed C04 `dX/dY`. C04 celestial pole
+      offsets are observed residuals relative to the product's reference
+      precession-nutation model and already include the physical FCN signal.
 
 ### 5.4 Verification
 

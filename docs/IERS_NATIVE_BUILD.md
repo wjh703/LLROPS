@@ -97,6 +97,38 @@ to water-vapour pressure, converting radians to degrees, applying the minimum
 elevation policy, and converting official micro-units to SI units before
 calling or returning Fortran results.
 
+## C04 convention and double-counting policy
+
+The production configuration uses the IERS 20 C04 file
+`eopc04.1962-now.txt`. Its upstream readme identifies this product as a daily
+combined Earth-orientation series sampled at 0h UTC. It contains observed
+`UT1-UTC`, LOD, and celestial-pole offsets, among other fields. The same readme
+documents Vondrak combined smoothing for UT1 and LOD from 1984 onward; this is
+not a declaration that the tidal terms have been removed.
+
+IERS Conventions (2010), Chapter 8, Section 8.1, states that `RG_ZONT2` gives
+the zonal-tide corrections and that subtracting those corrections from observed
+`UT1-UTC`, LOD, and rotation rate produces a tide-free series. The conventions
+also recommend exchanging ordinary UT1 and LOD rather than an ambiguous
+regularized variant. LLROPS therefore treats C04 as the observed series and
+does not call or apply `RG_ZONT2`. Subtracting its output from observed C04
+would intentionally produce a tide-free series, which is not the convention
+used by the current frame transform; adding its output to C04 would double
+count the zonal-tide contribution.
+
+The C04 celestial-pole-offset columns are observed offsets relative to the
+product's declared precession-nutation reference model. `FCNNUT` is a separate
+free-core-nutation prediction model, so it is not added on top of those observed
+`dX/dY` values. A future input explicitly documented as tide-free or model-only
+must be handled by a separate, named policy rather than silently changing the
+C04 path.
+
+References:
+
+- <https://hpiers.obspm.fr/eoppc/eop/eopc04/readme>
+- <https://iers-conventions.obspm.fr/chapter8.php>, Section 8.1 and `RG_ZONT2.F`
+- <https://iers-conventions.obspm.fr/chapter5.php>, `FCNNUT.F`
+
 ## Atmospheric input policy
 
 The Python boundary accepts scalar, finite inputs and rejects latitude or
