@@ -8,7 +8,7 @@ build-backend = "mesonpy"
 
 [project]
 name = "llrops"
-version = "35.0.0.dev0"
+version = "0.1.0"
 description = "GROOPS-inspired Lunar Laser Ranging processing system"
 requires-python = ">=3.14"
 dependencies = [
