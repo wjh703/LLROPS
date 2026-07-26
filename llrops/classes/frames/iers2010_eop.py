@@ -32,12 +32,6 @@ def _native_utlibr(mjd: float) -> tuple[float, float]:
     return delta_ut1 * _MICRO, delta_lod * _MICRO
 
 
-def _fundamental_arguments(mjd: float) -> tuple[float, float, float, float, float]:
-    """Return official FUNDARG values for an MJD expressed in TT-like time."""
-    t = (float(mjd) - 51_544.5) / 36_525.0
-    return tuple(float(value) for value in _iers2010.fundarg(t))
-
-
 def ocean_tide_correction(mjd: float) -> HighFrequencyEopCorrection:
     """Return official ORTHO_EOP ocean-tide corrections."""
     delta_xp, delta_yp, delta_ut1 = _native_ortho_eop(mjd)
