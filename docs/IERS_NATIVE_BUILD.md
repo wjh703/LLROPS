@@ -79,9 +79,9 @@ selected official Chapter 5, Chapter 8, and Chapter 9 routines:
 |---|---|---|---|
 | `fcul_a` | north geodetic latitude in degrees; height above mean sea level in metres; temperature in kelvin; elevation in degrees | dimensionless mapping factor | no epoch or coordinate frame; positive path scale |
 | `fculzd_hpa` | north geodetic latitude in degrees; ellipsoidal height in metres; total pressure and water-vapour pressure in hPa; wavelength in micrometres | total, hydrostatic, and non-hydrostatic zenith delays in metres | no epoch or coordinate frame; positive excess path |
-| `ortho_eop` | MJD (`TIME`, scale to be resolved by the next EOP API PR) | NumPy array `[delta_xp, delta_yp, delta_ut1]`, in microarcseconds/microseconds | official ORTHO_EOP array order |
-| `pmsdnut2` | MJD (`RMJD`, scale to be resolved by the next EOP API PR) | NumPy array `[delta_xp, delta_yp]`, in microarcseconds | official PMSDNUT2 array order |
-| `utlibr` | MJD (`RMJD`, scale to be resolved by the next EOP API PR) | scalar `delta_ut1` in microseconds; scalar `delta_lod` in microseconds/day | official UTLIBR units |
+| `ortho_eop` | explicit UTC `Epoch`, passed as MJD (`TIME`) | NumPy array `[delta_xp, delta_yp, delta_ut1]`, in microarcseconds/microseconds | official ORTHO_EOP array order |
+| `pmsdnut2` | explicit UTC `Epoch`, passed as MJD (`RMJD`) | NumPy array `[delta_xp, delta_yp]`, in microarcseconds | official PMSDNUT2 array order |
+| `utlibr` | explicit UTC `Epoch`, passed as MJD (`RMJD`) | scalar `delta_ut1` in microseconds; scalar `delta_lod` in microseconds/day | official UTLIBR units |
 | `fundarg` | Julian centuries since J2000 (`T`) | `L`, `LP`, `F`, `D`, `OM` in radians | official FUNDARG convention |
 
 `CNMTX.F` is compiled as the private helper used by `ORTHO_EOP.F`. The Chapter
@@ -90,7 +90,8 @@ single canonical source. The official array outputs are unpacked at the Python
 facade boundary; no project-specific Fortran adapter is required.
 
 There is no Python transcription or fallback for these selected routines. The
-Python facades retain only application-level work: converting relative humidity
+Python facades retain only application-level work: requiring an explicit UTC
+epoch for high-frequency EOP, converting relative humidity
 to water-vapour pressure, converting radians to degrees, applying the minimum
 elevation policy, and converting official micro-units to SI units before
 calling or returning Fortran results.

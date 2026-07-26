@@ -34,11 +34,11 @@ Atmospheric propagation delay and atmospheric loading are different effects:
       license.
 - [x] Keep official files unchanged. Put project-specific adaptations in
       separately named wrapper routines.
-- [ ] Compile only one canonical copy of duplicate dependencies such as
+- [x] Compile only one canonical copy of duplicate dependencies such as
       `FUNDARG.F`, after confirming the Chapter 5 and Chapter 8 copies match.
 - [x] Document every native entry point with its time scale, coordinate frame,
       input units, output units, and sign convention.
-- [ ] Do not silently fall back to the old implementation after the production
+- [x] Do not silently fall back to the old implementation after the production
       backend has been changed. Missing native support must fail explicitly.
 
 Official package index:
@@ -107,15 +107,15 @@ Official source pages:
 
 ### 5.2 Interface and combination
 
-- [ ] Resolve and document the intended MJD time scale for each routine. Do not
+- [x] Resolve and document the intended MJD time scale for each routine. Do not
       pass an unlabelled `Epoch.mjd` value through the model boundary.
 - [x] Convert official outputs at the Python boundary:
       microarcseconds to arcseconds or radians, and microseconds to seconds.
-- [ ] Return the following components separately for diagnostics:
+- [x] Return the following components separately for diagnostics:
       `ocean_delta_xp`, `ocean_delta_yp`, `ocean_delta_ut1`,
       `libration_delta_xp`, `libration_delta_yp`,
       `libration_delta_ut1`, and `libration_delta_lod`.
-- [ ] Form the corrections applied to C04 as:
+- [x] Form the corrections applied to C04 as:
 
   ```text
   xp  = xp_C04  + ocean_delta_xp  + libration_delta_xp
@@ -123,9 +123,9 @@ Official source pages:
   UT1 = UT1_C04 + ocean_delta_ut1 + libration_delta_ut1
   ```
 
-- [ ] Extend the typed correction result to retain `delta LOD`, even if the
+- [x] Extend the typed correction result to retain `delta LOD`, even if the
       position-only terrestrial rotation currently does not consume it.
-- [ ] Keep C04 interpolation in Python. Continue interpolating `UT1-TAI`
+- [x] Keep C04 interpolation in Python. Continue interpolating `UT1-TAI`
       internally across leap seconds before reconstructing `UT1-UTC`.
 
 ### 5.3 Double-counting audit
@@ -147,7 +147,7 @@ Official source pages:
 - [x] Reproduce all official `PMSDNUT2` and `UTLIBR` test cases.
 - [x] Differential-test the native and former NumPy implementations over
       historical, leap-second-adjacent, and modern epochs.
-- [ ] Verify the complete C04 plus high-frequency EOP plus ERFA matrix against
+- [x] Verify the complete C04 plus high-frequency EOP plus ERFA matrix against
       an independent reference case.
 
 ## 6. Phase 2: optical atmospheric propagation delay
