@@ -90,6 +90,55 @@ def test_fundarg_matches_iers_reference_case():
     )
 
 
+@pytest.mark.parametrize(
+    ("xsta", "xsun", "xmon", "date", "expected"),
+    [
+        (
+            (4075578.385, 931852.890, 4801570.154),
+            (137859926952.015, 54228127881.4350, 23509422341.6960),
+            (-179996231.920342, -312468450.131567, -169288918.592160),
+            (2009, 4, 13, 0.0),
+            (0.7700420357108125891e-1, 0.6304056321824967613e-1, 0.5516568152597246810e-1),
+        ),
+        (
+            (1112189.660, -4842955.026, 3985352.284),
+            (-54537460436.2357, 130244288385.279, 56463429031.5996),
+            (300396716.912, 243238281.451, 120548075.939),
+            (2012, 7, 13, 0.0),
+            (-0.2036831479592075833e-1, 0.5658254776225972449e-1, -0.7597679676871742227e-1),
+        ),
+        (
+            (1112200.5696, -4842957.8511, 3985345.9122),
+            (100210282451.6279, 103055630398.3160, 56855096480.4475),
+            (369817604.4348, 1897917.5258, 120804980.8284),
+            (2015, 7, 15, 0.0),
+            (0.00509570869172363845, 0.0828663025983528700, -0.0636634925404189617),
+        ),
+        (
+            (1112152.8166, -4842857.5435, 3985496.1783),
+            (8382471154.1312895, 10512408445.356153, -5360583240.3763866),
+            (380934092.93550891, 2871428.1904491195, 79015680.553570181),
+            (2017, 1, 15, 0.0),
+            (-18.217357581922339, -23.505348376537949, 12.097611382175685),
+        ),
+    ],
+)
+def test_dehanttideinel_matches_iers_reference_and_source_cases(xsta, xsun, xmon, date, expected):
+    # The v1.3.0 header's 2017 expected output is copied from the preceding
+    # 2015 case despite a solar vector only 14.5 Gm long. Its source-input
+    # calculation is retained as the regression value; see IERS_NATIVE_BUILD.
+    actual = _iers2010.dehanttideinel(
+        xsta,
+        date[0],
+        date[1],
+        date[2],
+        date[3],
+        xsun,
+        xmon,
+    )
+    np.testing.assert_allclose(actual, expected, rtol=0.0, atol=2.0e-15)
+
+
 def test_installed_iers_sources_match_pinned_hashes():
     expected = {
         "FCUL_A.F": "fdeb39aee3c8d4c2d6eb6a7e743c420372e28da5b3e84942d09580a88847693a",
@@ -99,6 +148,17 @@ def test_installed_iers_sources_match_pinned_hashes():
         "PMSDNUT2.F": "0818b58bc2a420e1eb3f951d8a74646e5fe7b5371c9beb5e89fa37c12dd0d965",
         "UTLIBR.F": "f523335d552ac14b661121a081ad799382312d819853c674bc0102484b5e2406",
         "FUNDARG.F": "18263cbb1289e222e6ee6e59d52beb343eb77a63ed3212e4f05a4c85d475ae78",
+        "DEHANTTIDEINEL.F": "bc6039a1704761881bb785ce44ce084ea82783107ff64c576e69155a4914e2cb",
+        "CAL2JD.F": "686af399ea3a493e6c0ca659d2d64f367280f5bb331584ded0800ae8d45964d3",
+        "DAT.F": "64a5a69c38d41f6d9b64204f353f5ce46750d59a1067ca507cb9b6e71e934462",
+        "NORM8.F": "636b6399dc6ab273a7b6104dd9341bf3c36995754aeee696511dbf19c9e909b6",
+        "SPROD.F": "817761a92bb5416eb38322ea2d43d41cf8ea435e208a0ce229acf94311e9fa1e",
+        "ST1IDIU.F": "d2976b8b76be8dd1d57e57a8d6b48f5764676126515bada3592753a07d3acd1e",
+        "ST1ISEM.F": "efdf284bd977826a1f4aea4c79c5dbd0c38fc1c403a2376010048b511a11f2c6",
+        "ST1L1.F": "b1dfd0e797a3ce950631ad7dbbf5f576bf6b58dc515688253a3d84ca059bc282",
+        "STEP2DIU.F": "898c70d4b8d50e09e0c717c911c4117b3ad1ca4996d369c258b68d00ea3a5674",
+        "STEP2LON.F": "f9d3bf0317222986d22e53557020bb13a6fbb90f8e3c9915137da6184d82813a",
+        "ZERO_VEC8.F": "5ea9ab87e298d377f6dbe69c46b040906b6575a9132fab3830a4dc02c9139cef",
     }
     root = importlib.resources.files("llrops").joinpath("_external", "iers2010", "src")
 

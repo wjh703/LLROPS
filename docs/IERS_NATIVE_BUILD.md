@@ -27,9 +27,22 @@ The selected source hashes are:
 | `PMSDNUT2.F` | `0818b58bc2a420e1eb3f951d8a74646e5fe7b5371c9beb5e89fa37c12dd0d965` |
 | `UTLIBR.F` | `f523335d552ac14b661121a081ad799382312d819853c674bc0102484b5e2406` |
 | `FUNDARG.F` | `18263cbb1289e222e6ee6e59d52beb343eb77a63ed3212e4f05a4c85d475ae78` |
+| `DEHANTTIDEINEL.F` | `bc6039a1704761881bb785ce44ce084ea82783107ff64c576e69155a4914e2cb` |
+| `CAL2JD.F` | `686af399ea3a493e6c0ca659d2d64f367280f5bb331584ded0800ae8d45964d3` |
+| `DAT.F` | `64a5a69c38d41f6d9b64204f353f5ce46750d59a1067ca507cb9b6e71e934462` |
+| `NORM8.F` | `636b6399dc6ab273a7b6104dd9341bf3c36995754aeee696511dbf19c9e909b6` |
+| `SPROD.F` | `817761a92bb5416eb38322ea2d43d41cf8ea435e208a0ce229acf94311e9fa1e` |
+| `ST1IDIU.F` | `d2976b8b76be8dd1d57e57a8d6b48f5764676126515bada3592753a07d3acd1e` |
+| `ST1ISEM.F` | `efdf284bd977826a1f4aea4c79c5dbd0c38fc1c403a2376010048b511a11f2c6` |
+| `ST1L1.F` | `b1dfd0e797a3ce950631ad7dbbf5f576bf6b58dc515688253a3d84ca059bc282` |
+| `STEP2DIU.F` | `898c70d4b8d50e09e0c717c911c4117b3ad1ca4996d369c258b68d00ea3a5674` |
+| `STEP2LON.F` | `f9d3bf0317222986d22e53557020bb13a6fbb90f8e3c9915137da6184d82813a` |
+| `ZERO_VEC8.F` | `5ea9ab87e298d377f6dbe69c46b040906b6575a9132fab3830a4dc02c9139cef` |
 
-The official files are unchanged. Each contains the complete IERS Conventions Software
-License and is included in both source and binary distributions.
+The official IERS files are unchanged and retain their complete IERS
+Conventions Software License. The bundled `CAL2JD.F` and `DAT.F` SOFA support
+routines are likewise unchanged and retain their complete SOFA license. All
+are included in both source and binary distributions.
 
 When another routine is added:
 
@@ -73,7 +86,7 @@ repository.
 
 The extension is private. The production troposphere and terrestrial-frame
 models call it through their existing interfaces. The extension exposes
-selected official Chapter 5, Chapter 8, and Chapter 9 routines:
+selected official Chapter 5, Chapter 7, Chapter 8, and Chapter 9 routines:
 
 | Entry point | Inputs | Output | Time/frame/sign convention |
 |---|---|---|---|
@@ -83,11 +96,17 @@ selected official Chapter 5, Chapter 8, and Chapter 9 routines:
 | `pmsdnut2` | TT `Epoch` (TT is the accepted approximation to TDB); Fortran receives MJD (`RMJD`) | NumPy array `[delta_xp, delta_yp]`, in microarcseconds | official source converts MJD to TDB centuries for FUNDARG |
 | `utlibr` | TT `Epoch` (TT is the accepted approximation to TDB); Fortran receives MJD (`RMJD`) | scalar `delta_ut1` in microseconds; scalar `delta_lod` in microseconds/day | official source converts MJD to TDB centuries for FUNDARG |
 | `fundarg` | Julian centuries since J2000 (`T`) | `L`, `LP`, `F`, `D`, `OM` in radians | official FUNDARG convention |
+| `dehanttideinel` | station, Sun, and Moon geocentric ITRF/ECEF vectors in metres; UTC calendar date and fractional hour | NumPy array `[dX, dY, dZ]` in metres | official Chapter 7 UTC input and permanent-tide convention |
 
 `CNMTX.F` is compiled as the private helper used by `ORTHO_EOP.F`. The Chapter
 5 and Chapter 8 `FUNDARG.F` files are byte-identical; the Chapter 5 copy is the
 single canonical source. The official array outputs are unpacked at the Python
-facade boundary; no project-specific Fortran adapter is required.
+facade boundary; no project-specific Fortran adapter is required for the
+official entry points. The v1.3.0 Chapter 7 source calls `CAL2JD` and `DAT`,
+while its bundled SOFA support routines are named `iau_CAL2JD` and `iau_DAT`.
+`external/iers2010/bindings/dehanttideinel_compat.F` provides only those two
+link-time aliases; it does not alter the official sources or their public
+interface.
 
 There is no Python transcription or fallback for these selected routines. The
 Python facades retain only application-level work: requiring an explicit UTC
@@ -244,6 +263,24 @@ ZWD = 0.002233748255158703871 m
 This is treated as an upstream test-header input discrepancy. The official
 source remains unchanged; the corrected input and the reason for it are
 explicit in the regression test.
+
+## Upstream DEHANTTIDEINEL 2017 test input
+
+The v1.3.0 `DEHANTTIDEINEL.F` header's fourth test case, dated 2017-01-15,
+lists a Sun vector whose length is only `14,474,543,400.36 m`. That is about
+one tenth of the expected geocentric Sun distance and produces the following
+result when passed unchanged to the official source:
+
+```text
+DXTIDE = [-18.217357581922339, -23.505348376537949, 12.097611382175685] m
+```
+
+The published expected output instead repeats the preceding 2015 test case's
+centimetre-scale vector. The first three official test cases reproduce their
+published vectors, confirming the f2py boundary and complete dependency link.
+The fourth is retained as a regression of the source input and documented as
+an upstream test-header discrepancy; neither the official Fortran code nor its
+listed inputs are changed.
 
 ## Replacement comparison
 

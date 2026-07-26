@@ -1,0 +1,17 @@
+      SUBROUTINE CAL2JD ( IY, IM, ID, DJM0, DJM, J )
+      IMPLICIT NONE
+      INTEGER IY, IM, ID, J
+      DOUBLE PRECISION DJM0, DJM
+
+      CALL iau_CAL2JD ( IY, IM, ID, DJM0, DJM, J )
+      RETURN
+      END
+
+      SUBROUTINE DAT ( IY, IM, ID, FD, DELTAT, J )
+      IMPLICIT NONE
+      INTEGER IY, IM, ID, J
+      DOUBLE PRECISION FD, DELTAT
+
+      CALL iau_DAT ( IY, IM, ID, FD, DELTAT, J )
+      RETURN
+      END

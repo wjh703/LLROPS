@@ -229,12 +229,14 @@ Official source:
 
 ### 7.1 Source routines
 
-- [ ] Vendor the complete Chapter 7 `DEHANTTIDEINEL` package:
+- [x] Vendor the complete Chapter 7 `DEHANTTIDEINEL` package:
       `DEHANTTIDEINEL.F`, `CAL2JD.F`, `DAT.F`, `NORM8.F`, `SPROD.F`,
       `ST1IDIU.F`, `ST1ISEM.F`, `ST1L1.F`, `STEP2DIU.F`, `STEP2LON.F`, and
       `ZERO_VEC8.F`.
-- [ ] Keep the official source unchanged and expose one project wrapper for a
-      single station and epoch.
+- [x] Keep the official source unchanged and expose the official
+      `DEHANTTIDEINEL` entry point directly to the private f2py extension. The
+      project compatibility aliases only resolve the v1.3.0 package's
+      `CAL2JD`/`DAT` versus `iau_CAL2JD`/`iau_DAT` symbol-name mismatch.
 
 Official source directory:
 

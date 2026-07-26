@@ -43,5 +43,16 @@ python module _iers2010
             double precision intent(out) :: d
             double precision intent(out) :: om
         end subroutine fundarg
+
+        subroutine dehanttideinel(xsta, yr, month, day, fhr, xsun, xmon, dxtide)
+            double precision intent(in), dimension(3) :: xsta
+            integer intent(in) :: yr
+            integer intent(in) :: month
+            integer intent(in) :: day
+            double precision intent(in) :: fhr
+            double precision intent(in), dimension(3) :: xsun
+            double precision intent(in), dimension(3) :: xmon
+            double precision intent(out), dimension(3) :: dxtide
+        end subroutine dehanttideinel
     end interface
 end python module _iers2010
