@@ -28,8 +28,8 @@ The selected source hashes are:
 | `UTLIBR.F` | `f523335d552ac14b661121a081ad799382312d819853c674bc0102484b5e2406` |
 | `FUNDARG.F` | `18263cbb1289e222e6ee6e59d52beb343eb77a63ed3212e4f05a4c85d475ae78` |
 | `DEHANTTIDEINEL.F` | `bc6039a1704761881bb785ce44ce084ea82783107ff64c576e69155a4914e2cb` |
-| `CAL2JD.F` | `686af399ea3a493e6c0ca659d2d64f367280f5bb331584ded0800ae8d45964d3` |
-| `DAT.F` | `64a5a69c38d41f6d9b64204f353f5ce46750d59a1067ca507cb9b6e71e934462` |
+| `CAL2JD.F` (derived) | `7634fafdbc761e9e97699102b0d43fdb564916d556497c98505a3205b3aef923` |
+| `DAT.F` (derived) | `4692aa5b784070cab731dd05d541f819d6ae01b20ba339a96d85ced0ffb643dc` |
 | `NORM8.F` | `636b6399dc6ab273a7b6104dd9341bf3c36995754aeee696511dbf19c9e909b6` |
 | `SPROD.F` | `817761a92bb5416eb38322ea2d43d41cf8ea435e208a0ce229acf94311e9fa1e` |
 | `ST1IDIU.F` | `d2976b8b76be8dd1d57e57a8d6b48f5764676126515bada3592753a07d3acd1e` |
@@ -40,15 +40,23 @@ The selected source hashes are:
 | `ZERO_VEC8.F` | `5ea9ab87e298d377f6dbe69c46b040906b6575a9132fab3830a4dc02c9139cef` |
 
 The official IERS files are unchanged and retain their complete IERS
-Conventions Software License. The bundled `CAL2JD.F` and `DAT.F` SOFA support
-routines are likewise unchanged and retain their complete SOFA license. All
-are included in both source and binary distributions.
+Conventions Software License. The nine non-SOFA Chapter 7 files are likewise
+unchanged. The two bundled SOFA support routines retain their complete SOFA
+license but are derived works: `CAL2JD.F` renames `iau_CAL2JD` to `CAL2JD`, and
+`DAT.F` renames `iau_DAT` to `DAT` and its one internal call to `CAL2JD`.
+These names match the calls made by the unchanged `DEHANTTIDEINEL.F`, removing
+the need for a separate compatibility source. Their original v1.3.0 archive
+hashes are `686af399ea3a493e6c0ca659d2d64f367280f5bb331584ded0800ae8d45964d3`
+and `64a5a69c38d41f6d9b64204f353f5ce46750d59a1067ca507cb9b6e71e934462`.
+All source files are included in both source and binary distributions.
 
 When another routine is added:
 
 1. Extract it from the pinned archive identified above.
 2. Put the unchanged Fortran source directly in `external/iers2010/src`.
-3. Do not edit it, including its source header or license.
+3. Do not edit it, including its source header or license, except for a
+   documented license-compliant derived-work adaptation when an upstream
+   linkage defect cannot otherwise be resolved.
 4. Add its SHA-256 and purpose to the source table above.
 5. Put project-specific signatures and adaptations in
    `external/iers2010/bindings` under a project-specific name.
@@ -101,12 +109,11 @@ selected official Chapter 5, Chapter 7, Chapter 8, and Chapter 9 routines:
 `CNMTX.F` is compiled as the private helper used by `ORTHO_EOP.F`. The Chapter
 5 and Chapter 8 `FUNDARG.F` files are byte-identical; the Chapter 5 copy is the
 single canonical source. The official array outputs are unpacked at the Python
-facade boundary; no project-specific Fortran adapter is required for the
-official entry points. The v1.3.0 Chapter 7 source calls `CAL2JD` and `DAT`,
-while its bundled SOFA support routines are named `iau_CAL2JD` and `iau_DAT`.
-`external/iers2010/bindings/dehanttideinel_compat.F` provides only those two
-link-time aliases; it does not alter the official sources or their public
-interface.
+facade boundary; no project-specific Fortran adapter is required. The v1.3.0
+Chapter 7 source calls `CAL2JD` and `DAT`, while its bundled SOFA support
+routines define `iau_CAL2JD` and `iau_DAT`. The two SOFA files are renamed in
+place, with their required derived-work notices, so the extension links the
+official `DEHANTTIDEINEL` interface directly.
 
 There is no Python transcription or fallback for these selected routines. The
 Python facades retain only application-level work: requiring an explicit UTC
@@ -279,8 +286,33 @@ The published expected output instead repeats the preceding 2015 test case's
 centimetre-scale vector. The first three official test cases reproduce their
 published vectors, confirming the f2py boundary and complete dependency link.
 The fourth is retained as a regression of the source input and documented as
-an upstream test-header discrepancy; neither the official Fortran code nor its
-listed inputs are changed.
+an upstream test-header discrepancy. The DEHANT tide algorithm and its listed
+inputs are unchanged; the only local source adaptations are the documented
+support-routine symbol renames above.
+
+## DEHANTTIDEINEL and pysolid comparison
+
+`pysolid 0.3.4` wraps Dennis Milbert's independent `solid.for` implementation.
+It accepts a station geodetic latitude/longitude and UTC date, then generates
+its own celestial geometry; it cannot receive the Sun and Moon vectors in the
+Chapter 7 header. It is therefore an end-to-end reference, not a byte-level
+comparison for the same tidal inputs. The table compares ITRF displacement
+vectors at UTC midnight after rotating pysolid's ENU output into ITRF:
+
+| Header case | Native minus pysolid vector norm |
+|---|---:|
+| 2009-04-13 | `0.191816 m` |
+| 2012-07-13 | `0.051489 m` |
+| 2015-07-15 | `0.042429 m` |
+| 2017-01-15 | `32.202871 m` |
+
+The valid 2009--2015 cases differ by about 4--19 cm because the two models use
+independent celestial geometry and implementations. For 2017, pysolid gives a
+normal centimetre-scale vector `[-0.024193, 0.105692, -0.090597] m`; the
+Chapter 7 header's anomalous 14.5 Gm Sun vector causes the native source to
+return the documented tens-of-metres result. This isolates the discrepancy to
+the upstream header input rather than the f2py boundary or renamed support
+routines.
 
 ## Replacement comparison
 

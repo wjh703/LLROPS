@@ -1,2 +1,2 @@
-# Keep vendored IERS Fortran sources byte-for-byte identical to their archive.
+# Preserve upstream whitespace in vendored IERS/derived SOFA Fortran sources.
 external/iers2010/src/*.F -whitespace

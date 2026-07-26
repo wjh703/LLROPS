@@ -1,5 +1,11 @@
-      SUBROUTINE iau_DAT ( IY, IM, ID, FD, DELTAT, J )
+      SUBROUTINE DAT ( IY, IM, ID, FD, DELTAT, J )
 *+
+*  LLROPS derived-work notice:
+*  This file is derived from IAU SOFA DAT.  Its only changes are the
+*  entry-point name, from iau_DAT to DAT, and its CAL2JD call without
+*  the iau_ prefix, to match the IERS DEHANTTIDEINEL package.  It is
+*  not provided by or endorsed by SOFA.
+*
 *  - - - - 
 *   D A T
 *  - - - - 
@@ -221,7 +227,7 @@
       END IF
 
 *  Convert the date into an MJD.
-      CALL iau_CAL2JD ( IY, IM, ID, DJM0, DJM, JS )
+      CALL CAL2JD ( IY, IM, ID, DJM0, DJM, JS )
 
 *  If invalid year, month, or day, give up.
       IF ( JS .LT. 0 ) GO TO 9000

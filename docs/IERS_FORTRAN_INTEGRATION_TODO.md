@@ -233,10 +233,11 @@ Official source:
       `DEHANTTIDEINEL.F`, `CAL2JD.F`, `DAT.F`, `NORM8.F`, `SPROD.F`,
       `ST1IDIU.F`, `ST1ISEM.F`, `ST1L1.F`, `STEP2DIU.F`, `STEP2LON.F`, and
       `ZERO_VEC8.F`.
-- [x] Keep the official source unchanged and expose the official
-      `DEHANTTIDEINEL` entry point directly to the private f2py extension. The
-      project compatibility aliases only resolve the v1.3.0 package's
-      `CAL2JD`/`DAT` versus `iau_CAL2JD`/`iau_DAT` symbol-name mismatch.
+- [x] Expose the official `DEHANTTIDEINEL` entry point directly to the private
+      f2py extension. Keep the other nine Chapter 7 files byte-identical; in
+      the bundled SOFA `CAL2JD.F` and `DAT.F`, rename `iau_CAL2JD`/`iau_DAT`
+      to the unprefixed names called by `DEHANTTIDEINEL`, including `DAT`'s
+      internal `CAL2JD` call. The files carry explicit derived-work notices.
 
 Official source directory:
 
@@ -259,10 +260,15 @@ Official source directory:
 
 ### 7.3 Replacement and verification
 
-- [ ] Reproduce every official `DEHANTTIDEINEL` vector test case.
-- [ ] Compare the direct native result against the existing `pysolid` result at
-      representative stations and epochs, explaining expected ephemeris or
-      epoch-sampling differences.
+- [x] Reproduce the first three published `DEHANTTIDEINEL` vectors. The fourth
+      (2017) header input does not produce its copied expected output; preserve
+      and regression-test the source calculation while documenting the upstream
+      inconsistency.
+- [x] Compare the direct native result against the existing `pysolid` result at
+      the four header stations and epochs. `pysolid` generates independent
+      celestial geometry, so centimetre-scale differences for valid inputs are
+      expected; the 2017 case differs by `32.20 m` because its supplied Sun
+      vector is anomalous.
 - [ ] Benchmark a true single-epoch call. It must not generate or allocate a
       full-day, one-minute time series.
 - [ ] Add an end-to-end regression for transmit and receive station positions

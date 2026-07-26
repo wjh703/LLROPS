@@ -49,7 +49,6 @@ iers_fortran_sources = files(
     'external/iers2010/src/STEP2DIU.F',
     'external/iers2010/src/STEP2LON.F',
     'external/iers2010/src/ZERO_VEC8.F',
-    'external/iers2010/bindings/dehanttideinel_compat.F',
 )
 iers_bindings = custom_target(
   '_iers2010module.c',

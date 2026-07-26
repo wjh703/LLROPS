@@ -1,5 +1,10 @@
-      SUBROUTINE iau_CAL2JD ( IY, IM, ID, DJM0, DJM, J )
+      SUBROUTINE CAL2JD ( IY, IM, ID, DJM0, DJM, J )
 *+
+*  LLROPS derived-work notice:
+*  This file is derived from IAU SOFA CAL2JD.  Its only change is the
+*  entry-point name, from iau_CAL2JD to CAL2JD, to match the IERS
+*  DEHANTTIDEINEL package.  It is not provided by or endorsed by SOFA.
+*
 *  - - - - - - -
 *   C A L 2 J D
 *  - - - - - - -
