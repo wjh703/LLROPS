@@ -16,33 +16,25 @@ class HighFrequencyEopCorrection:
     ut1_sec: float
 
 
-def _native_ortho_eop(mjd: float) -> tuple[float, float, float]:
-    """Return ORTHO_EOP values converted from micro-units to SI units."""
-    delta_xp, delta_yp, delta_ut1 = _iers2010.ortho_eop(float(mjd))
-    return delta_xp * _MICRO, delta_yp * _MICRO, delta_ut1 * _MICRO
-
-
-def _native_pmsdnut2(mjd: float) -> tuple[float, float]:
-    delta_xp, delta_yp = _iers2010.pmsdnut2(float(mjd))
-    return delta_xp * _MICRO, delta_yp * _MICRO
-
-
-def _native_utlibr(mjd: float) -> tuple[float, float]:
-    delta_ut1, delta_lod = _iers2010.utlibr(float(mjd))
-    return delta_ut1 * _MICRO, delta_lod * _MICRO
-
-
 def ocean_tide_correction(mjd: float) -> HighFrequencyEopCorrection:
     """Return official ORTHO_EOP ocean-tide corrections."""
-    delta_xp, delta_yp, delta_ut1 = _native_ortho_eop(mjd)
-    return HighFrequencyEopCorrection(delta_xp, delta_yp, delta_ut1)
+    delta_xp, delta_yp, delta_ut1 = _iers2010.ortho_eop(float(mjd))
+    return HighFrequencyEopCorrection(
+        delta_xp * _MICRO,
+        delta_yp * _MICRO,
+        delta_ut1 * _MICRO,
+    )
 
 
 def libration_correction(mjd: float) -> HighFrequencyEopCorrection:
     """Return official PMSDNUT2 and UTLIBR corrections."""
-    delta_xp, delta_yp = _native_pmsdnut2(mjd)
-    delta_ut1, _delta_lod = _native_utlibr(mjd)
-    return HighFrequencyEopCorrection(delta_xp, delta_yp, delta_ut1)
+    delta_xp, delta_yp = _iers2010.pmsdnut2(float(mjd))
+    delta_ut1, _delta_lod = _iers2010.utlibr(float(mjd))
+    return HighFrequencyEopCorrection(
+        delta_xp * _MICRO,
+        delta_yp * _MICRO,
+        delta_ut1 * _MICRO,
+    )
 
 
 def high_frequency_eop_correction(mjd: float) -> HighFrequencyEopCorrection:
