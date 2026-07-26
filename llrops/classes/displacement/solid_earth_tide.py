@@ -3,56 +3,65 @@ from __future__ import annotations
 
 import numpy as np
 
-from .base import StationDisplacementInput
-from .terrestrial_geometry import enu2itrf, itrf2geodetic
+from llrops import _iers2010
+from llrops.base.epoch import Epoch, TimeScale
+from llrops.classes.frames import ReferenceFrameSystem
 
-try:
-    import pysolid
-except ImportError:  # pragma: no cover
-    pysolid = None
+from .base import StationDisplacementInput
 
 
 class Iers2010SolidEarthTide:
-    """Solid-Earth tide displacement evaluated through ``pysolid``."""
+    """Solid-Earth tide displacement from the official IERS routine.
 
-    def __init__(self, sampling_interval_s: float = 60.0) -> None:
-        if sampling_interval_s <= 0.0:
-            raise ValueError("sampling_interval_s must be positive.")
-        self.sampling_interval_s = sampling_interval_s
+    ``DEHANTTIDEINEL`` requires geocentric ITRF vectors for the station, Sun,
+    and Moon. The celestial vectors are derived from the configured ephemeris
+    and the same frame system used by the observation model.
+    """
+
+    def __init__(self, frames: ReferenceFrameSystem) -> None:
+        if not isinstance(frames, ReferenceFrameSystem):
+            raise TypeError("frames must be a ReferenceFrameSystem.")
+        self.frames = frames
+
+    @staticmethod
+    def _utc_calendar(epoch: Epoch) -> tuple[int, int, int, float]:
+        epoch.require_scale(TimeScale.UTC, name="epoch_utc")
+        civil = epoch.to_datetime()
+        fractional_hour = (
+            civil.hour
+            + civil.minute / 60.0
+            + (civil.second + civil.microsecond / 1.0e6) / 3600.0
+        )
+        return civil.year, civil.month, civil.day, fractional_hour
+
+    def _body_itrf_m(self, body: str, epoch_utc: Epoch, epoch_tdb: Epoch) -> np.ndarray:
+        position_bcrs_m = self.frames.ephemeris.body_position_bcrs(body, epoch_tdb)
+        position_gcrs_m = self.frames.bcrs2gcrs(position_bcrs_m, epoch_tdb)
+        position_itrf_m = self.frames.gcrs2itrf(position_gcrs_m, epoch_utc)
+        value = np.asarray(position_itrf_m, dtype=float).reshape(3)
+        if not np.all(np.isfinite(value)):
+            raise RuntimeError(f"Ephemeris/frame conversion returned non-finite {body} coordinates.")
+        return value
 
     def displacement_itrf_m(self, data: StationDisplacementInput) -> np.ndarray:
-        if pysolid is None:
-            raise ImportError(
-                "pysolid is required for Iers2010SolidEarthTide. "
-                "Install it with `pip install pysolid`."
-            )
+        epoch_utc = data.epoch_utc.require_scale(TimeScale.UTC, name="epoch_utc")
+        epoch_tdb = self.frames.time_converter.convert(epoch_utc, TimeScale.TDB)
+        sun_itrf_m = self._body_itrf_m("SUN", epoch_utc, epoch_tdb)
+        moon_itrf_m = self._body_itrf_m("MOON", epoch_utc, epoch_tdb)
+        year, month, day, fractional_hour = self._utc_calendar(epoch_utc)
 
-        site = itrf2geodetic(data.station_itrf_m)
-        start = data.epoch_utc.to_datetime()
-        stop = data.epoch_utc.shifted(self.sampling_interval_s).to_datetime()
-
-        try:
-            _, east, north, up = pysolid.calc_solid_earth_tides_point(
-                site.latitude_deg,
-                site.longitude_deg,
-                start,
-                stop,
-                step_sec=float(self.sampling_interval_s),
-                display=False,
-                verbose=False,
-            )
-        except Exception as exc:
-            raise RuntimeError(
-                "Solid-Earth tide evaluation failed for "
-                f"{data.epoch_utc.isot(scale='utc')} at lat={site.latitude_deg:.9f} deg, "
-                f"lon={site.longitude_deg:.9f} deg."
-            ) from exc
-
-        enu_m = np.array([float(east[0]), float(north[0]), float(up[0])])
-        if not np.all(np.isfinite(enu_m)):
-            raise RuntimeError("Solid-Earth tide model returned non-finite values.")
-        return enu2itrf(
-            enu_m,
-            latitude_rad=site.latitude_rad,
-            longitude_rad=site.longitude_rad,
+        displacement = np.asarray(
+            _iers2010.dehanttideinel(
+                data.station_itrf_m,
+                year,
+                month,
+                day,
+                fractional_hour,
+                sun_itrf_m,
+                moon_itrf_m,
+            ),
+            dtype=float,
         )
+        if displacement.size != 3 or not np.all(np.isfinite(displacement)):
+            raise RuntimeError("DEHANTTIDEINEL returned an invalid displacement vector.")
+        return displacement.reshape(3)

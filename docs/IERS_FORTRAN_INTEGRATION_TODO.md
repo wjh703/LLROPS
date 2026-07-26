@@ -52,7 +52,7 @@ Official package index:
 | Ocean-tide high-frequency EOP | NumPy implementation | `ORTHO_EOP`, `CNMTX` | Replace | Low |
 | Polar-motion libration | NumPy implementation | `PMSDNUT2`, `FUNDARG` | Replace | Low |
 | UT1 libration | NumPy implementation | `UTLIBR`, `FUNDARG` | Replace and expose `delta LOD` | Low |
-| Solid-Earth tide | `pysolid` high-level API | `DEHANTTIDEINEL` package | Replace | Medium |
+| Solid-Earth tide | Direct `DEHANTTIDEINEL` call | `DEHANTTIDEINEL` package | Complete | Medium |
 | Optical atmospheric delay | Python transcription | `FCUL_ZD_HPA`, `FCUL_A` | Replace | Low |
 | Ocean tidal loading | Not implemented | `HARDISP` package | Add | High |
 | Solid-Earth pole tide | Python implementation | No complete official routine | Keep and validate | Low |
@@ -273,8 +273,9 @@ Official source directory:
       full-day, one-minute time series.
 - [ ] Add an end-to-end regression for transmit and receive station positions
       inside the iterative light-time solution.
-- [ ] Remove `samplingIntervalSeconds`, the `pysolid` runtime import, and the
-      `physics` optional dependency after the native implementation is accepted.
+- [x] Remove `samplingIntervalSeconds`, the `pysolid` runtime import, and the
+      obsolete `physics` optional dependency after accepting the native
+      implementation.
 
 ## 8. Phase 4: ocean tidal loading
 
@@ -390,7 +391,7 @@ complete routine for it.
 1. Pin the IERS source package and establish the native build layer.
 2. Replace `FCUL_ZD_HPA` and `FCUL_A` as a small end-to-end build proof.
 3. Replace `ORTHO_EOP`, `PMSDNUT2`, and `UTLIBR`.
-4. Replace `pysolid` with direct single-epoch `DEHANTTIDEINEL` calls.
+4. Complete the direct single-epoch `DEHANTTIDEINEL` replacement.
 5. Add BLQ ingestion and ocean tidal loading through `HARDISP`.
 6. Validate the Python pole-tide and ocean pole-tide implementations.
 7. Design atmospheric tidal and non-tidal loading as a separate project.

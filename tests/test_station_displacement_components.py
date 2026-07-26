@@ -8,6 +8,7 @@ from llrops.classes.displacement import (
     CompositeStationDisplacement,
     Iers2010OceanPoleTide,
     Iers2010PoleTide,
+    Iers2010SolidEarthTide,
     LunarSolidTide,
     OceanPoleTideGrid,
     ReflectorDisplacementInput,
@@ -18,7 +19,7 @@ from llrops.classes.displacement import (
 from llrops.config.context import RunContext
 from llrops.base.epoch import Epoch, TimeScale
 from llrops.classes.ephemerides import BodyState, Ephemeris
-from llrops.classes.frames import EarthOrientation, PolarMotion
+from llrops.classes.frames import EarthOrientation, PolarMotion, ReferenceFrameSystem
 
 
 class _ConstantDisplacement:
@@ -69,6 +70,16 @@ def test_zero_displacement_models_return_three_component_vectors():
         ZeroReflectorDisplacement().displacement_lcrs_m(reflector_data),
         np.zeros(3),
     )
+
+
+def test_solid_earth_tide_uses_native_single_epoch_call():
+    frames = ReferenceFrameSystem(
+        ephemeris=_FakeEphemeris(),
+        earth_orientation=_FakeEarthOrientation(),
+    )
+    displacement = Iers2010SolidEarthTide(frames).displacement_itrf_m(_station_input())
+    assert displacement.shape == (3,)
+    assert np.all(np.isfinite(displacement))
 
 
 def test_composite_station_displacement_sums_components():
@@ -141,6 +152,9 @@ class _FakeEphemeris(Ephemeris):
 
     def pa2lcrs_matrix(self, epoch: Epoch):
         return np.eye(3)
+
+    def tdb_minus_tt_sec(self, epoch: Epoch):
+        return 0.0
 
 
 def test_pole_tide_exposes_typed_evaluation_result():

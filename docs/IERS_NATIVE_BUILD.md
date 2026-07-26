@@ -1,7 +1,7 @@
 # IERS native build and source policy
 
-Status: the production optical troposphere and high-frequency EOP models use
-the official Fortran routines.
+Status: the production optical troposphere, high-frequency EOP, and
+solid-Earth tide models use the official Fortran routines.
 
 Last verified (UTC): 2026-07-26
 
@@ -217,7 +217,7 @@ References:
 A development environment can be prepared and installed with:
 
 ```bash
-uv sync --extra build --extra test --extra mpi --extra physics
+uv sync --extra build --extra test --extra mpi
 uv pip install --no-build-isolation --editable .
 python -m pytest
 ```
