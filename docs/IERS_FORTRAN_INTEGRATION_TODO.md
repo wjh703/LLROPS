@@ -62,7 +62,7 @@ Official package index:
 
 Relevant current modules:
 
-- `llrops/classes/frames/iers2010_eop.py`
+- `llrops/classes/frames/high_frequency_eop.py`
 - `llrops/classes/frames/terrestrial.py`
 - `llrops/classes/delays/troposphere.py`
 - `llrops/classes/displacement/solid_earth_tide.py`
