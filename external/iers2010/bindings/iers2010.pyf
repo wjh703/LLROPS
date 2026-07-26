@@ -1,0 +1,22 @@
+python module _iers2010
+    interface
+        function fcul_a(latitude, height_m, t_k, elev_deg)
+            double precision intent(in) :: latitude
+            double precision intent(in) :: height_m
+            double precision intent(in) :: t_k
+            double precision intent(in) :: elev_deg
+            double precision :: fcul_a
+        end function fcul_a
+
+        subroutine fculzd_hpa(latitude, ellip_ht, pressure, wvp, lambda_um, fcul_ztd, fcul_zhd, fcul_zwd)
+            double precision intent(in) :: latitude
+            double precision intent(in) :: ellip_ht
+            double precision intent(in) :: pressure
+            double precision intent(in) :: wvp
+            double precision intent(in) :: lambda_um
+            double precision intent(out) :: fcul_ztd
+            double precision intent(out) :: fcul_zhd
+            double precision intent(out) :: fcul_zwd
+        end subroutine fculzd_hpa
+    end interface
+end python module _iers2010

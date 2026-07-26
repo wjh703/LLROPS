@@ -25,18 +25,18 @@ Atmospheric propagation delay and atmospheric loading are different effects:
 
 ## 2. Source and integration policy
 
-- [ ] Pin one IERS Conventions package version for the entire native library.
+- [x] Pin one IERS Conventions package version for the entire native library.
       Prefer the latest packaged release, IERS Conventions v1.3.0, rather than
       downloading individual live files at different dates.
-- [ ] Record the package version, original URL, retrieval date, and SHA-256 for
+- [x] Record the package version, original URL, retrieval date, and SHA-256 for
       every vendored file.
-- [ ] Preserve every original source header and the complete IERS software
+- [x] Preserve every original source header and the complete IERS software
       license.
-- [ ] Keep official files unchanged. Put project-specific adaptations in
+- [x] Keep official files unchanged. Put project-specific adaptations in
       separately named wrapper routines.
 - [ ] Compile only one canonical copy of duplicate dependencies such as
       `FUNDARG.F`, after confirming the Chapter 5 and Chapter 8 copies match.
-- [ ] Document every native entry point with its time scale, coordinate frame,
+- [x] Document every native entry point with its time scale, coordinate frame,
       input units, output units, and sign convention.
 - [ ] Do not silently fall back to the old implementation after the production
       backend has been changed. Missing native support must fail explicitly.
@@ -72,23 +72,23 @@ Relevant current modules:
 
 ## 4. Phase 0: native build foundation
 
-- [ ] Add one private native extension, provisionally named
+- [x] Add one private native extension, provisionally named
       `llrops._iers2010`, instead of creating a separate extension for every
       physical model.
-- [ ] Evaluate `meson-python` plus `f2py` and an explicit `.pyf` signature file
+- [x] Evaluate `meson-python` plus `f2py` and an explicit `.pyf` signature file
       as the preferred build path. Record the decision and rejected
       alternatives.
-- [ ] Confirm support for the project's Python and NumPy versions, fixed-form
+- [x] Confirm support for the project's Python and NumPy versions, fixed-form
       Fortran 77, editable installs, source distributions, and Linux wheels.
-- [ ] Expose only the required top-level routines. Do not expose internal
+- [x] Expose only the required top-level routines. Do not expose internal
       helpers as public Python API.
 - [ ] Add thin Python facades that validate shapes and finite values and perform
       all unit conversions in one place.
 - [ ] Consider batch entry points where repeated Python/native crossings are
       measurable, while retaining scalar entry points for official test cases.
-- [ ] Verify that the extension can be imported and used safely by every MPI
+- [x] Verify that the extension can be imported and used safely by every MPI
       worker process.
-- [ ] Capture baseline runtime and end-to-end LLR outputs before replacing any
+- [x] Capture baseline runtime and end-to-end LLR outputs before replacing any
       implementation.
 
 ## 5. Phase 1: high-frequency EOP
@@ -154,7 +154,7 @@ Official source pages:
 
 ### 6.1 Core replacement
 
-- [ ] Vendor Chapter 9 `FCUL_ZD_HPA.F` and `FCUL_A.F`.
+- [x] Vendor Chapter 9 `FCUL_ZD_HPA.F` and `FCUL_A.F`.
 - [ ] Replace the Python implementations of `fculzd_hpa()` and `fcul_a()` with
       calls to the native routines without changing the public troposphere
       configuration name.
@@ -184,12 +184,15 @@ Official Chapter 9 software index:
 
 ### 6.3 Verification
 
-- [ ] Reproduce the official `FCUL_A` test value
+- [x] Reproduce the official `FCUL_A` test value
       `3.800243667312344087` for the McDonald Observatory input case.
-- [ ] Reproduce the official `FCUL_ZD_HPA` test values:
+- [x] Reproduce the official `FCUL_ZD_HPA` test values:
       `ZTD = 1.935225924846803114 m`,
       `ZHD = 1.932992176591644462 m`, and
       `ZWD = 0.002233748255158703871 m`.
+      The v1.3.0 header lists `2010.344 m` as the input height, but the
+      published outputs exactly match `2003.344 m`; preserve the source and
+      use the corrected test input documented in `IERS_NATIVE_BUILD.md`.
 - [ ] Differential-test the native and current Python formulas over station
       latitude, height, temperature, pressure, humidity, wavelength, and
       elevation ranges used by the observations.
