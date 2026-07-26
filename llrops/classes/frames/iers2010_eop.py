@@ -18,17 +18,17 @@ class HighFrequencyEopCorrection:
 
 def _native_ortho_eop(mjd: float) -> tuple[float, float, float]:
     """Return ORTHO_EOP values converted from micro-units to SI units."""
-    delta_xp, delta_yp, delta_ut1 = _iers2010.llrops_ortho_eop(float(mjd))
+    delta_xp, delta_yp, delta_ut1 = _iers2010.ortho_eop(float(mjd))
     return delta_xp * _MICRO, delta_yp * _MICRO, delta_ut1 * _MICRO
 
 
 def _native_pmsdnut2(mjd: float) -> tuple[float, float]:
-    delta_xp, delta_yp = _iers2010.llrops_pmsdnut2(float(mjd))
+    delta_xp, delta_yp = _iers2010.pmsdnut2(float(mjd))
     return delta_xp * _MICRO, delta_yp * _MICRO
 
 
 def _native_utlibr(mjd: float) -> tuple[float, float]:
-    delta_ut1, delta_lod = _iers2010.llrops_utlibr(float(mjd))
+    delta_ut1, delta_lod = _iers2010.utlibr(float(mjd))
     return delta_ut1 * _MICRO, delta_lod * _MICRO
 
 

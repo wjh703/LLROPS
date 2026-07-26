@@ -97,8 +97,8 @@ Relevant current modules:
 
 - [x] Vendor Chapter 8 `ORTHO_EOP.F` and `CNMTX.F`.
 - [x] Vendor Chapter 5 `PMSDNUT2.F`, `UTLIBR.F`, and one `FUNDARG.F`.
-- [x] Add native wrappers returning named scalar values rather than ambiguous
-      arrays.
+- [x] Expose the official native array outputs directly; Python unpacks the
+      documented array order at the facade boundary.
 
 Official source pages:
 

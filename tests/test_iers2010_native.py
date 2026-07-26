@@ -44,7 +44,7 @@ def test_fculzd_hpa_matches_iers_reference_outputs():
 
 
 def test_ortho_eop_matches_iers_reference_case():
-    actual = _iers2010.llrops_ortho_eop(47100.0)
+    actual = _iers2010.ortho_eop(47100.0)
     np.testing.assert_allclose(
         actual,
         (-162.8386373279636530, 117.7907525842668974, -23.39092370609808214),
@@ -54,7 +54,7 @@ def test_ortho_eop_matches_iers_reference_case():
 
 
 def test_pmsdnut2_matches_iers_reference_case():
-    actual = _iers2010.llrops_pmsdnut2(54335.0)
+    actual = _iers2010.pmsdnut2(54335.0)
     np.testing.assert_allclose(
         actual,
         (24.83144238273364834, -14.09240692041837661),
@@ -65,13 +65,13 @@ def test_pmsdnut2_matches_iers_reference_case():
 
 def test_utlibr_matches_iers_reference_cases():
     np.testing.assert_allclose(
-        _iers2010.llrops_utlibr(44239.1),
+        _iers2010.utlibr(44239.1),
         (2.441143834386761746, -14.78971247349449492),
         rtol=0.0,
         atol=1.0e-12,
     )
     np.testing.assert_allclose(
-        _iers2010.llrops_utlibr(55227.4),
+        _iers2010.utlibr(55227.4),
         (-2.655705844335680244, 27.39445826599846967),
         rtol=0.0,
         atol=1.0e-12,

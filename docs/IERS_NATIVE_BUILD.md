@@ -79,15 +79,15 @@ selected official Chapter 5, Chapter 8, and Chapter 9 routines:
 |---|---|---|---|
 | `fcul_a` | north geodetic latitude in degrees; height above mean sea level in metres; temperature in kelvin; elevation in degrees | dimensionless mapping factor | no epoch or coordinate frame; positive path scale |
 | `fculzd_hpa` | north geodetic latitude in degrees; ellipsoidal height in metres; total pressure and water-vapour pressure in hPa; wavelength in micrometres | total, hydrostatic, and non-hydrostatic zenith delays in metres | no epoch or coordinate frame; positive excess path |
-| `llrops_ortho_eop` | MJD (`TIME`, scale to be resolved by the next EOP API PR) | ocean `delta_xp`, `delta_yp` in microarcseconds; `delta_ut1` in microseconds | official ORTHO_EOP units; scalar outputs are named by the wrapper |
-| `llrops_pmsdnut2` | MJD (`RMJD`, scale to be resolved by the next EOP API PR) | ocean `delta_xp`, `delta_yp` in microarcseconds | official PMSDNUT2 units |
-| `llrops_utlibr` | MJD (`RMJD`, scale to be resolved by the next EOP API PR) | libration `delta_ut1` in microseconds; `delta_lod` in microseconds/day | official UTLIBR units |
+| `ortho_eop` | MJD (`TIME`, scale to be resolved by the next EOP API PR) | NumPy array `[delta_xp, delta_yp, delta_ut1]`, in microarcseconds/microseconds | official ORTHO_EOP array order |
+| `pmsdnut2` | MJD (`RMJD`, scale to be resolved by the next EOP API PR) | NumPy array `[delta_xp, delta_yp]`, in microarcseconds | official PMSDNUT2 array order |
+| `utlibr` | MJD (`RMJD`, scale to be resolved by the next EOP API PR) | scalar `delta_ut1` in microseconds; scalar `delta_lod` in microseconds/day | official UTLIBR units |
 | `fundarg` | Julian centuries since J2000 (`T`) | `L`, `LP`, `F`, `D`, `OM` in radians | official FUNDARG convention |
 
 `CNMTX.F` is compiled as the private helper used by `ORTHO_EOP.F`. The Chapter
 5 and Chapter 8 `FUNDARG.F` files are byte-identical; the Chapter 5 copy is the
-single canonical source. `LLROPS_EOP_WRAPPERS.F` contains only project adapters
-that split official array outputs into named scalar values.
+single canonical source. The official array outputs are unpacked at the Python
+facade boundary; no project-specific Fortran adapter is required.
 
 There is no Python transcription or fallback for these selected routines. The
 Python facades retain only application-level work: converting relative humidity
