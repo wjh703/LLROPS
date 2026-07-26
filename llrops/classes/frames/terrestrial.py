@@ -10,7 +10,7 @@ from llrops.base.epoch import Epoch, TimeScale, utc2tt
 from llrops.base.array_validation import vector3
 
 from .earth_orientation import EarthOrientation
-from .iers2010_eop import high_frequency_eop_correction
+from .high_frequency_eop import high_frequency_eop_correction
 
 _ARCSEC_TO_RAD = np.deg2rad(1.0 / 3600.0)
 

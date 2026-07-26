@@ -4,10 +4,10 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
-import erfa
 import numpy as np
 
 from llrops.base.epoch import Epoch, TimeScale
+from llrops import _iers2010
 
 from .base import require_tdb_epoch
 
@@ -59,10 +59,9 @@ class Inpop21aLongitudeLibration:
         centuries = (
             (epoch.jd1 - j2000_tdb.jd1) + (epoch.jd2 - j2000_tdb.jd2)
         ) / _JULIAN_CENTURY_DAYS
-        lunar_anomaly = float(erfa.fal03(centuries))
-        solar_anomaly = float(erfa.falp03(centuries))
-        argument_latitude = float(erfa.faf03(centuries))
-        elongation = float(erfa.fad03(centuries))
+        lunar_anomaly, solar_anomaly, argument_latitude, elongation, _ = (
+            float(value) for value in _iers2010.fundarg(float(centuries))
+        )
         correction_mas = (
             4.5 * np.cos(solar_anomaly)
             + 1.8 * np.cos(2.0 * lunar_anomaly - 2.0 * elongation)

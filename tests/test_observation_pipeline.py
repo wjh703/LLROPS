@@ -5,7 +5,7 @@ import pytest
 
 from llrops.base.constants import C
 from llrops.base.epoch import Epoch, TimeScale
-from llrops.classes.delays import ZeroTroposphereDelay
+from llrops.classes.delays import Iers2010MendesPavlisTroposphere, ZeroTroposphereDelay
 from llrops.classes.ephemerides import BodyState, Ephemeris
 from llrops.classes.frames import EarthOrientation, PolarMotion, ReferenceFrameSystem
 from llrops.classes.observation import (
@@ -89,11 +89,13 @@ def _record(index: int = 4) -> NptRecord:
     )
 
 
-def _pipeline():
+def _pipeline(troposphere_delay=None):
     frames = ReferenceFrameSystem(_Ephemeris(), _EarthOrientation())
     solver = LightTimeSolver(
         frames,
-        troposphere_delay=ZeroTroposphereDelay(),
+        troposphere_delay=(
+            ZeroTroposphereDelay() if troposphere_delay is None else troposphere_delay
+        ),
     )
     state = ObservationModelState.from_catalogs(
         {
@@ -144,6 +146,46 @@ def test_full_observation_pipeline_builds_one_equation():
     assert equation.metadata["status"] == "ok"
     assert equation.to_row("standard")["oc_one_way_m"] == pytest.approx(
         equation.observed_minus_computed_m
+    )
+
+
+def test_fortran_troposphere_contributes_to_both_light_time_legs(monkeypatch):
+    transmit_epoch = _record().transmit_epoch
+
+    def controlled_elevation(
+        self,
+        station_itrf_m,
+        target_bcrs_m,
+        station_epoch_utc,
+        target_epoch_tdb,
+    ):
+        del self, station_itrf_m, target_bcrs_m, target_epoch_tdb
+        return np.deg2rad(30.0 if station_epoch_utc == transmit_epoch else 45.0)
+
+    monkeypatch.setattr(LightTimeSolver, "_vacuum_elevation_rad", controlled_elevation)
+    model = Iers2010MendesPavlisTroposphere()
+    processor = _pipeline(model)
+    observation = processor.resolver.resolve(_record())
+    with_troposphere = processor.model.predict(observation).light_time
+    without_troposphere = _pipeline().model.predict(observation).light_time
+
+    assert with_troposphere.converged
+    assert with_troposphere.uplink.tropospheric_delay_m > 0.0
+    assert with_troposphere.downlink.tropospheric_delay_m > 0.0
+    assert np.rad2deg(
+        with_troposphere.uplink.troposphere_elevation_used_rad
+    ) == pytest.approx(30.0)
+    assert np.rad2deg(
+        with_troposphere.downlink.troposphere_elevation_used_rad
+    ) == pytest.approx(45.0)
+    assert with_troposphere.uplink.tropospheric_delay_m != pytest.approx(
+        with_troposphere.downlink.tropospheric_delay_m,
+        rel=0.0,
+        abs=1.0e-12,
+    )
+    assert (
+        with_troposphere.observable_round_trip_time_s
+        > without_troposphere.observable_round_trip_time_s
     )
 
 

@@ -1,0 +1,47 @@
+python module _iers2010
+    interface
+        function fcul_a(latitude, height_m, t_k, elev_deg)
+            double precision intent(in) :: latitude
+            double precision intent(in) :: height_m
+            double precision intent(in) :: t_k
+            double precision intent(in) :: elev_deg
+            double precision :: fcul_a
+        end function fcul_a
+
+        subroutine fculzd_hpa(latitude, ellip_ht, pressure, wvp, lambda_um, fcul_ztd, fcul_zhd, fcul_zwd)
+            double precision intent(in) :: latitude
+            double precision intent(in) :: ellip_ht
+            double precision intent(in) :: pressure
+            double precision intent(in) :: wvp
+            double precision intent(in) :: lambda_um
+            double precision intent(out) :: fcul_ztd
+            double precision intent(out) :: fcul_zhd
+            double precision intent(out) :: fcul_zwd
+        end subroutine fculzd_hpa
+
+        subroutine ortho_eop(time, eop)
+            double precision intent(in) :: time
+            double precision intent(out), dimension(3) :: eop
+        end subroutine ortho_eop
+
+        subroutine pmsdnut2(rmjd, pm)
+            double precision intent(in) :: rmjd
+            double precision intent(out), dimension(2) :: pm
+        end subroutine pmsdnut2
+
+        subroutine utlibr(rmjd, delta_ut1, delta_lod)
+            double precision intent(in) :: rmjd
+            double precision intent(out) :: delta_ut1
+            double precision intent(out) :: delta_lod
+        end subroutine utlibr
+
+        subroutine fundarg(t, l, lp, f, d, om)
+            double precision intent(in) :: t
+            double precision intent(out) :: l
+            double precision intent(out) :: lp
+            double precision intent(out) :: f
+            double precision intent(out) :: d
+            double precision intent(out) :: om
+        end subroutine fundarg
+    end interface
+end python module _iers2010

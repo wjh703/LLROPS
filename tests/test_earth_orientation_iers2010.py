@@ -4,7 +4,7 @@ import numpy as np
 from llrops.base.epoch import Epoch, TimeScale, utc2tt
 from llrops.classes.frames import C04EarthOrientation, EarthOrientationSample
 from llrops.classes.frames.earth_orientation import read_iers_c04
-from llrops.classes.frames.iers2010_eop import (
+from llrops.classes.frames.high_frequency_eop import (
     HighFrequencyEopCorrection,
     libration_correction,
     ocean_tide_correction,
