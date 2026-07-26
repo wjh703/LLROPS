@@ -6,7 +6,6 @@ import os
 import shutil
 import subprocess
 import sys
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -46,18 +45,13 @@ def test_fculzd_hpa_matches_iers_reference_outputs():
 
 def test_installed_iers_sources_match_pinned_hashes():
     expected = {
-        "CHANGELOG.md": "2a72c7cae24237bb98b47e336f153b3ae3f1570591ab0446fbadd0f54196b92d",
-        "chapter9/software/FCUL_A.F": "fdeb39aee3c8d4c2d6eb6a7e743c420372e28da5b3e84942d09580a88847693a",
-        "chapter9/software/FCUL_ZD_HPA.F": "92731affca053aad15a44be7db58dbf6df689e75cf2e1f3b39cb4d99a4da198b",
+        "FCUL_A.F": "fdeb39aee3c8d4c2d6eb6a7e743c420372e28da5b3e84942d09580a88847693a",
+        "FCUL_ZD_HPA.F": "92731affca053aad15a44be7db58dbf6df689e75cf2e1f3b39cb4d99a4da198b",
     }
-    root = importlib.resources.files("llrops").joinpath(
-        "_external", "iers2010", "upstream", "v1_3_0"
-    )
+    root = importlib.resources.files("llrops").joinpath("_external", "iers2010", "src")
 
-    assert root.joinpath("SOURCE.toml").is_file()
-    assert root.joinpath("SHA256SUMS").is_file()
-    for relative_path, expected_hash in expected.items():
-        source = root.joinpath(*Path(relative_path).parts)
+    for filename, expected_hash in expected.items():
+        source = root.joinpath(filename)
         assert hashlib.sha256(source.read_bytes()).hexdigest() == expected_hash
 
 

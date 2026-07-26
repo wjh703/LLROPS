@@ -31,8 +31,8 @@ f2py_support = custom_target(
 
 iers_signature = files('external/iers2010/bindings/iers2010.pyf')
 iers_fortran_sources = files(
-  'external/iers2010/upstream/v1.3.0/chapter9/software/FCUL_A.F',
-  'external/iers2010/upstream/v1.3.0/chapter9/software/FCUL_ZD_HPA.F',
+  'external/iers2010/src/FCUL_A.F',
+  'external/iers2010/src/FCUL_ZD_HPA.F',
 )
 iers_bindings = custom_target(
   '_iers2010module.c',
@@ -60,21 +60,14 @@ python_sources = run_command(
 ).stdout().strip().split('\n')
 py.install_sources(python_sources, pure: false, preserve_path: true)
 
-iers_data_root = join_paths(
+iers_source_install_dir = join_paths(
   py.get_install_dir(),
   'llrops',
   '_external',
   'iers2010',
-  'upstream',
-  'v1_3_0',
-)
-install_data(
-  'external/iers2010/upstream/v1.3.0/CHANGELOG.md',
-  'external/iers2010/upstream/v1.3.0/SHA256SUMS',
-  'external/iers2010/upstream/v1.3.0/SOURCE.toml',
-  install_dir: iers_data_root,
+  'src',
 )
 install_data(
   iers_fortran_sources,
-  install_dir: join_paths(iers_data_root, 'chapter9', 'software'),
+  install_dir: iers_source_install_dir,
 )

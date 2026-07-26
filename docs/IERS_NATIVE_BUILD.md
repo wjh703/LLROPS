@@ -7,24 +7,31 @@ Last verified (UTC): 2026-07-26
 
 ## Source pin
 
-All official routines in `llrops._iers2010` must come from the IERS
-Conventions (2010) v1.3.0 packaged archive. Live files from individual chapter
-pages must not be mixed into the extension, even when their contents appear to
-match the package.
+All official routines in `llrops._iers2010` come from the IERS Conventions
+(2010) v1.3.0 packaged archive. Live files from individual chapter pages must
+not be mixed into the extension, even when their contents appear to match the
+package. The imported routines live directly in `external/iers2010/src`.
 
-The archive URL, retrieval date, archive hash, archive size, selected-file
-hashes, and purpose of every imported upstream file are recorded in
-`external/iers2010/upstream/v1.3.0/SOURCE.toml`. `SHA256SUMS` provides a directly
-executable integrity check. The original files are unchanged. Each Fortran
-file contains the complete IERS Conventions Software License and is included
-in both source and binary distributions.
+The archive was retrieved on 2026-07-26 from
+`https://iers-conventions.obspm.fr/packaged_versions/iersconventions_v1_3_0.tar.gz`.
+Its size is 63,646,900 bytes and its SHA-256 is
+`5f6215b74d22cf53c5f8c40804db091f5ea2cafdaa5e131b8a9ca87c0fb43ea1`.
+The selected source hashes are:
+
+| File | SHA-256 |
+|---|---|
+| `FCUL_A.F` | `fdeb39aee3c8d4c2d6eb6a7e743c420372e28da5b3e84942d09580a88847693a` |
+| `FCUL_ZD_HPA.F` | `92731affca053aad15a44be7db58dbf6df689e75cf2e1f3b39cb4d99a4da198b` |
+
+The files are unchanged. Each contains the complete IERS Conventions Software
+License and is included in both source and binary distributions.
 
 When another routine is added:
 
-1. Extract it from the archive identified by `archive_sha256` in `SOURCE.toml`.
-2. Keep its upstream path below `external/iers2010/upstream/v1.3.0`.
+1. Extract it from the pinned archive identified above.
+2. Put the unchanged Fortran source directly in `external/iers2010/src`.
 3. Do not edit it, including its source header or license.
-4. Add its SHA-256 and purpose to `SOURCE.toml` and `SHA256SUMS`.
+4. Add its SHA-256 and purpose to the source table above.
 5. Put project-specific signatures and adaptations in
    `external/iers2010/bindings` under a project-specific name.
 
@@ -142,8 +149,7 @@ The verified Linux toolchain is:
 
 The test suite checks both official FCUL vectors, installed-source hashes, and
 imports/calls from two MPI workers. Wheel inspection additionally checks that
-the extension, `.F` files, complete embedded license notices, source manifest,
-and checksums are present.
+the extension, `.F` files, and complete embedded license notices are present.
 
 ## Upstream FCUL_ZD test input
 
