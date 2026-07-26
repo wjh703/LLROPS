@@ -82,7 +82,7 @@ Relevant current modules:
       Fortran 77, editable installs, source distributions, and Linux wheels.
 - [x] Expose only the required top-level routines. Do not expose internal
       helpers as public Python API.
-- [ ] Add thin Python facades that validate shapes and finite values and perform
+- [x] Add thin Python facades that validate shapes and finite values and perform
       all unit conversions in one place.
 - [ ] Consider batch entry points where repeated Python/native crossings are
       measurable, while retaining scalar entry points for official test cases.
@@ -158,7 +158,7 @@ Official source pages:
 - [x] Replace the Python implementations of `fculzd_hpa()` and `fcul_a()` with
       calls to the Fortran routines without changing the public troposphere
       configuration name.
-- [ ] Continue evaluating uplink and downlink independently at their respective
+- [x] Continue evaluating uplink and downlink independently at their respective
       elevation angles.
 
 Official Chapter 9 software index:
@@ -167,19 +167,19 @@ Official Chapter 9 software index:
 
 ### 6.2 Input semantics
 
-- [ ] Keep relative-humidity to water-vapor-pressure conversion outside
+- [x] Keep relative-humidity to water-vapor-pressure conversion outside
       `FCUL_ZD_HPA`. The official routine accepts water vapor pressure in hPa,
       not relative humidity.
-- [ ] Select and document the saturation vapor pressure convention used to
+- [x] Select and document the saturation vapor pressure convention used to
       convert CRD temperature and relative humidity to water vapor pressure.
-- [ ] Distinguish the two height definitions:
+- [x] Distinguish the two height definitions:
       `FCUL_ZD_HPA` requires ellipsoidal height, while `FCUL_A` documents height
       above mean sea level.
-- [ ] Add a source for orthometric station height or explicitly document and
+- [x] Add a source for orthometric station height or explicitly document and
       quantify any temporary ellipsoidal-height approximation in `FCUL_A`.
-- [ ] Keep the minimum-elevation policy outside the official routine. The
+- [x] Keep the minimum-elevation policy outside the official routine. The
       current 3-degree clamp is application policy, not part of `FCUL_A`.
-- [ ] Validate pressure in hPa, wavelength in micrometers, temperature in
+- [x] Validate pressure in hPa, wavelength in micrometers, temperature in
       Kelvin, latitude convention, and finite positive atmospheric inputs.
 
 ### 6.3 Verification
@@ -196,7 +196,7 @@ Official Chapter 9 software index:
 - [x] Differential-test the native and former Python formulas over station
       latitude, height, temperature, pressure, humidity, wavelength, and
       elevation ranges used by the observations.
-- [ ] Verify the final two-way delay in the light-time solution, not only the
+- [x] Verify the final two-way delay in the light-time solution, not only the
       two low-level routines.
 
 ### 6.4 Optional atmospheric gradient

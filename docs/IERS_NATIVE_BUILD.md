@@ -1,7 +1,7 @@
 # IERS native build and source policy
 
-Status: build foundation implemented; production models still use their
-existing Python or third-party implementations.
+Status: build foundation implemented; the production optical troposphere
+model uses the official Fortran routines.
 
 Last verified (UTC): 2026-07-26
 
@@ -72,6 +72,39 @@ There is no Python transcription or fallback for either formula. The Python
 model retains only application-level work: converting relative humidity to
 water-vapour pressure, converting radians to degrees, and applying the minimum
 elevation policy before calling Fortran.
+
+## Atmospheric input policy
+
+The Python boundary accepts scalar, finite inputs and rejects latitude or
+elevation outside `[-90, 90] deg`, non-positive pressure, temperature, or
+wavelength, and negative water-vapour pressure. Relative humidity must be in
+`[0, 100] percent`. The minimum-elevation setting must be in `[0, 90] deg` and
+is applied before `FCUL_A`; it is not part of the official routine.
+
+Relative humidity is converted outside `FCUL_ZD_HPA` with the existing
+Magnus-type saturation-vapour-pressure convention:
+
+```text
+T_c = T_k - 273.15
+e_s = 6.1121 * exp(17.502 * T_c / (240.97 + T_c)) hPa
+WVP = RH / 100 * e_s
+```
+
+The station catalogue derives WGS84 geodetic latitude and ellipsoidal height
+from ITRF coordinates. The ellipsoidal height is therefore correct for
+`FCUL_ZD_HPA`. `FCUL_A`, however, documents height above mean sea level. Until
+an orthometric-height or geoid source is configured, the same ellipsoidal
+height is passed to `FCUL_A` as an explicit approximation.
+
+The approximation was evaluated by changing only the `FCUL_A` height by
+`+/-100 m`. At latitude `45 deg`, height `100 m`, temperature `293.15 K`, and
+elevation `30 deg`, the one-way mapped-delay change is `0.0264 mm`. A sampled
+grid used latitudes in 10-degree steps, heights `[-500, 0, 500, 2000, 5000] m`,
+temperatures `[230, 273.15, 330] K`, elevations `[3, 5, 10, 30, 90] deg`,
+pressure `1100 hPa`, water-vapour pressure `50 hPa`, and wavelength `0.3 um`.
+Its largest change was `14.84 mm` at the 3-degree boundary. A future
+geoid-backed orthometric height remains necessary for low-elevation precision
+work.
 
 ## Build and verification
 
