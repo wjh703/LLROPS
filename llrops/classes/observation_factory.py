@@ -263,6 +263,7 @@ def _register_all() -> None:
 
     register_factory("rangeBias", "none", lambda cfg, ctx: ZeroRangeBiasModel())
     register_factory("rangeBias", "inpop21", lambda cfg, ctx: TableRangeBiasModel(builtin_range_bias_table("inpop21")))
+    register_factory("rangeBias", "inpop21a", lambda cfg, ctx: TableRangeBiasModel(builtin_range_bias_table("inpop21a")))
     register_factory("rangeBias", "table", _range_bias_table)
 
     # Parametrizations register themselves on import.

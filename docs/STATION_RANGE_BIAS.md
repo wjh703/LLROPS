@@ -9,12 +9,13 @@ LLROPS separates two concepts that are intentionally configured in different pla
 
 ## Forward-model range bias
 
-Built-in INPOP21 station range-bias corrections are selected explicitly in YAML:
+Built-in INPOP21a station range-bias corrections are selected explicitly in YAML
+(`inpop21` remains a compatibility alias):
 
 ```yaml
 globals:
   rangeBias:
-    type: inpop21
+    type: inpop21a
 ```
 
 Disable deterministic station range-bias correction with:
