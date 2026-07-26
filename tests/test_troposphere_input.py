@@ -37,5 +37,4 @@ def test_troposphere_models_consume_input_object():
 
     assert ZeroTroposphereDelay().slant_delay_m(data) == 0.0
     delay = Iers2010MendesPavlisTroposphere().slant_delay_m(data)
-    assert np.isfinite(delay)
-    assert delay > 0.0
+    assert delay == pytest.approx(4.882704085022898, rel=0.0, abs=1.0e-14)

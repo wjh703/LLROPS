@@ -154,9 +154,9 @@ Official source pages:
 
 ### 6.1 Core replacement
 
-- [x] Vendor Chapter 9 `FCUL_ZD_HPA.F` and `FCUL_A.F`.
-- [ ] Replace the Python implementations of `fculzd_hpa()` and `fcul_a()` with
-      calls to the native routines without changing the public troposphere
+- [x] Import the official Chapter 9 `FCUL_ZD_HPA.F` and `FCUL_A.F` sources.
+- [x] Replace the Python implementations of `fculzd_hpa()` and `fcul_a()` with
+      calls to the Fortran routines without changing the public troposphere
       configuration name.
 - [ ] Continue evaluating uplink and downlink independently at their respective
       elevation angles.
@@ -193,7 +193,7 @@ Official Chapter 9 software index:
       The v1.3.0 header lists `2010.344 m` as the input height, but the
       published outputs exactly match `2003.344 m`; preserve the source and
       use the corrected test input documented in `IERS_NATIVE_BUILD.md`.
-- [ ] Differential-test the native and current Python formulas over station
+- [x] Differential-test the native and former Python formulas over station
       latitude, height, temperature, pressure, humidity, wavelength, and
       elevation ranges used by the observations.
 - [ ] Verify the final two-way delay in the light-time solution, not only the

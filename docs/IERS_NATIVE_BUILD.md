@@ -59,18 +59,19 @@ repository.
 
 ## Native entry points
 
-The extension is private. Production code must call a validating Python facade
-before a native routine becomes an active backend. The initial build proof
-exposes only these official Chapter 9 routines:
+The extension is private. The production troposphere model calls it through
+the existing `Iers2010MendesPavlisTroposphere` interface. The extension exposes
+only these official Chapter 9 routines:
 
 | Entry point | Inputs | Output | Time/frame/sign convention |
 |---|---|---|---|
 | `fcul_a` | north geodetic latitude in degrees; height above mean sea level in metres; temperature in kelvin; elevation in degrees | dimensionless mapping factor | no epoch or coordinate frame; positive path scale |
 | `fculzd_hpa` | north geodetic latitude in degrees; ellipsoidal height in metres; total pressure and water-vapour pressure in hPa; wavelength in micrometres | total, hydrostatic, and non-hydrostatic zenith delays in metres | no epoch or coordinate frame; positive excess path |
 
-The current troposphere class does not import this extension. Switching that
-class, adding input validation, and centralising atmospheric unit conversion
-belong to the next integration change.
+There is no Python transcription or fallback for either formula. The Python
+model retains only application-level work: converting relative humidity to
+water-vapour pressure, converting radians to degrees, and applying the minimum
+elevation policy before calling Fortran.
 
 ## Build and verification
 
@@ -128,13 +129,29 @@ This is treated as an upstream test-header input discrepancy. The official
 source remains unchanged; the corrected input and the reason for it are
 explicit in the regression test.
 
+## Replacement comparison
+
+Before removing the Python transcription, 100,000 deterministic samples were
+compared over latitude `[-90, 90] deg`, height `[-500, 5000] m`, pressure
+`[500, 1100] hPa`, water-vapour pressure `[0, 50] hPa`, wavelength
+`[0.3, 1.1] um`, temperature `[230, 330] K`, and elevation `[3, 90] deg`.
+`FCUL_A` was bit-identical. The maximum absolute differences were
+`3.646e-10 m` for zenith total delay and `4.802e-9 m` for mapped slant delay.
+The differences come from default-real literal rounding in the unchanged
+official `FCUL_ZD_HPA.F` source.
+
+On an AMD EPYC 7313, median scalar-call timings for the former Python and
+Fortran implementations were respectively `2.099 us` versus `0.187 us` for
+`FCUL_A`, and `2.068 us` versus `0.255 us` for `FCUL_ZD_HPA`. The complete
+slant-delay calculation, including common input conversions, improved from
+`5.531 us` to `1.614 us` per call.
+
 ## Pre-replacement baseline
 
 Before the native extension was added, the Python-only suite collected 155
 tests and passed in 5.40 seconds of pytest-reported time (8.23 seconds wall,
-73,772 KiB maximum RSS) on the toolchain above. No production factory or model
-imports `llrops._iers2010`, so this build-foundation change has no calculated
-range or residual contribution.
+73,772 KiB maximum RSS) on the toolchain above. The output below was captured
+before the production troposphere model switched to `llrops._iers2010`.
 
 The full `configs/llrops_oc_residuals.yml` MPI output baseline is recorded
 below after processing the unchanged production path:
