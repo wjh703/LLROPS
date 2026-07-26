@@ -79,9 +79,9 @@ selected official Chapter 5, Chapter 8, and Chapter 9 routines:
 |---|---|---|---|
 | `fcul_a` | north geodetic latitude in degrees; height above mean sea level in metres; temperature in kelvin; elevation in degrees | dimensionless mapping factor | no epoch or coordinate frame; positive path scale |
 | `fculzd_hpa` | north geodetic latitude in degrees; ellipsoidal height in metres; total pressure and water-vapour pressure in hPa; wavelength in micrometres | total, hydrostatic, and non-hydrostatic zenith delays in metres | no epoch or coordinate frame; positive excess path |
-| `ortho_eop` | explicit UTC `Epoch`, passed as MJD (`TIME`) | NumPy array `[delta_xp, delta_yp, delta_ut1]`, in microarcseconds/microseconds | official ORTHO_EOP array order |
-| `pmsdnut2` | explicit UTC `Epoch`, passed as MJD (`RMJD`) | NumPy array `[delta_xp, delta_yp]`, in microarcseconds | official PMSDNUT2 array order |
-| `utlibr` | explicit UTC `Epoch`, passed as MJD (`RMJD`) | scalar `delta_ut1` in microseconds; scalar `delta_lod` in microseconds/day | official UTLIBR units |
+| `ortho_eop` | explicit UTC `Epoch` plus `UT1-UTC`; Fortran receives UT1 MJD (`TIME`) | NumPy array `[delta_xp, delta_yp, delta_ut1]`, in microarcseconds/microseconds | ocean-tide phase follows UT1/GMST |
+| `pmsdnut2` | TT `Epoch` (TT is the accepted approximation to TDB); Fortran receives MJD (`RMJD`) | NumPy array `[delta_xp, delta_yp]`, in microarcseconds | official source converts MJD to TDB centuries for FUNDARG |
+| `utlibr` | TT `Epoch` (TT is the accepted approximation to TDB); Fortran receives MJD (`RMJD`) | scalar `delta_ut1` in microseconds; scalar `delta_lod` in microseconds/day | official source converts MJD to TDB centuries for FUNDARG |
 | `fundarg` | Julian centuries since J2000 (`T`) | `L`, `LP`, `F`, `D`, `OM` in radians | official FUNDARG convention |
 
 `CNMTX.F` is compiled as the private helper used by `ORTHO_EOP.F`. The Chapter
@@ -91,7 +91,8 @@ facade boundary; no project-specific Fortran adapter is required.
 
 There is no Python transcription or fallback for these selected routines. The
 Python facades retain only application-level work: requiring an explicit UTC
-epoch for high-frequency EOP, converting relative humidity
+observation epoch, applying C04 `UT1-UTC` to the ocean-tide input, converting
+UTC to TT for the libration routines, and converting relative humidity
 to water-vapour pressure, converting radians to degrees, applying the minimum
 elevation policy, and converting official micro-units to SI units before
 calling or returning Fortran results.

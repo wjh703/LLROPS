@@ -32,8 +32,12 @@ class TerrestrialFrameTransform:
         epoch = self._utc(epoch_utc)
         tt = utc2tt(epoch)
 
-        high_frequency = high_frequency_eop_correction(epoch)
-        dut1_s = self.earth_orientation.ut1_minus_utc_sec(epoch) + high_frequency.ut1_sec
+        dut1_c04_s = self.earth_orientation.ut1_minus_utc_sec(epoch)
+        high_frequency = high_frequency_eop_correction(
+            epoch,
+            ut1_minus_utc_sec=dut1_c04_s,
+        )
+        dut1_s = dut1_c04_s + high_frequency.ut1_sec
         ut1_jd1, ut1_jd2 = erfa.utcut1(epoch.jd1, epoch.jd2, dut1_s)
 
         pole = self.earth_orientation.polar_motion(epoch)

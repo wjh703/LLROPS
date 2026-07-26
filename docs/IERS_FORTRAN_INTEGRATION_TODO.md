@@ -107,8 +107,10 @@ Official source pages:
 
 ### 5.2 Interface and combination
 
-- [x] Resolve and document the intended MJD time scale for each routine. Do not
-      pass an unlabelled `Epoch.mjd` value through the model boundary.
+- [x] Resolve and document the intended MJD time scale for each routine: use
+      UT1 for `ORTHO_EOP/CNMTX` tidal phase, and TT (accepted for TDB) for
+      `PMSDNUT2/UTLIBR/FUNDARG`. Do not pass an unlabelled `Epoch.mjd` value
+      through the model boundary.
 - [x] Convert official outputs at the Python boundary:
       microarcseconds to arcseconds or radians, and microseconds to seconds.
 - [x] Return the following components separately for diagnostics:

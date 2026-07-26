@@ -41,7 +41,7 @@ def test_ocean_tide_correction_matches_iers_ortho_eop_reference():
 
 
 def test_libration_corrections_match_iers_reference_values():
-    polar_motion = libration_correction(Epoch.from_mjd(54_335.0, scale=TimeScale.UTC))
+    polar_motion = libration_correction(Epoch.from_mjd(54_335.0, scale=TimeScale.TT))
     np.testing.assert_allclose(
         [polar_motion.xp_arcsec * 1.0e6, polar_motion.yp_arcsec * 1.0e6],
         [24.83144238273364834, -14.09240692041837661],
@@ -50,13 +50,13 @@ def test_libration_corrections_match_iers_reference_values():
     )
 
     np.testing.assert_allclose(
-        libration_correction(Epoch.from_mjd(44_239.1, scale=TimeScale.UTC)).ut1_sec * 1.0e6,
+        libration_correction(Epoch.from_mjd(44_239.1, scale=TimeScale.TT)).ut1_sec * 1.0e6,
         2.441143834386761746,
         rtol=0.0,
         atol=2.0e-8,
     )
     np.testing.assert_allclose(
-        libration_correction(Epoch.from_mjd(55_227.4, scale=TimeScale.UTC)).ut1_sec * 1.0e6,
+        libration_correction(Epoch.from_mjd(55_227.4, scale=TimeScale.TT)).ut1_sec * 1.0e6,
         -2.655705844335680244,
         rtol=0.0,
         atol=2.0e-8,
@@ -67,7 +67,7 @@ def test_high_frequency_result_retains_named_components_and_lod():
     epoch = Epoch.from_mjd(55_227.4, scale=TimeScale.UTC)
     result = high_frequency_eop_correction(epoch)
     ocean = ocean_tide_correction(epoch)
-    libration = libration_correction(epoch)
+    libration = libration_correction(utc2tt(epoch))
 
     assert result.ocean_delta_xp_arcsec == ocean.ocean_delta_xp_arcsec
     assert result.libration_delta_yp_arcsec == libration.libration_delta_yp_arcsec
@@ -75,7 +75,7 @@ def test_high_frequency_result_retains_named_components_and_lod():
     assert result.xp_arcsec == ocean.xp_arcsec + libration.xp_arcsec
     assert result.yp_arcsec == ocean.yp_arcsec + libration.yp_arcsec
     assert result.ut1_sec == ocean.ut1_sec + libration.ut1_sec
-    np.testing.assert_allclose(result.libration_delta_lod_sec_per_day, 27.39445826599847e-6)
+    np.testing.assert_allclose(result.libration_delta_lod_sec_per_day, 27.0861697892672e-6)
 
 
 def test_high_frequency_requires_explicit_utc_epoch():
@@ -83,6 +83,8 @@ def test_high_frequency_requires_explicit_utc_epoch():
         ocean_tide_correction(47_100.0)
     with pytest.raises(ValueError, match="epoch_utc must use the UTC scale"):
         ocean_tide_correction(Epoch.from_mjd(47_100.0, scale=TimeScale.TT))
+    with pytest.raises(ValueError, match="requires a TT or TDB Epoch"):
+        libration_correction(Epoch.from_mjd(47_100.0, scale=TimeScale.UTC))
 
 
 def test_c04_parser_retains_dx_dy_for_supported_layouts(tmp_path):
@@ -129,7 +131,7 @@ def test_terrestrial_matrix_applies_celestial_pole_offsets(monkeypatch):
     monkeypatch.setattr(
         terrestrial_module,
         "high_frequency_eop_correction",
-        lambda epoch: HighFrequencyEopCorrection(),
+        lambda epoch, **kwargs: HighFrequencyEopCorrection(),
     )
 
     actual = TerrestrialFrameTransform(eop).celestial_to_terrestrial_matrix(epoch)
@@ -156,7 +158,7 @@ def test_terrestrial_matrix_applies_native_high_frequency_eop():
     )
     actual = TerrestrialFrameTransform(eop).celestial_to_terrestrial_matrix(epoch)
 
-    high_frequency = high_frequency_eop_correction(epoch)
+    high_frequency = high_frequency_eop_correction(epoch, ut1_minus_utc_sec=-0.177)
     tt = utc2tt(epoch)
     dut1_s = -0.177 + high_frequency.ut1_sec
     ut11, ut12 = erfa.utcut1(epoch.jd1, epoch.jd2, dut1_s)
