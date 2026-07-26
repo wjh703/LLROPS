@@ -293,26 +293,36 @@ support-routine symbol renames above.
 ## DEHANTTIDEINEL and pysolid comparison
 
 `pysolid 0.3.4` wraps Dennis Milbert's independent `solid.for` implementation.
-It accepts a station geodetic latitude/longitude and UTC date, then generates
-its own celestial geometry; it cannot receive the Sun and Moon vectors in the
-Chapter 7 header. It is therefore an end-to-end reference, not a byte-level
-comparison for the same tidal inputs. The table compares ITRF displacement
-vectors at UTC midnight after rotating pysolid's ENU output into ITRF:
+The comparison must use consistent epochs and celestial geometry. For each UTC
+epoch, the native call receives Sun and Moon positions computed from the
+configured INPOP21a CALCEPH kernel, converted from BCRS to GCRS and then through
+the production GCRS-to-ITRF transformation. `pysolid` computes its own
+low-precision Sun and Moon positions for that same epoch. Its ENU displacement
+is rotated into ITRF before comparison.
 
-| Header case | Native minus pysolid vector norm |
-|---|---:|
-| 2009-04-13 | `0.191816 m` |
-| 2012-07-13 | `0.051489 m` |
-| 2015-07-15 | `0.042429 m` |
-| 2017-01-15 | `32.202871 m` |
+Eight WGS84 stations were generated with NumPy seed `20260726`: longitude was
+sampled uniformly, latitude uniformly in `sin(latitude)` within 80 degrees of
+the equator, and ellipsoidal height between -300 m and 4000 m. The resulting
+ITRF displacement-vector differences are:
 
-The valid 2009--2015 cases differ by about 4--19 cm because the two models use
-independent celestial geometry and implementations. For 2017, pysolid gives a
-normal centimetre-scale vector `[-0.024193, 0.105692, -0.090597] m`; the
-Chapter 7 header's anomalous 14.5 Gm Sun vector causes the native source to
-return the documented tens-of-metres result. This isolates the discrepancy to
-the upstream header input rather than the f2py boundary or renamed support
-routines.
+| UTC epoch | Latitude | Longitude | Height | Native minus pysolid norm |
+|---|---:|---:|---:|---:|
+| 2009-04-13 00:00 | 24.287029 deg | -63.589793 deg | -178.263 m | `0.219665 mm` |
+| 2012-07-13 06:14 | 46.615893 deg | 62.805271 deg | 818.685 m | `0.095969 mm` |
+| 2015-07-15 12:31 | 9.706040 deg | 90.442026 deg | 2439.386 m | `0.119653 mm` |
+| 2017-01-15 00:00 | 22.246531 deg | 32.642419 deg | 1206.685 m | `0.195429 mm` |
+| 2017-01-15 18:47 | 26.164800 deg | 45.810002 deg | 1607.483 m | `0.175227 mm` |
+| 2020-06-21 05:43 | -9.137010 deg | -123.595304 deg | 2699.411 m | `0.341612 mm` |
+| 2024-03-20 12:00 | 27.292041 deg | -74.777061 deg | 2976.987 m | `0.043587 mm` |
+| 2025-12-31 23:59 | 4.460520 deg | 85.424868 deg | -117.222 m | `0.163799 mm` |
+
+The vector-norm difference ranges from `0.043587 mm` to `0.341612 mm`, with a
+median of `0.169513 mm`; the largest absolute ITRF component difference is
+`0.271390 mm`. This is consistent with the different celestial ephemerides and
+independent tide implementations. In particular, both 2017 production-geometry
+cases remain below 0.2 mm. The tens-of-metres result above is only a regression
+of the anomalous Sun vector copied into the official source header and is not a
+production-model discrepancy.
 
 ## Replacement comparison
 
