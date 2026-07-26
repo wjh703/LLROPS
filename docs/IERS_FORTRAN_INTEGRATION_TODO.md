@@ -285,12 +285,14 @@ Official source directory:
 
 ### 8.1 Native model
 
-- [ ] Vendor the complete Chapter 7 `HARDISP` package:
-      `HARDISP.F`, `ADMINT.F`, `ETUTC.F`, `EVAL.F`, `JULDAT.F`, `LEAP.F`,
-      `MDAY.F`, `RECURS.F`, `SHELLS.F`, `SPLINE.F`, `TDFRPH.F`, and `TOYMD.F`.
-- [ ] Do not invoke the original standalone program through files or a
-      subprocess per observation. Add a separately named callable wrapper
-      around its computational routines.
+- [x] Vendor the complete Chapter 7 `HARDISP` package:
+      derived `HARDISP_WRAP.F`, `ADMINT.F`, `ETUTC.F`, `EVAL.F`, `JULDAT.F`,
+      `LEAP.F`, `MDAY.F`, `RECURS.F`, `SHELLS.F`, `SPLINE.F`, `TDFRPH.F`,
+      and `TOYMD.F`.
+- [x] Do not invoke the original standalone program through files or a
+      subprocess per observation. `HARDISP_WRAP.F` defines the separately
+      named derived Fortran routine `HARDISP_WRAP`, exported by f2py as
+      `hardisp`, around the unchanged computational dependencies.
 - [ ] Decide whether the production API evaluates one epoch or a sorted batch
       of epochs. Prefer batch evaluation when processing many normal points for
       the same station.
@@ -315,7 +317,8 @@ Official source directory:
 
 ### 8.3 Verification
 
-- [ ] Reproduce the official HARDISP program test case and supporting report.
+- [x] Reproduce the official HARDISP Onsala program test case and supporting
+      report through the native callable interface.
 - [ ] Test epochs on both sides of leap seconds and at non-zero times of day.
 - [ ] Test component signs with an independently generated BLQ displacement
       series before enabling the model in production scenarios.

@@ -21,6 +21,49 @@ _FCUL_ZD_EXPECTED_M = np.array(
     ]
 )
 
+_HARDISP_ONSALA_AMP = np.array(
+    [
+        [0.00352, 0.00123, 0.00080, 0.00032, 0.00187, 0.00112, 0.00063, 0.00003, 0.00082, 0.00044, 0.00037],
+        [0.00144, 0.00035, 0.00035, 0.00008, 0.00053, 0.00049, 0.00018, 0.00009, 0.00012, 0.00005, 0.00006],
+        [0.00086, 0.00023, 0.00023, 0.00006, 0.00029, 0.00028, 0.00010, 0.00007, 0.00004, 0.00002, 0.00001],
+    ]
+)
+_HARDISP_ONSALA_PHASE = np.array(
+    [
+        [-64.7, -52.0, -96.2, -55.2, -58.8, -151.4, -65.6, -138.1, 8.4, 5.2, 2.1],
+        [85.5, 114.5, 56.5, 113.6, 99.4, 19.1, 94.1, -10.4, -167.4, -170.0, -177.7],
+        [109.5, 147.0, 92.7, 148.8, 50.5, -55.1, 36.4, -170.4, -15.0, 2.3, 5.2],
+    ]
+)
+_HARDISP_ONSALA_EXPECTED = np.array(
+    [
+        [0.003094, -0.001538, -0.000895],
+        [0.001812, -0.000950, -0.000193],
+        [0.000218, -0.000248, 0.000421],
+        [-0.001104, 0.000404, 0.000741],
+        [-0.001668, 0.000863, 0.000646],
+        [-0.001209, 0.001042, 0.000137],
+        [0.000235, 0.000926, -0.000667],
+        [0.002337, 0.000580, -0.001555],
+        [0.004554, 0.000125, -0.002278],
+        [0.006271, -0.000291, -0.002615],
+        [0.006955, -0.000537, -0.002430],
+        [0.006299, -0.000526, -0.001706],
+        [0.004305, -0.000244, -0.000559],
+        [0.001294, 0.000245, 0.000793],
+        [-0.002163, 0.000819, 0.002075],
+        [-0.005375, 0.001326, 0.003024],
+        [-0.007695, 0.001622, 0.003448],
+        [-0.008669, 0.001610, 0.003272],
+        [-0.008143, 0.001262, 0.002557],
+        [-0.006290, 0.000633, 0.001477],
+        [-0.003566, -0.000155, 0.000282],
+        [-0.000593, -0.000941, -0.000766],
+        [0.001992, -0.001561, -0.001457],
+        [0.003689, -0.001889, -0.001680],
+    ]
+)
+
 
 def test_fcul_a_matches_iers_reference_case():
     mapping = _iers2010.fcul_a(30.67166667, 2075.0, 300.15, 15.0)
@@ -139,6 +182,26 @@ def test_dehanttideinel_matches_iers_reference_and_source_cases(xsta, xsun, xmon
     np.testing.assert_allclose(actual, expected, rtol=0.0, atol=2.0e-15)
 
 
+def test_hardisp_matches_official_onsala_case():
+    assert not hasattr(_iers2010, "llrops_hardisp")
+
+    actual = np.column_stack(
+        _iers2010.hardisp(
+            2009,
+            6,
+            25,
+            1,
+            10,
+            45,
+            24,
+            3600.0,
+            _HARDISP_ONSALA_AMP,
+            _HARDISP_ONSALA_PHASE,
+        )
+    )
+    np.testing.assert_allclose(actual, _HARDISP_ONSALA_EXPECTED, rtol=0.0, atol=6.0e-7)
+
+
 def test_installed_iers_sources_match_pinned_hashes():
     expected = {
         "FCUL_A.F": "fdeb39aee3c8d4c2d6eb6a7e743c420372e28da5b3e84942d09580a88847693a",
@@ -159,12 +222,27 @@ def test_installed_iers_sources_match_pinned_hashes():
         "STEP2DIU.F": "898c70d4b8d50e09e0c717c911c4117b3ad1ca4996d369c258b68d00ea3a5674",
         "STEP2LON.F": "f9d3bf0317222986d22e53557020bb13a6fbb90f8e3c9915137da6184d82813a",
         "ZERO_VEC8.F": "5ea9ab87e298d377f6dbe69c46b040906b6575a9132fab3830a4dc02c9139cef",
+        "ADMINT.F": "478e3f0c001c09dd4d9e2e9920033d29e76eb60b808238e416e6db9ffaeae6c8",
+        "ETUTC.F": "a067c10de2c63269a54b6a14dce2daa49c30bfd52e66086b76492cd438414e1f",
+        "EVAL.F": "b4056a09ec5d77674cab8eac0fa32b5d1be8f471fbe33e753e81ab97a7767add",
+        "HARDISP_WRAP.F": "e8586808dad1355239f2919fffd5b150ee2f6d4547c26e50b299f8b138e525d5",
+        "JULDAT.F": "d1f39f83503178711845532e1a4ba46d0824b896fa961d81c983d694d48dde73",
+        "LEAP.F": "31d18153242823606beb9690ab0c685dd5403fe1e9bb5f214e22d21dd5e6a771",
+        "MDAY.F": "d4eae8a9a0b866a63f22134fb57bad1c57fc1f3baf98450892ddeee4f7ee8aec",
+        "RECURS.F": "8a3c88d69cebd130981887dc9c8c2f9e3d2af26fded3e052385c022126f9d44b",
+        "SHELLS.F": "6c69dede79f9adfb16d38dcbd890bbbfc3e4e47b2cbacd5fabfb520deba86701",
+        "SPLINE.F": "a13cc2b405079a2b86872341ca50d9b3f0cc219e43d1ce301b461af15df857f0",
+        "TDFRPH.F": "24068e0cd1e2e210fab7dd8d4473bb60ff8335bfcb53a2fc12dad7e6d1cccd19",
+        "TOYMD.F": "9b69b6a27d544215c516da60351e4ec51d03b04ce9bf71b6608ebf55080bf70a",
     }
     root = importlib.resources.files("llrops").joinpath("_external", "iers2010", "src")
 
     for filename, expected_hash in expected.items():
         source = root.joinpath(filename)
         assert hashlib.sha256(source.read_bytes()).hexdigest() == expected_hash
+
+    assert not root.joinpath("HARDISP.F").is_file()
+    assert not root.joinpath("LLROPS_HARDISP.F").is_file()
 
 
 def test_native_extension_imports_in_mpi_workers():

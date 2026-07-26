@@ -28,6 +28,18 @@ The selected source hashes are:
 | `UTLIBR.F` | `f523335d552ac14b661121a081ad799382312d819853c674bc0102484b5e2406` |
 | `FUNDARG.F` | `18263cbb1289e222e6ee6e59d52beb343eb77a63ed3212e4f05a4c85d475ae78` |
 | `DEHANTTIDEINEL.F` | `bc6039a1704761881bb785ce44ce084ea82783107ff64c576e69155a4914e2cb` |
+| `ADMINT.F` | `478e3f0c001c09dd4d9e2e9920033d29e76eb60b808238e416e6db9ffaeae6c8` |
+| `ETUTC.F` | `a067c10de2c63269a54b6a14dce2daa49c30bfd52e66086b76492cd438414e1f` |
+| `EVAL.F` | `b4056a09ec5d77674cab8eac0fa32b5d1be8f471fbe33e753e81ab97a7767add` |
+| `HARDISP_WRAP.F` (derived) | `e8586808dad1355239f2919fffd5b150ee2f6d4547c26e50b299f8b138e525d5` |
+| `JULDAT.F` | `d1f39f83503178711845532e1a4ba46d0824b896fa961d81c983d694d48dde73` |
+| `LEAP.F` | `31d18153242823606beb9690ab0c685dd5403fe1e9bb5f214e22d21dd5e6a771` |
+| `MDAY.F` | `d4eae8a9a0b866a63f22134fb57bad1c57fc1f3baf98450892ddeee4f7ee8aec` |
+| `RECURS.F` | `8a3c88d69cebd130981887dc9c8c2f9e3d2af26fded3e052385c022126f9d44b` |
+| `SHELLS.F` | `6c69dede79f9adfb16d38dcbd890bbbfc3e4e47b2cbacd5fabfb520deba86701` |
+| `SPLINE.F` | `a13cc2b405079a2b86872341ca50d9b3f0cc219e43d1ce301b461af15df857f0` |
+| `TDFRPH.F` | `24068e0cd1e2e210fab7dd8d4473bb60ff8335bfcb53a2fc12dad7e6d1cccd19` |
+| `TOYMD.F` | `9b69b6a27d544215c516da60351e4ec51d03b04ce9bf71b6608ebf55080bf70a` |
 | `CAL2JD.F` (derived) | `7634fafdbc761e9e97699102b0d43fdb564916d556497c98505a3205b3aef923` |
 | `DAT.F` (derived) | `4692aa5b784070cab731dd05d541f819d6ae01b20ba339a96d85ced0ffb643dc` |
 | `NORM8.F` | `636b6399dc6ab273a7b6104dd9341bf3c36995754aeee696511dbf19c9e909b6` |
@@ -40,9 +52,11 @@ The selected source hashes are:
 | `ZERO_VEC8.F` | `5ea9ab87e298d377f6dbe69c46b040906b6575a9132fab3830a4dc02c9139cef` |
 
 The official IERS files are unchanged and retain their complete IERS
-Conventions Software License. The nine non-SOFA Chapter 7 files are likewise
-unchanged. The two bundled SOFA support routines retain their complete SOFA
-license but are derived works: `CAL2JD.F` renames `iau_CAL2JD` to `CAL2JD`, and
+Conventions Software License. The HARDISP computational package is complete,
+but the standalone `HARDISP.F` program is represented by the documented
+derived `HARDISP_WRAP.F` callable routine. The two bundled SOFA
+support routines retain their complete SOFA license but are derived works:
+`CAL2JD.F` renames `iau_CAL2JD` to `CAL2JD`, and
 `DAT.F` renames `iau_DAT` to `DAT` and its one internal call to `CAL2JD`.
 These names match the calls made by the unchanged `DEHANTTIDEINEL.F`, removing
 the need for a separate compatibility source. Their original v1.3.0 archive
@@ -105,6 +119,7 @@ selected official Chapter 5, Chapter 7, Chapter 8, and Chapter 9 routines:
 | `utlibr` | TT `Epoch` (TT is the accepted approximation to TDB); Fortran receives MJD (`RMJD`) | scalar `delta_ut1` in microseconds; scalar `delta_lod` in microseconds/day | official source converts MJD to TDB centuries for FUNDARG |
 | `fundarg` | Julian centuries since J2000 (`T`) | `L`, `LP`, `F`, `D`, `OM` in radians | official FUNDARG convention |
 | `dehanttideinel` | station, Sun, and Moon geocentric ITRF/ECEF vectors in metres; UTC calendar date and fractional hour | NumPy array `[dX, dY, dZ]` in metres | official Chapter 7 UTC input and permanent-tide convention |
+| `hardisp` | UTC calendar date and whole seconds; output count and sample interval in seconds; BLQ amplitudes and phases with shape `(3, 11)` | three arrays `[dU, dS, dW]` in metres | BLQ order is vertical, west, south; output is radial/up, south, west |
 
 `CNMTX.F` is compiled as the private helper used by `ORTHO_EOP.F`. The Chapter
 5 and Chapter 8 `FUNDARG.F` files are byte-identical; the Chapter 5 copy is the
@@ -114,6 +129,16 @@ Chapter 7 source calls `CAL2JD` and `DAT`, while its bundled SOFA support
 routines define `iau_CAL2JD` and `iau_DAT`. The two SOFA files are renamed in
 place, with their required derived-work notices, so the extension links the
 official `DEHANTTIDEINEL` interface directly.
+
+`HARDISP_WRAP.F` defines the project-derived callable `HARDISP_WRAP` routine
+instead of the upstream standalone `PROGRAM`. The `.pyf` signature maps this
+Fortran symbol directly to the Python entry point `hardisp`. It accepts already
+parsed BLQ arrays, sets the official date common block, calls the unchanged
+`ADMINT` and `RECURS` routines, and returns the same `dU`, `dS`, and `dW`
+series without files, standard input, or standard output. Its header documents
+the adaptation and retains the complete IERS license. It is not distributed
+by or endorsed by the IERS Conventions Center. BLQ parsing, station lookup,
+and ENU to ITRF conversion remain in the next Phase 4 PR.
 
 There is no Python transcription or fallback for these selected routines. The
 Python facades retain only application-level work: requiring an explicit UTC
