@@ -22,8 +22,13 @@ The selected source hashes are:
 |---|---|
 | `FCUL_A.F` | `fdeb39aee3c8d4c2d6eb6a7e743c420372e28da5b3e84942d09580a88847693a` |
 | `FCUL_ZD_HPA.F` | `92731affca053aad15a44be7db58dbf6df689e75cf2e1f3b39cb4d99a4da198b` |
+| `ORTHO_EOP.F` | `dfd1524b583f2a0f11baf2f03282d0f5ba5731026ac1fdaff4aa6e9460995022` |
+| `CNMTX.F` | `8a29c599275110990e6ce93254995d498edbccc523edb2de508455736f45fc93` |
+| `PMSDNUT2.F` | `0818b58bc2a420e1eb3f951d8a74646e5fe7b5371c9beb5e89fa37c12dd0d965` |
+| `UTLIBR.F` | `f523335d552ac14b661121a081ad799382312d819853c674bc0102484b5e2406` |
+| `FUNDARG.F` | `18263cbb1289e222e6ee6e59d52beb343eb77a63ed3212e4f05a4c85d475ae78` |
 
-The files are unchanged. Each contains the complete IERS Conventions Software
+The official files are unchanged. Each contains the complete IERS Conventions Software
 License and is included in both source and binary distributions.
 
 When another routine is added:
@@ -68,12 +73,21 @@ repository.
 
 The extension is private. The production troposphere model calls it through
 the existing `Iers2010MendesPavlisTroposphere` interface. The extension exposes
-only these official Chapter 9 routines:
+selected official Chapter 5, Chapter 8, and Chapter 9 routines:
 
 | Entry point | Inputs | Output | Time/frame/sign convention |
 |---|---|---|---|
 | `fcul_a` | north geodetic latitude in degrees; height above mean sea level in metres; temperature in kelvin; elevation in degrees | dimensionless mapping factor | no epoch or coordinate frame; positive path scale |
 | `fculzd_hpa` | north geodetic latitude in degrees; ellipsoidal height in metres; total pressure and water-vapour pressure in hPa; wavelength in micrometres | total, hydrostatic, and non-hydrostatic zenith delays in metres | no epoch or coordinate frame; positive excess path |
+| `llrops_ortho_eop` | MJD (`TIME`, scale to be resolved by the next EOP API PR) | ocean `delta_xp`, `delta_yp` in microarcseconds; `delta_ut1` in microseconds | official ORTHO_EOP units; scalar outputs are named by the wrapper |
+| `llrops_pmsdnut2` | MJD (`RMJD`, scale to be resolved by the next EOP API PR) | ocean `delta_xp`, `delta_yp` in microarcseconds | official PMSDNUT2 units |
+| `llrops_utlibr` | MJD (`RMJD`, scale to be resolved by the next EOP API PR) | libration `delta_ut1` in microseconds; `delta_lod` in microseconds/day | official UTLIBR units |
+| `fundarg` | Julian centuries since J2000 (`T`) | `L`, `LP`, `F`, `D`, `OM` in radians | official FUNDARG convention |
+
+`CNMTX.F` is compiled as the private helper used by `ORTHO_EOP.F`. The Chapter
+5 and Chapter 8 `FUNDARG.F` files are byte-identical; the Chapter 5 copy is the
+single canonical source. `LLROPS_EOP_WRAPPERS.F` contains only project adapters
+that split official array outputs into named scalar values.
 
 There is no Python transcription or fallback for either formula. The Python
 model retains only application-level work: converting relative humidity to
@@ -147,9 +161,13 @@ The verified Linux toolchain is:
 | GNU Fortran | 9.4.0 |
 | mpi4py / Open MPI | 4.1.2 / 4.0.3 |
 
-The test suite checks both official FCUL vectors, installed-source hashes, and
+The test suite checks official FCUL and high-frequency EOP vectors, installed-source hashes, and
 imports/calls from two MPI workers. Wheel inspection additionally checks that
 the extension, `.F` files, and complete embedded license notices are present.
+
+The `FUNDARG` reference values are documented to 15-19 decimal places; the
+native regression allows `2e-11` radians to account for the official test
+input's decimal representation and compiler floating-point evaluation.
 
 ## Upstream FCUL_ZD test input
 

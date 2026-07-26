@@ -31,8 +31,14 @@ f2py_support = custom_target(
 
 iers_signature = files('external/iers2010/bindings/iers2010.pyf')
 iers_fortran_sources = files(
-  'external/iers2010/src/FCUL_A.F',
-  'external/iers2010/src/FCUL_ZD_HPA.F',
+    'external/iers2010/src/FCUL_A.F',
+    'external/iers2010/src/FCUL_ZD_HPA.F',
+    'external/iers2010/src/ORTHO_EOP.F',
+    'external/iers2010/src/CNMTX.F',
+    'external/iers2010/src/PMSDNUT2.F',
+    'external/iers2010/src/UTLIBR.F',
+    'external/iers2010/src/FUNDARG.F',
+    'external/iers2010/src/LLROPS_EOP_WRAPPERS.F',
 )
 iers_bindings = custom_target(
   '_iers2010module.c',

@@ -95,9 +95,9 @@ Relevant current modules:
 
 ### 5.1 Source routines
 
-- [ ] Vendor Chapter 8 `ORTHO_EOP.F` and `CNMTX.F`.
-- [ ] Vendor Chapter 5 `PMSDNUT2.F`, `UTLIBR.F`, and one `FUNDARG.F`.
-- [ ] Add native wrappers returning named scalar values rather than ambiguous
+- [x] Vendor Chapter 8 `ORTHO_EOP.F` and `CNMTX.F`.
+- [x] Vendor Chapter 5 `PMSDNUT2.F`, `UTLIBR.F`, and one `FUNDARG.F`.
+- [x] Add native wrappers returning named scalar values rather than ambiguous
       arrays.
 
 Official source pages:
