@@ -1,7 +1,7 @@
 # IERS native build and source policy
 
-Status: build foundation implemented; the production optical troposphere
-model uses the official Fortran routines.
+Status: the production optical troposphere and high-frequency EOP models use
+the official Fortran routines.
 
 Last verified (UTC): 2026-07-26
 
@@ -71,8 +71,8 @@ repository.
 
 ## Native entry points
 
-The extension is private. The production troposphere model calls it through
-the existing `Iers2010MendesPavlisTroposphere` interface. The extension exposes
+The extension is private. The production troposphere and terrestrial-frame
+models call it through their existing interfaces. The extension exposes
 selected official Chapter 5, Chapter 8, and Chapter 9 routines:
 
 | Entry point | Inputs | Output | Time/frame/sign convention |
@@ -89,10 +89,11 @@ selected official Chapter 5, Chapter 8, and Chapter 9 routines:
 single canonical source. `LLROPS_EOP_WRAPPERS.F` contains only project adapters
 that split official array outputs into named scalar values.
 
-There is no Python transcription or fallback for either formula. The Python
-model retains only application-level work: converting relative humidity to
-water-vapour pressure, converting radians to degrees, and applying the minimum
-elevation policy before calling Fortran.
+There is no Python transcription or fallback for these selected routines. The
+Python facades retain only application-level work: converting relative humidity
+to water-vapour pressure, converting radians to degrees, applying the minimum
+elevation policy, and converting official micro-units to SI units before
+calling or returning Fortran results.
 
 ## Atmospheric input policy
 

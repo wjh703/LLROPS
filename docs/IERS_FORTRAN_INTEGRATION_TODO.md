@@ -109,7 +109,7 @@ Official source pages:
 
 - [ ] Resolve and document the intended MJD time scale for each routine. Do not
       pass an unlabelled `Epoch.mjd` value through the model boundary.
-- [ ] Convert official outputs at the Python boundary:
+- [x] Convert official outputs at the Python boundary:
       microarcseconds to arcseconds or radians, and microseconds to seconds.
 - [ ] Return the following components separately for diagnostics:
       `ocean_delta_xp`, `ocean_delta_yp`, `ocean_delta_ut1`,
@@ -140,12 +140,12 @@ Official source pages:
 
 ### 5.4 Verification
 
-- [ ] Reproduce the official `ORTHO_EOP` test at MJD 47100:
+- [x] Reproduce the official `ORTHO_EOP` test at MJD 47100:
       `delta xp = -162.8386373279636530 microarcseconds`,
       `delta yp = 117.7907525842668974 microarcseconds`, and
       `delta UT1 = -23.39092370609808214 microseconds`.
-- [ ] Reproduce all official `PMSDNUT2` and `UTLIBR` test cases.
-- [ ] Differential-test the native and existing NumPy implementations over
+- [x] Reproduce all official `PMSDNUT2` and `UTLIBR` test cases.
+- [x] Differential-test the native and former NumPy implementations over
       historical, leap-second-adjacent, and modern epochs.
 - [ ] Verify the complete C04 plus high-frequency EOP plus ERFA matrix against
       an independent reference case.
