@@ -22,6 +22,8 @@ jobs:
           version: "latest"
       - name: Sync test and build environments
         run: uv sync --extra test --extra build
+      - name: Install editable extension with persistent build tools
+        run: uv pip install --no-build-isolation --editable .
       - name: Run tests
         run: uv run pytest
       - name: Build distributions
