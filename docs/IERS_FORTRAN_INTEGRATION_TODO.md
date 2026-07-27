@@ -1,6 +1,6 @@
 # IERS official Fortran integration TODO
 
-Status: planned
+Status: active; Section 10 atmospheric-loading design intentionally deferred.
 
 Last reviewed: 2026-07-25
 
@@ -84,8 +84,11 @@ Relevant current modules:
       helpers as public Python API.
 - [x] Add thin Python facades that validate shapes and finite values and perform
       all unit conversions in one place.
-- [ ] Consider batch entry points where repeated Python/native crossings are
+- [x] Consider batch entry points where repeated Python/native crossings are
       measurable, while retaining scalar entry points for official test cases.
+      Retain HARDISP's native regular-series entry point; keep the other
+      observation-path calls scalar because epochs and geometry are resolved
+      independently inside the light-time iteration.
 - [x] Verify that the extension can be imported and used safely by every MPI
       worker process.
 - [x] Capture baseline runtime and end-to-end LLR outputs before replacing any
@@ -245,17 +248,17 @@ Official source directory:
 
 ### 7.2 Runtime inputs
 
-- [ ] Supply station position in geocentric ITRF metres.
-- [ ] Obtain geocentric Sun and Moon vectors from the configured CALCEPH
+- [x] Supply station position in geocentric ITRF metres.
+- [x] Obtain geocentric Sun and Moon vectors from the configured CALCEPH
       ephemeris and transform them to ECEF/ITRF at the requested UTC epoch.
-- [ ] Confirm that the ephemeris-to-ECEF conversion uses the same corrected EOP
+- [x] Confirm that the ephemeris-to-ECEF conversion uses the same corrected EOP
       pipeline as the observation model without introducing a displacement
       recursion.
-- [ ] Pass UTC calendar date and fractional hour exactly as documented by
+- [x] Pass UTC calendar date and fractional hour exactly as documented by
       `DEHANTTIDEINEL`.
-- [ ] Put the bundled `DAT` leap-second table under an explicit update and test
+- [x] Put the bundled `DAT` leap-second table under an explicit update and test
       policy.
-- [ ] Confirm the permanent-tide convention of the station catalogue and the
+- [x] Confirm the permanent-tide convention of the station catalogue and the
       disabled Step 3 term in the official routine.
 
 ### 7.3 Replacement and verification
@@ -293,9 +296,14 @@ Official source directory:
       subprocess per observation. `HARDISP_WRAP.F` defines the separately
       named derived Fortran routine `HARDISP_WRAP`, exported by f2py as
       `hardisp`, around the unchanged computational dependencies.
-- [ ] Decide whether the production API evaluates one epoch or a sorted batch
-      of epochs. Prefer batch evaluation when processing many normal points for
-      the same station.
+- [x] Retain a scalar production API (`n=1`) for arbitrary light-time events.
+      The native `HARDISP` series interface remains available for offline,
+      regularly sampled UTC grids and is tested against scalar calls. In the
+      35,055-record TOTALOBS6924 input, only 242 transmit epochs (0.690%) form
+      an equal-step run of three or more samples after HARDISP whole-second
+      rounding; receive epochs are additionally created during iteration.
+      Therefore sorting/regridding production events would add complexity with
+      negligible usable coverage.
 
 Official source directory:
 
@@ -319,29 +327,39 @@ Official source directory:
 
 - [x] Reproduce the official HARDISP Onsala program test case and supporting
       report through the native callable interface.
-- [ ] Test epochs on both sides of leap seconds and at non-zero times of day.
-- [ ] Test component signs with an independently generated BLQ displacement
+- [x] Test native UTC epochs on both sides of the 2016 leap second and at a
+      non-zero time of day. The upstream scalar calendar interface folds the
+      exact `23:59:60` label into the following midnight; retain that behavior
+      in the direct native test and reject that ambiguous label in the
+      production Python facade.
+- [x] Test component signs with an independently generated BLQ displacement
       series before enabling the model in production scenarios.
-- [ ] Add missing-BLQ, duplicate-station, malformed-file, and out-of-range-date
-      failure tests.
+- [x] Add missing-BLQ, duplicate-station, malformed-file, and out-of-range-date
+      failure tests. The production facade rejects dates outside the pinned
+      `ETUTC.F` validity interval before entering Fortran.
 
 ## 9. Models that should remain outside the native replacement
 
 ### 9.1 Solid-Earth pole tide
 
-- [ ] Keep the current Python implementation because IERS publishes the model
+- [x] Keep the current Python implementation because IERS publishes the model
       equations but no equivalent complete Fortran routine in the Chapter 7
       software collection.
-- [ ] Validate the secular-pole calculation, `m1/m2` signs, geocentric latitude,
-      and ENU-to-ITRF conversion against independent reference values.
+- [x] Validate the secular-pole calculation, `m1/m2` signs, geocentric latitude,
+      and ENU-to-ITRF conversion against independent reference values in the
+      station-displacement component tests.
 
 ### 9.2 Ocean pole-tide loading
 
-- [ ] Keep the current grid reader and interpolation implementation.
-- [ ] Pin the official `opoleloadcoefcmcor.txt.gz` coefficient file and record
-      its checksum and provenance.
-- [ ] Reproduce the official `opoleloadcmcor.test` results, including longitude
-      wrapping, latitude boundaries, interpolation, and component signs.
+- [x] Keep the current grid reader and interpolation implementation. The
+      implementation remains Python because Chapter 7 supplies coefficient and
+      test data, not a complete replacement routine.
+- [x] Pin the official `opoleloadcoefcmcor.txt.gz` coefficient file and record
+      its checksum and provenance in `docs/IERS_NATIVE_BUILD.md`.
+- [x] Reproduce representative `opoleloadcmcor.test` vectors, including the
+      official longitude/latitude location, longitude wrapping, and component
+      signs. Boundary and interpolation behavior remains covered by the grid
+      tests.
 
 Official Chapter 7 material:
 
@@ -349,49 +367,43 @@ Official Chapter 7 material:
 
 ### 9.3 C04 interpolation and terrestrial matrices
 
-- [ ] Keep C04 parsing and leap-safe interpolation in Python.
-- [ ] Keep ERFA for IAU 2006/2000A `X`, `Y`, `s`, ERA, polar motion, and C2T
+- [x] Keep C04 parsing and leap-safe interpolation in Python.
+- [x] Keep ERFA for IAU 2006/2000A `X`, `Y`, `s`, ERA, polar motion, and C2T
       matrix construction.
-- [ ] Continue applying C04 `dX/dY` to the ERFA modelled CIP `X/Y` in radians.
-- [ ] Keep the explicit matrix order `C2T = W * R * Q` and use its transpose
+- [x] Continue applying C04 `dX/dY` to the ERFA modelled CIP `X/Y` in radians.
+- [x] Keep the explicit matrix order `C2T = W * R * Q` and use its transpose
       only for inverse position transformations at the same epoch.
 
 ## 10. Atmospheric loading follow-up
 
-- [ ] Treat atmospheric propagation delay, atmospheric tidal loading, and
-      non-tidal atmospheric loading as three separately configurable models.
-- [ ] Do not use Chapter 9 `FCUL` propagation routines for station loading.
-- [ ] Define the required atmospheric pressure product, spatial and temporal
-      coverage, reference-frame convention, ocean response treatment, and Green
-      functions before selecting an implementation.
-- [ ] Decide whether periodic S1/S2 atmospheric tides and non-tidal pressure
-      loading will use gridded displacements, station time series, or an
-      in-process convolution model.
-- [ ] Add provenance, caching, interpolation, missing-data, and reproducibility
-      requirements for the selected loading product.
-
-This phase cannot currently be classified as an official-IERS-Fortran
-replacement because the IERS Chapter 7 software distribution does not provide a
-complete routine for it.
+This section is intentionally deferred and is not part of this PR.
 
 ## 11. Cross-cutting acceptance criteria
 
-- [ ] Every native routine passes the test case embedded in its official source.
-- [ ] Units and coordinate frames are asserted at every Python/native boundary.
-- [ ] Old/new differential tests cover historical dates, modern dates,
+- [x] Every native routine passes the test case embedded in its official source.
+- [x] Units and coordinate frames are asserted at every Python/native boundary.
+- [x] Old/new differential tests cover historical dates, modern dates,
       leap-second boundaries, multiple stations, and low elevations where
-      applicable.
-- [ ] End-to-end LLR tests report the change in calculated round-trip range and
-      residual, with each physical contribution available separately.
-- [ ] Benchmarks include native-call cost, per-observation cost, and complete
-      processing throughput.
-- [ ] CI builds and tests the native extension from a clean source checkout.
-- [ ] Source distributions and wheels contain all required Fortran sources,
-      data, license notices, and compiled artifacts as appropriate.
-- [ ] Documentation states the exact IERS version and model/data conventions
+      applicable. The evidence is recorded in `docs/IERS_NATIVE_BUILD.md` and
+      the native, frame, displacement, and observation-pipeline test modules.
+- [x] End-to-end LLR tests report the change in calculated round-trip range and
+      residual, with each physical contribution available separately. The
+      observation-pipeline regression checks the RTT-to-O-C sign relation and
+      exposes transmit/receive station displacement fields independently.
+- [x] Benchmarks include native-call cost, per-observation cost, and complete
+      processing throughput. Scalar FCUL timings and the 35,055-observation
+      MPI run are recorded in `docs/IERS_NATIVE_BUILD.md`.
+- [x] CI builds and tests the native extension from a clean source checkout
+      (`.github/workflows/ci.yml`).
+- [x] Source distributions and wheels contain all required Fortran sources,
+      data, license notices, and compiled artifacts as appropriate. The
+      `scripts/verify_distribution.py` archive check is run by CI.
+- [x] Documentation states the exact IERS version and model/data conventions
       used in every released LLROPS version.
-- [ ] The old implementation is removed only after official vectors,
-      differential tests, end-to-end tests, and performance checks pass.
+- [x] The old implementation is removed only after official vectors,
+      differential tests, end-to-end tests, and performance checks pass for
+      every routine selected for native replacement. The explicitly deferred
+      Section 10 atmospheric loading and future APG work remain deferred.
 
 ## 12. Recommended implementation order
 

@@ -99,3 +99,7 @@ install_data(
   iers_fortran_sources,
   install_dir: iers_source_install_dir,
 )
+install_data(
+  'external/iers2010/LICENSE',
+  install_dir: join_paths(py.get_install_dir(), 'llrops', '_external', 'iers2010'),
+)

@@ -3,7 +3,7 @@
 Status: the production optical troposphere, high-frequency EOP, and
 solid-Earth tide models use the official Fortran routines.
 
-Last verified (UTC): 2026-07-26
+Last verified (UTC): 2026-07-27
 
 ## Source pin
 
@@ -138,15 +138,92 @@ parsed BLQ arrays, sets the official date common block, calls the unchanged
 series without files, standard input, or standard output. Its header documents
 the adaptation and retains the complete IERS license. It is not distributed
 by or endorsed by the IERS Conventions Center. BLQ parsing, station lookup,
-and ENU to ITRF conversion remain in the next Phase 4 PR.
+and ENU to ITRF conversion are implemented by `Iers2010OceanTidalLoading`.
+
+### HARDISP series decision
+
+The native `hardisp` entry point retains the upstream regular-series interface:
+one UTC calendar start, `N` samples, and one fixed sample interval. A 32-sample
+series at 900-second spacing was about 11.3 times faster than 32 individual native
+calls in the development environment, and a regression test verifies that the
+series agrees with scalar evaluations to 5 nanometres.
+
+LLROPS deliberately uses `N=1` in its production station-displacement API.
+LLR transmit epochs are irregular, and receive epochs are created and revised
+inside the iterative light-time solve. In `TOTALOBS6924.DAT`, only 242 of
+35,055 transmit epochs (0.690%) belong to equal-step sequences of at least
+three points after HARDISP whole-second rounding. Sorting or regridding the
+event stream would therefore complicate the solver and MPI task scheduling for
+negligible usable batching coverage. The native series entry remains available
+for future offline products that provide a genuine regular UTC grid.
+
+### HARDISP UTC leap seconds
+
+The upstream standalone program explicitly describes its calendar input as
+UTC. LLROPS therefore passes ordinary UTC calendar fields directly; it does
+not substitute TT or UT1. Its `TDFRPH` dependency forms `DAYFR` using a fixed
+86400-second day, however, so scalar input `2016-12-31 23:59:60` is folded into
+the same phase as `2017-01-01 00:00:00`. The direct native binding preserves
+that upstream behavior for verification. The production
+`Iers2010OceanTidalLoading` facade rejects an exact leap-second label instead
+of silently returning a duplicate displacement. Native regressions cover both
+sides of the 2016 boundary and the official non-zero-time test epoch.
+
+### HARDISP date validity
+
+The official `ETUTC.F` header states that its leap-second model is valid from
+1700.0 through the current last leap-second epoch, 2017.0 in this pinned source.
+Because the routine otherwise returns extrapolated or stale offsets outside that
+interval, `Iers2010OceanTidalLoading` rejects UTC epochs before
+`1700-01-01T00:00:00` or after `2017-01-01T00:00:00` before calling Fortran.
+
+### HARDISP component-sign validation
+
+The production Up/South/West, ENU, and ITRF component signs are also checked
+against an independently generated displacement series. Orekit 13.1.7 with
+`orekit-data` revision `315cce51` parsed the APOLLO coefficients from the
+FES2022b BLQ file, evaluated its independent Java `OceanLoading` implementation
+with IERS 2010 UT1 arguments, and projected the result into both the local and
+terrestrial frames. Four UTC epochs spanning sign changes in all three local
+components agree with LLROPS to 5 micrometres. The fixed reference values and
+BLQ SHA-256 provenance are in `tests/test_ocean_tidal_loading.py`; Orekit is not
+a build or runtime dependency.
+
+### Ocean pole-tide provenance and validation
+
+Ocean pole-tide loading remains the Python grid/interpolation model. The pinned
+IERS Chapter 7 coefficient archive is `opoleloadcoefcmcor.txt.gz`, SHA-256
+`3f256265439ae9c9081107950b4be76ff649d71c1f946eddedba55728ae60234`; its
+expanded deployed text file has SHA-256
+`3b1d099df46af0c4a7b5d3fd58db609e1b59579fc4329d29f1150b8cf1375e64`. The
+official `opoleloadcmcor.test` file has SHA-256
+`65a65ae32c9e1a8a88200cd009ac3b52ff82058d879e5b79917394a9537a36b2`.
+Representative official vectors are tested at the published latitude and
+longitude, including negative-to-0..360 longitude wrapping, ENU component
+signs, and ITRF projection. The grid tests also cover axis boundaries and
+bilinear interpolation. The official test uses `G = 6.673e-11`, while the
+production model retains its documented `G = 6.67428e-11`; therefore the
+representative vector assertions use a `3e-7 m` absolute tolerance rather than
+changing the physical constant.
+
+### Solid-Earth pole-tide validation
+
+The solid-Earth pole tide remains the Python model because Chapter 7 publishes
+the equations but no complete replacement routine. Its independent regression
+uses a spherical station at 30 degrees geocentric latitude and -75 degrees
+longitude on 2020-01-01 UTC. It asserts the 2018 secular-pole values, the
+`m1 = xp - xp0` and `m2 = -(yp - yp0)` signs, the ENU displacement, and the
+ENU-to-ITRF vector. This validates the geocentric latitude and frame rotation
+without treating the model as an official Fortran integration.
 
 There is no Python transcription or fallback for these selected routines. The
 Python facades retain only application-level work: requiring an explicit UTC
-observation epoch, applying C04 `UT1-UTC` to the ocean-tide input, converting
-UTC to TT for the libration routines, and converting relative humidity
-to water-vapour pressure, converting radians to degrees, applying the minimum
-elevation policy, and converting official micro-units to SI units before
-calling or returning Fortran results.
+observation epoch, applying C04 `UT1-UTC` to the `ortho_eop` input, passing
+UTC whole seconds to `hardisp`, converting UTC to TT for the libration
+routines, and converting relative humidity to water-vapour pressure,
+converting radians to degrees, applying the minimum elevation policy, and
+converting official micro-units to SI units before calling or returning Fortran
+results.
 
 ## C04 convention and double-counting policy
 
@@ -179,6 +256,13 @@ References:
 - <https://hpiers.obspm.fr/eoppc/eop/eopc04/readme>
 - <https://iers-conventions.obspm.fr/chapter8.php>, Section 8.1 and `RG_ZONT2.F`
 - <https://iers-conventions.obspm.fr/chapter5.php>, `FCNNUT.F`
+
+The C04 and terrestrial-frame acceptance path is covered by
+`tests/test_earth_orientation_iers2010.py`: C04 layouts retain `dX/dY`, UT1
+interpolation crosses the 2016 leap boundary without a one-second jump, the
+ERFA matrix includes the observed CIP offsets and native high-frequency EOP,
+and the resulting matrix is orthogonal. Inverse position conversion uses the
+transpose of the same `W * R * Q` matrix at the same epoch.
 
 ## Atmospheric input policy
 
@@ -274,6 +358,8 @@ The verified Linux toolchain is:
 The test suite checks official FCUL and high-frequency EOP vectors, installed-source hashes, and
 imports/calls from two MPI workers. Wheel inspection additionally checks that
 the extension, `.F` files, and complete embedded license notices are present.
+`scripts/verify_distribution.py` performs the same payload check for both
+sdists and wheels in clean-checkout CI.
 
 The `FUNDARG` reference values are documented to 15-19 decimal places; the
 native regression allows `2e-11` radians to account for the official test
@@ -348,6 +434,14 @@ independent tide implementations. In particular, both 2017 production-geometry
 cases remain below 0.2 mm. The tens-of-metres result above is only a regression
 of the anomalous Sun vector copied into the official source header and is not a
 production-model discrepancy.
+
+The production DEHANT boundary is explicit: the station, Sun, and Moon are
+geocentric ITRF metres; Sun and Moon use the configured ephemeris followed by
+the same corrected-EOP GCRS-to-ITRF transform as the observation model; and the
+date is UTC with the documented fractional-hour argument. The bundled `DAT.F`
+leap-second table is pinned by the source hash above and is exercised by the
+native date regressions. DEHANT's permanent-tide convention is retained and
+its optional Step 3 term is not enabled.
 
 ## Replacement comparison
 

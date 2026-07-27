@@ -19,6 +19,8 @@ from .terrestrial_geometry import enu2itrf, itrf2geodetic
 
 BLQ_TIDE_NAMES = ("M2", "S2", "N2", "K2", "K1", "O1", "P1", "Q1", "MF", "MM", "SSA")
 BLQ_COMPONENT_NAMES = ("up", "west", "south")
+HARDISP_MIN_UTC = (1700, 1, 1, 0, 0, 0)
+HARDISP_MAX_UTC = (2017, 1, 1, 0, 0, 0)
 _MODEL_LINE = re.compile(r"^\s*\$+\s*([A-Za-z][A-Za-z0-9_.-]*)\s*:\s*M2\b", re.IGNORECASE)
 _CMC_LINE = re.compile(r"\bCMC\s*:\s*(YES|NO)\b", re.IGNORECASE)
 _COLUMN_ORDER_LINE = re.compile(r"\bCOLUMN\s+ORDER\s*:\s*(.*)$", re.IGNORECASE)
@@ -293,7 +295,13 @@ class OceanTidalLoadingCatalog:
 
 
 class Iers2010OceanTidalLoading:
-    """Evaluate external BLQ coefficients with the native IERS ``HARDISP`` routine."""
+    """Evaluate one arbitrary UTC epoch with the native IERS ``HARDISP`` routine.
+
+    ``HARDISP`` also supports a regularly sampled native series, but LLR
+    transmit times are irregular and receive times are resolved iteratively.
+    The production displacement interface therefore deliberately uses one
+    ``n=1`` call per event instead of forcing those epochs onto a grid.
+    """
 
     def __init__(self, catalog: OceanTidalLoadingCatalog) -> None:
         if not isinstance(catalog, OceanTidalLoadingCatalog):
@@ -303,8 +311,9 @@ class Iers2010OceanTidalLoading:
     @staticmethod
     def _utc_calendar_second(epoch_utc: Epoch) -> tuple[int, int, int, int, int, int]:
         epoch_utc.require_scale(TimeScale.UTC, name="epoch_utc")
-        # HARDISP has an integer UTC-second interface.  ERFA formatting rounds
-        # correctly across minute/day boundaries and retains a leap second as 60.
+        # HARDISP has an integer UTC-second interface. ERFA formatting rounds
+        # across minute/day boundaries and retains a leap-second label as 60 so
+        # the caller can reject the native interface's ambiguous representation.
         date_text, time_text = epoch_utc.isot(precision=0).split("T", maxsplit=1)
         year, month, day = (int(value) for value in date_text.split("-"))
         hour, minute, second = (int(value) for value in time_text.split(":"))
@@ -318,6 +327,21 @@ class Iers2010OceanTidalLoading:
         year, month, day, hour, minute, second = Iers2010OceanTidalLoading._utc_calendar_second(
             epoch_utc
         )
+        if second == 60:
+            raise ValueError(
+                "Iers2010OceanTidalLoading cannot evaluate an exact UTC leap-second "
+                "label: HARDISP's scalar calendar interface cannot distinguish "
+                "23:59:60 from the following midnight."
+            )
+        calendar = (year, month, day, hour, minute, second)
+        if calendar < HARDISP_MIN_UTC or calendar > HARDISP_MAX_UTC:
+            raise ValueError(
+                "Iers2010OceanTidalLoading supports UTC epochs only from "
+                "1700-01-01T00:00:00 through 2017-01-01T00:00:00; "
+                f"got {year:04d}-{month:02d}-{day:02d}T{hour:02d}:{minute:02d}:{second:02d}."
+            )
+        # The native N-series interface is valid only on a fixed UTC-sampled
+        # grid. Production light-time events are arbitrary, so use one sample.
         up, south, west = _iers2010.hardisp(
             year,
             month,

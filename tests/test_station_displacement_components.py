@@ -15,11 +15,13 @@ from llrops.classes.displacement import (
     StationDisplacementInput,
     ZeroReflectorDisplacement,
     ZeroStationDisplacement,
+    secular_pole_2018_arcsec,
 )
 from llrops.config.context import RunContext
 from llrops.base.epoch import Epoch, TimeScale
 from llrops.classes.ephemerides import BodyState, Ephemeris
 from llrops.classes.frames import EarthOrientation, PolarMotion, ReferenceFrameSystem
+from llrops.classes.displacement.terrestrial_geometry import enu2itrf
 
 
 class _ConstantDisplacement:
@@ -169,6 +171,44 @@ def test_pole_tide_exposes_typed_evaluation_result():
     )
 
 
+def test_pole_tide_matches_independent_reference_vector():
+    # Spherical coordinates make the independent geocentric-latitude reference
+    # exact while still exercising longitude wrapping and ENU-to-ITRF rotation.
+    latitude_rad = np.deg2rad(30.0)
+    longitude_rad = np.deg2rad(-75.0)
+    station_itrf_m = 6_371_000.0 * np.array(
+        [
+            np.cos(latitude_rad) * np.cos(longitude_rad),
+            np.cos(latitude_rad) * np.sin(longitude_rad),
+            np.sin(latitude_rad),
+        ]
+    )
+    data = StationDisplacementInput(
+        station_itrf_m=station_itrf_m,
+        epoch_utc=Epoch.from_isot("2020-01-01T00:00:00", scale=TimeScale.UTC),
+    )
+    result = Iers2010PoleTide(_FakeEarthOrientation()).evaluate(data)
+
+    assert result.geocentric_latitude_rad == pytest.approx(latitude_rad)
+    assert result.longitude_rad == pytest.approx(longitude_rad)
+    assert result.wobble.secular_x_arcsec == pytest.approx(0.088537704312115)
+    assert result.wobble.secular_y_arcsec == pytest.approx(0.389695263518138)
+    assert result.wobble.m1_arcsec == pytest.approx(0.011462295687885)
+    assert result.wobble.m2_arcsec == pytest.approx(0.189695263518138)
+    np.testing.assert_allclose(
+        result.displacement_enu_m,
+        [-0.000270758134790, 0.000811192021795, 0.005151761253627],
+        rtol=0.0,
+        atol=2.0e-15,
+    )
+    np.testing.assert_allclose(
+        result.displacement_itrf_m,
+        [0.000788227447308, -0.003987833981558, 0.003278393525035],
+        rtol=0.0,
+        atol=2.0e-15,
+    )
+
+
 def test_ocean_pole_tide_grid_and_model(tmp_path):
     coefficient_file = tmp_path / "ocean_pole_tide.txt"
     coefficient_file.write_text(
@@ -183,6 +223,74 @@ def test_ocean_pole_tide_grid_and_model(tmp_path):
     assert grid.info.latitude_nodes == 2
     assert grid.info.longitude_nodes == 2
     assert np.all(np.isfinite(result.displacement_itrf_m))
+
+
+@pytest.mark.parametrize(
+    ("mjd", "m1_arcsec", "m2_arcsec", "expected_enu_m"),
+    (
+        (52640.0, -0.1449316, 0.1808667, (3.133391e-05, 4.801230e-05, 3.690801e-04)),
+        (52913.0, 0.2014101, 0.06780107, (1.544616e-05, 7.515046e-05, 1.114796e-03)),
+        (53370.0, 0.09200257, 0.1377043, (2.678392e-05, 8.177465e-05, 1.053583e-03)),
+    ),
+)
+def test_ocean_pole_tide_matches_official_test_vectors(
+    tmp_path,
+    mjd,
+    m1_arcsec,
+    m2_arcsec,
+    expected_enu_m,
+):
+    # Four cells are sufficient because the official test location is an exact
+    # grid node; the negative longitude exercises the 0..360 wrapping path.
+    coefficient_file = tmp_path / "opoleloadcoefcmcor.txt"
+    rows = (
+        "232.25 -43.75 0.216192 0.285652 0.012697 0.024930 0.000868 0.010389",
+        "232.75 -43.75 0.216192 0.285652 0.012697 0.024930 0.000868 0.010389",
+        "232.25 -43.25 0.216192 0.285652 0.012697 0.024930 0.000868 0.010389",
+        "232.75 -43.25 0.216192 0.285652 0.012697 0.024930 0.000868 0.010389",
+    )
+    coefficient_file.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    grid = OceanPoleTideGrid(coefficient_file)
+
+    class _OfficialTestEarthOrientation(_FakeEarthOrientation):
+        def polar_motion(self, epoch_utc):
+            secular_x, secular_y = secular_pole_2018_arcsec(epoch_utc)
+            return PolarMotion(secular_x + m1_arcsec, secular_y - m2_arcsec)
+
+    model = Iers2010OceanPoleTide(
+        grid=grid,
+        earth_orientation=_OfficialTestEarthOrientation(),
+    )
+    latitude_rad = np.deg2rad(-43.75)
+    longitude_rad = np.deg2rad(232.25)
+    equatorial_radius_m = 6_378_137.0
+    eccentricity_squared = 6.6943799901413165e-3
+    prime_vertical_radius_m = equatorial_radius_m / np.sqrt(
+        1.0 - eccentricity_squared * np.sin(latitude_rad) ** 2
+    )
+    station_itrf_m = (
+        prime_vertical_radius_m * np.cos(latitude_rad) * np.cos(longitude_rad),
+        prime_vertical_radius_m * np.cos(latitude_rad) * np.sin(longitude_rad),
+        prime_vertical_radius_m * (1.0 - eccentricity_squared) * np.sin(latitude_rad),
+    )
+    result = model.evaluate(
+        StationDisplacementInput(
+            station_itrf_m=station_itrf_m,
+            epoch_utc=Epoch.from_mjd(mjd, scale=TimeScale.UTC),
+        )
+    )
+
+    np.testing.assert_allclose(result.displacement_enu_m, expected_enu_m, rtol=0.0, atol=3.0e-7)
+    np.testing.assert_allclose(
+        result.displacement_itrf_m,
+        enu2itrf(
+            expected_enu_m,
+            latitude_rad=latitude_rad,
+            longitude_rad=longitude_rad,
+        ),
+        rtol=0.0,
+        atol=3.0e-7,
+    )
 
 
 def test_lunar_solid_tide_requires_no_runtime_backend_injection():

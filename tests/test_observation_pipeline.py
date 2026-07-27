@@ -210,6 +210,45 @@ def test_native_solid_earth_tide_enters_transmit_and_receive_light_time():
     )
 
 
+def test_end_to_end_contribution_changes_rtt_and_oc_separately():
+    frames = ReferenceFrameSystem(_Ephemeris(), _EarthOrientation())
+    with_tide = _pipeline(
+        frames=frames,
+        station_displacement=Iers2010SolidEarthTide(frames),
+    )
+    without_tide = _pipeline()
+    observation = with_tide.resolver.resolve(_record())
+
+    tide_prediction = with_tide.model.predict(observation)
+    zero_prediction = without_tide.model.predict(without_tide.resolver.resolve(_record()))
+    tide_reduction = with_tide.reducer.reduce(
+        observation,
+        tide_prediction,
+        min_elevation_deg=-90.0,
+    )
+    zero_reduction = without_tide.reducer.reduce(
+        without_tide.resolver.resolve(_record()),
+        zero_prediction,
+        min_elevation_deg=-90.0,
+    )
+
+    delta_rtt_s = (
+        tide_reduction.computed_rtt_raw_s - zero_reduction.computed_rtt_raw_s
+    )
+    delta_oc_m = (
+        tide_reduction.observed_minus_computed_raw_one_way_m
+        - zero_reduction.observed_minus_computed_raw_one_way_m
+    )
+    assert abs(delta_rtt_s) > 1.0e-15
+    assert delta_oc_m == pytest.approx(-0.5 * C * delta_rtt_s, abs=1.0e-9)
+    assert np.linalg.norm(
+        tide_prediction.light_time.station_displacement_transmit_itrf_m
+    ) > 1.0e-6
+    assert np.linalg.norm(
+        tide_prediction.light_time.station_displacement_receive_itrf_m
+    ) > 1.0e-6
+
+
 def test_fortran_troposphere_contributes_to_both_light_time_legs(monkeypatch):
     transmit_epoch = _record().transmit_epoch
 
