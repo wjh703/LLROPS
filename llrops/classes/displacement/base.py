@@ -8,6 +8,7 @@ import numpy as np
 
 from llrops.base.epoch import Epoch, TimeScale
 from llrops.base.array_validation import readonly_vector3
+from llrops.base.station_identity import canonical_station_id
 
 
 def _epoch(value: Epoch, *, scale: TimeScale, name: str) -> Epoch:
@@ -20,6 +21,7 @@ def _epoch(value: Epoch, *, scale: TimeScale, name: str) -> Epoch:
 class StationDisplacementInput:
     station_itrf_m: np.ndarray
     epoch_utc: Epoch
+    station_id: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -32,6 +34,11 @@ class StationDisplacementInput:
             "epoch_utc",
             _epoch(self.epoch_utc, scale=TimeScale.UTC, name="epoch_utc"),
         )
+        if self.station_id is not None:
+            station_id = canonical_station_id(self.station_id)
+            if not station_id:
+                raise ValueError("station_id must not be empty when supplied.")
+            object.__setattr__(self, "station_id", station_id)
 
 
 @dataclass(frozen=True, slots=True, eq=False)

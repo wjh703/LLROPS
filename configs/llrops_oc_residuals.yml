@@ -42,13 +42,17 @@ globals:
       - type: iers2010PoleTide
       - type: iers2010OceanPoleTide
         coefficientFile: "{dataDir}/auxiliary/opoleloadcoefcmcor.txt"
+      - type: iers2010OceanTidalLoading
+        # Onsala BLQ coefficients; switch to fes2014b.txt for a legacy-model run.
+        coefficientFile: "{dataDir}/auxiliary/fes2022b.txt"
+        model: FES2022b
 
   reflectorDisplacement: lunarSolidTide
 
   # Fixed forward-model O-C range-bias correction.
   # Use {type: none} if you want raw model residuals without this correction.
   rangeBias:
-    type: none
+    type: inpop21a
 
   stationCatalog: builtin
   reflectorCatalog: builtin
@@ -82,5 +86,5 @@ programs:
     mpi:
       chunksize: 32
 
-    outputCsv: "{outputDir}/oc_residuals_w_libration_correction_wo_bias.csv"
+    outputCsv: "{outputDir}/oc_residuals_w_libration_correction_iers_w_ot.csv"
     outputJson: null

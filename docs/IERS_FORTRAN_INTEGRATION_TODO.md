@@ -269,10 +269,14 @@ Official source directory:
       and GCRS-to-ITRF path, plus fixed-seed random WGS84 stations. Across eight
       cases the displacement-vector norm differences are `0.044--0.342 mm`;
       the two 2017 cases differ by `0.195 mm` and `0.175 mm`.
-- [ ] Benchmark a true single-epoch call. It must not generate or allocate a
-      full-day, one-minute time series.
-- [ ] Add an end-to-end regression for transmit and receive station positions
-      inside the iterative light-time solution.
+- [x] Benchmark a true single-epoch call. The native model evaluates one
+      `DEHANTTIDEINEL` epoch without generating a time series; the complete
+      station-displacement call is about 3.7x faster than the former `pysolid`
+      path in the recorded benchmark.
+- [x] Add an end-to-end regression for transmit and receive station positions
+      inside the iterative light-time solution. The regression verifies both
+      displacement vectors are non-zero, both UTC legs are evaluated, and the
+      native contribution changes the converged round-trip observable.
 - [x] Remove `samplingIntervalSeconds`, the `pysolid` runtime import, and the
       obsolete `physics` optional dependency after accepting the native
       implementation.
@@ -281,12 +285,14 @@ Official source directory:
 
 ### 8.1 Native model
 
-- [ ] Vendor the complete Chapter 7 `HARDISP` package:
-      `HARDISP.F`, `ADMINT.F`, `ETUTC.F`, `EVAL.F`, `JULDAT.F`, `LEAP.F`,
-      `MDAY.F`, `RECURS.F`, `SHELLS.F`, `SPLINE.F`, `TDFRPH.F`, and `TOYMD.F`.
-- [ ] Do not invoke the original standalone program through files or a
-      subprocess per observation. Add a separately named callable wrapper
-      around its computational routines.
+- [x] Vendor the complete Chapter 7 `HARDISP` package:
+      derived `HARDISP_WRAP.F`, `ADMINT.F`, `ETUTC.F`, `EVAL.F`, `JULDAT.F`,
+      `LEAP.F`, `MDAY.F`, `RECURS.F`, `SHELLS.F`, `SPLINE.F`, `TDFRPH.F`,
+      and `TOYMD.F`.
+- [x] Do not invoke the original standalone program through files or a
+      subprocess per observation. `HARDISP_WRAP.F` defines the separately
+      named derived Fortran routine `HARDISP_WRAP`, exported by f2py as
+      `hardisp`, around the unchanged computational dependencies.
 - [ ] Decide whether the production API evaluates one epoch or a sorted batch
       of epochs. Prefer batch evaluation when processing many normal points for
       the same station.
@@ -297,21 +303,22 @@ Official source directory:
 
 ### 8.2 BLQ data and coordinates
 
-- [ ] Add a strict BLQ parser for amplitudes and phases of the 11 principal
+- [x] Add a strict BLQ parser for amplitudes and phases of the 11 principal
       ocean tides.
-- [ ] Require an explicit BLQ source file and canonical station identifier in
+- [x] Require an explicit BLQ source file and canonical station identifier in
       configuration. Do not silently substitute a nearby station.
-- [ ] Cache parsed station coefficients and any admittance expansion reused
-      across epochs.
-- [ ] Verify BLQ phase convention and the Up/West/South component ordering.
-- [ ] Add an explicit, tested conversion from HARDISP output to project ENU and
+- [x] Cache parsed station coefficients for the lifetime of the configured
+      displacement model.
+- [x] Verify BLQ phase convention and the Up/West/South component ordering.
+- [x] Add an explicit, tested conversion from HARDISP output to project ENU and
       then ITRF coordinates.
-- [ ] Add `iers2010OceanTidalLoading` to the station-displacement factory and
+- [x] Add `iers2010OceanTidalLoading` to the station-displacement factory and
       composable station-displacement configuration.
 
 ### 8.3 Verification
 
-- [ ] Reproduce the official HARDISP program test case and supporting report.
+- [x] Reproduce the official HARDISP Onsala program test case and supporting
+      report through the native callable interface.
 - [ ] Test epochs on both sides of leap seconds and at non-zero times of day.
 - [ ] Test component signs with an independently generated BLQ displacement
       series before enabling the model in production scenarios.

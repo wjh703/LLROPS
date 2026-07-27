@@ -54,5 +54,22 @@ python module _iers2010
             double precision intent(in), dimension(3) :: xmon
             double precision intent(out), dimension(3) :: dxtide
         end subroutine dehanttideinel
+
+        subroutine hardisp(year, month, day, hour, minute, second, n, sample, blq_amp, blq_phase, du, ds, dw)
+            fortranname hardisp_wrap
+            integer intent(in) :: year
+            integer intent(in) :: month
+            integer intent(in) :: day
+            integer intent(in) :: hour
+            integer intent(in) :: minute
+            integer intent(in) :: second
+            integer intent(in) :: n
+            double precision intent(in) :: sample
+            double precision intent(in), dimension(3,11) :: blq_amp
+            double precision intent(in), dimension(3,11) :: blq_phase
+            double precision intent(out), dimension(n), depend(n) :: du
+            double precision intent(out), dimension(n), depend(n) :: ds
+            double precision intent(out), dimension(n), depend(n) :: dw
+        end subroutine hardisp
     end interface
 end python module _iers2010
