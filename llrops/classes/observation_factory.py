@@ -10,7 +10,7 @@ ephemerides            : calceph
 earthRotation          : iersC04
 troposphere            : none | mendesPavlis
 relativity             : none | iersShapiro
-stationDisplacement    : none | sum | iers2010SolidEarthTide | iers2010PoleTide | iers2010OceanPoleTide
+stationDisplacement    : none | sum | iers2010SolidEarthTide | iers2010PoleTide | iers2010OceanPoleTide | iers2010OceanTidalLoading
 reflectorDisplacement  : none | lunarSolidTide
 rangeBias             : none | inpop21 | table
 parametrization        : reflectorPosition | stationRangeBias   (registered in their modules)
@@ -127,10 +127,12 @@ def _register_all() -> None:
     from llrops.classes.displacement import (
         CompositeStationDisplacement,
         Iers2010OceanPoleTide,
+        Iers2010OceanTidalLoading,
         Iers2010PoleTide,
         Iers2010SolidEarthTide,
         LunarSolidTide,
         OceanPoleTideGrid,
+        OceanTidalLoadingCatalog,
         ZeroReflectorDisplacement,
         ZeroStationDisplacement,
     )
@@ -223,6 +225,24 @@ def _register_all() -> None:
             earth_orientation=_required_earth_orientation(ctx),
         )
 
+    def _station_ocean_tidal_loading(cfg: dict, ctx) -> Iers2010OceanTidalLoading:
+        coefficient_file = _resolve_optional_path(ctx, cfg.get("coefficientFile"))
+        if coefficient_file is None:
+            raise ValueError(
+                "stationDisplacement/iers2010OceanTidalLoading requires 'coefficientFile'."
+            )
+        catalog = OceanTidalLoadingCatalog(coefficient_file)
+        expected_model = cfg.get("model")
+        actual_model = catalog.info.tidal_model
+        if expected_model is not None and (
+            actual_model is None or str(expected_model).casefold() != actual_model.casefold()
+        ):
+            raise ValueError(
+                "stationDisplacement/iers2010OceanTidalLoading model mismatch: "
+                f"config requests {expected_model!r}, BLQ file declares {actual_model!r}."
+            )
+        return Iers2010OceanTidalLoading(catalog=catalog)
+
     register_factory(
         "stationDisplacement",
         "none",
@@ -245,6 +265,11 @@ def _register_all() -> None:
         "stationDisplacement",
         "iers2010oceanpoletide",
         _station_ocean_pole_tide,
+    )
+    register_factory(
+        "stationDisplacement",
+        "iers2010oceantidalloading",
+        _station_ocean_tidal_loading,
     )
 
     register_factory(

@@ -76,13 +76,12 @@ class LightTimeRequest:
     reflector_reference_pa_m: np.ndarray
     transmit_epoch: Epoch
     atmosphere: OpticalAtmosphere
-    observed_round_trip_time_s: float | None = None
-    initial_round_trip_time_s: float | None = None
     station_position_at_utc: Callable[[Epoch], Sequence[float]] | None = field(
         default=None,
         repr=False,
         compare=False,
     )
+    station_id: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -98,14 +97,6 @@ class LightTimeRequest:
         if not isinstance(self.transmit_epoch, Epoch):
             raise TypeError("transmit_epoch must be an Epoch.")
         self.transmit_epoch.require_scale(TimeScale.UTC, name="transmit_epoch")
-        for name in ("observed_round_trip_time_s", "initial_round_trip_time_s"):
-            value = getattr(self, name)
-            if value is None:
-                continue
-            value = float(value)
-            if not np.isfinite(value) or value <= 0.0:
-                raise ValueError(f"{name} must be positive and finite when supplied.")
-            object.__setattr__(self, name, value)
 
     def station_position(self, epoch_utc: Epoch) -> np.ndarray:
         epoch_utc.require_scale(TimeScale.UTC, name="epoch_utc")
@@ -234,10 +225,15 @@ class LightTimeSolver:
         self,
         station_itrf_m: Sequence[float],
         epoch_utc: Epoch,
+        station_id: str | None,
     ) -> np.ndarray:
         return np.asarray(
             self.station_displacement.displacement_itrf_m(
-                StationDisplacementInput(station_itrf_m=station_itrf_m, epoch_utc=epoch_utc)
+                StationDisplacementInput(
+                    station_itrf_m=station_itrf_m,
+                    epoch_utc=epoch_utc,
+                    station_id=station_id,
+                )
             ),
             dtype=float,
         ).reshape(3)
@@ -266,7 +262,11 @@ class LightTimeSolver:
     ) -> _StationEventState:
         epoch_utc.require_scale(TimeScale.UTC, name="epoch_utc")
         reference = request.station_position(epoch_utc)
-        displacement = self._station_displacement_itrf_m(reference, epoch_utc)
+        displacement = self._station_displacement_itrf_m(
+            reference,
+            epoch_utc,
+            request.station_id,
+        )
         position = reference + displacement
         gcrs = self.frames.itrf2gcrs(position, epoch_utc)
         return _StationEventState(
@@ -352,11 +352,7 @@ class LightTimeSolver:
             transmit_tdb,
         )
 
-        initial_rtt_s = (
-            request.initial_round_trip_time_s
-            or request.observed_round_trip_time_s
-            or 2.4
-        )
+        initial_rtt_s = 2.4
         bounce_tdb = transmit_tdb.shifted(0.5 * initial_rtt_s)
         receive_tdb = transmit_tdb.shifted(initial_rtt_s)
         previous_rtt_s = float(initial_rtt_s)

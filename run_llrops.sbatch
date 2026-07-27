@@ -23,6 +23,6 @@ echo "Tasks: $SLURM_NTASKS"
 echo "Start time: $(date)"
 echo "Working directory: $(pwd)"
 
-# uv run mpirun -n 96 python -m llrops run configs/llrops_reflector_bias_adjustment_detailed.yml --mpi
-uv run mpirun -n 32 python -m llrops run configs/llrops_oc_residuals.yml --mpi
+# uv run --extra mpi mpirun -n "$SLURM_NTASKS" python -m llrops run configs/llrops_reflector_bias_adjustment_detailed.yml --mpi
+uv run --extra mpi mpirun -n "$SLURM_NTASKS" python -m llrops run configs/llrops_oc_residuals.yml --mpi
 echo "End time: $(date)"

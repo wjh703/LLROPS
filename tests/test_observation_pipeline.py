@@ -162,6 +162,30 @@ def test_full_observation_pipeline_builds_one_equation():
     )
 
 
+def test_light_time_starts_from_fixed_round_trip_time(monkeypatch):
+    processor = _pipeline()
+    observation = processor.resolver.resolve(_record())
+    solver = processor.model.light_time_solver
+    calls = []
+    original = LightTimeSolver._station_state_from_tdb
+
+    def record_receive_epoch(self, request, epoch_tdb):
+        calls.append((request, epoch_tdb))
+        return original(self, request, epoch_tdb)
+
+    monkeypatch.setattr(LightTimeSolver, "_station_state_from_tdb", record_receive_epoch)
+    processor.model.predict(observation)
+
+    request, initial_receive_tdb = calls[0]
+    transmit_station = solver._station_state_at_utc(request, request.transmit_epoch)
+    transmit_tdb = solver.time_converter.convert(
+        request.transmit_epoch,
+        TimeScale.TDB,
+        station_gcrs_m=transmit_station.position_gcrs_m,
+    )
+    assert transmit_tdb.seconds_until(initial_receive_tdb) == pytest.approx(2.4, abs=1.0e-13)
+
+
 def test_native_solid_earth_tide_enters_transmit_and_receive_light_time():
     frames = ReferenceFrameSystem(_Ephemeris(), _EarthOrientation())
     recorder = _RecordingStationDisplacement(Iers2010SolidEarthTide(frames))
@@ -174,6 +198,7 @@ def test_native_solid_earth_tide_enters_transmit_and_receive_light_time():
 
     assert solution.converged
     assert len(recorder.calls) >= 3
+    assert {call.station_id for call in recorder.calls} == {"APOLLO"}
     assert recorder.calls[0].epoch_utc == observation.transmit_epoch
     assert any(call.epoch_utc != observation.transmit_epoch for call in recorder.calls)
     assert np.linalg.norm(solution.station_displacement_transmit_itrf_m) > 1.0e-6

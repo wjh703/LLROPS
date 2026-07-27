@@ -70,10 +70,9 @@ class LlrObservationModel:
         request = LightTimeRequest(
             station_reference_itrf_m=station_itrf_m,
             station_position_at_utc=station.itrf_xyz_at,
+            station_id=observation.station_key,
             reflector_reference_pa_m=reflector.moon_fixed_xyz_m,
             transmit_epoch=transmit_epoch,
-            observed_round_trip_time_s=record.observed_round_trip_time_s,
-            initial_round_trip_time_s=record.observed_round_trip_time_s,
             atmosphere=OpticalAtmosphere(
                 pressure_hpa=record.pressure_hpa,
                 temperature_k=record.temperature_k,

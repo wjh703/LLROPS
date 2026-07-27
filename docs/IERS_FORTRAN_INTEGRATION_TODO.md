@@ -303,16 +303,16 @@ Official source directory:
 
 ### 8.2 BLQ data and coordinates
 
-- [ ] Add a strict BLQ parser for amplitudes and phases of the 11 principal
+- [x] Add a strict BLQ parser for amplitudes and phases of the 11 principal
       ocean tides.
-- [ ] Require an explicit BLQ source file and canonical station identifier in
+- [x] Require an explicit BLQ source file and canonical station identifier in
       configuration. Do not silently substitute a nearby station.
-- [ ] Cache parsed station coefficients and any admittance expansion reused
-      across epochs.
-- [ ] Verify BLQ phase convention and the Up/West/South component ordering.
-- [ ] Add an explicit, tested conversion from HARDISP output to project ENU and
+- [x] Cache parsed station coefficients for the lifetime of the configured
+      displacement model.
+- [x] Verify BLQ phase convention and the Up/West/South component ordering.
+- [x] Add an explicit, tested conversion from HARDISP output to project ENU and
       then ITRF coordinates.
-- [ ] Add `iers2010OceanTidalLoading` to the station-displacement factory and
+- [x] Add `iers2010OceanTidalLoading` to the station-displacement factory and
       composable station-displacement configuration.
 
 ### 8.3 Verification
