@@ -64,6 +64,21 @@ _HARDISP_ONSALA_EXPECTED = np.array(
     ]
 )
 
+_HARDISP_UTC_REGRESSION_CASES = (
+    (
+        (2016, 12, 31, 23, 59, 59),
+        np.array([0.00473209097981453, -0.00054359360365197, -0.00126003834884614]),
+    ),
+    (
+        (2017, 1, 1, 0, 0, 0),
+        np.array([0.00473177339881659, -0.00054353591986001, -0.00125983613543212]),
+    ),
+    (
+        (2009, 6, 25, 1, 10, 45),
+        np.array([0.00309408246539533, -0.00153829867485911, -0.00089535955339670]),
+    ),
+)
+
 
 def test_fcul_a_matches_iers_reference_case():
     mapping = _iers2010.fcul_a(30.67166667, 2075.0, 300.15, 15.0)
@@ -202,6 +217,97 @@ def test_hardisp_matches_official_onsala_case():
     np.testing.assert_allclose(actual, _HARDISP_ONSALA_EXPECTED, rtol=0.0, atol=6.0e-7)
 
 
+@pytest.mark.parametrize(("calendar", "expected"), _HARDISP_UTC_REGRESSION_CASES)
+def test_hardisp_utc_leap_boundary_and_nonzero_time(calendar, expected):
+    actual = np.asarray(
+        _iers2010.hardisp(
+            *calendar,
+            1,
+            1.0,
+            _HARDISP_ONSALA_AMP,
+            _HARDISP_ONSALA_PHASE,
+        ),
+        dtype=float,
+    ).reshape(3)
+
+    np.testing.assert_allclose(actual, expected, rtol=0.0, atol=2.0e-9)
+
+
+def test_hardisp_utc_leap_second_label_matches_following_midnight():
+    leap_second = np.asarray(
+        _iers2010.hardisp(
+            2016,
+            12,
+            31,
+            23,
+            59,
+            60,
+            1,
+            1.0,
+            _HARDISP_ONSALA_AMP,
+            _HARDISP_ONSALA_PHASE,
+        ),
+        dtype=float,
+    ).reshape(3)
+    following_midnight = np.asarray(
+        _iers2010.hardisp(
+            2017,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1.0,
+            _HARDISP_ONSALA_AMP,
+            _HARDISP_ONSALA_PHASE,
+        ),
+        dtype=float,
+    ).reshape(3)
+
+    # TDFRPH forms DAYFR with a fixed 86400-second day, so its scalar
+    # calendar interface cannot represent this extra UTC label separately.
+    np.testing.assert_array_equal(leap_second, following_midnight)
+
+
+def test_hardisp_regular_series_matches_individual_epochs():
+    series = np.column_stack(
+        _iers2010.hardisp(
+            2009,
+            6,
+            25,
+            1,
+            10,
+            45,
+            4,
+            900.0,
+            _HARDISP_ONSALA_AMP,
+            _HARDISP_ONSALA_PHASE,
+        )
+    )
+    scalar = np.array(
+        [
+            np.asarray(
+                _iers2010.hardisp(
+                    2009,
+                    6,
+                    25,
+                    1,
+                    minute,
+                    45,
+                    1,
+                    1.0,
+                    _HARDISP_ONSALA_AMP,
+                    _HARDISP_ONSALA_PHASE,
+                ),
+                dtype=float,
+            ).reshape(3)
+            for minute in (10, 25, 40, 55)
+        ]
+    )
+    np.testing.assert_allclose(series, scalar, rtol=0.0, atol=5.0e-9)
+
+
 def test_installed_iers_sources_match_pinned_hashes():
     expected = {
         "FCUL_A.F": "fdeb39aee3c8d4c2d6eb6a7e743c420372e28da5b3e84942d09580a88847693a",
@@ -243,6 +349,11 @@ def test_installed_iers_sources_match_pinned_hashes():
 
     assert not root.joinpath("HARDISP.F").is_file()
     assert not root.joinpath("LLROPS_HARDISP.F").is_file()
+    license_text = importlib.resources.files("llrops").joinpath(
+        "_external", "iers2010", "LICENSE"
+    ).read_text(encoding="utf-8")
+    assert "IERS Conventions Software License" in license_text
+    assert "This notice must be reproduced intact" in license_text
 
 
 def test_native_extension_imports_in_mpi_workers():
