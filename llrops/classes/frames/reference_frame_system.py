@@ -21,7 +21,6 @@ class ReferenceFrameSystem:
         ephemeris: Ephemeris,
         earth_orientation: EarthOrientation,
         time_converter: TimeScaleConverter | None = None,
-        owns_ephemeris: bool = False,
     ) -> None:
         if not isinstance(ephemeris, Ephemeris):
             raise TypeError("ephemeris must implement Ephemeris.")
@@ -34,7 +33,6 @@ class ReferenceFrameSystem:
         self.ephemeris = ephemeris
         self.earth_orientation = earth_orientation
         self.time_converter = time_converter
-        self.owns_ephemeris = owns_ephemeris
         self.terrestrial = TerrestrialFrameTransform(earth_orientation)
         self.lunar = LunarFrameTransform(ephemeris)
         self.relativistic = RelativisticFrameTransform(ephemeris)
@@ -42,10 +40,6 @@ class ReferenceFrameSystem:
     @property
     def ephemeris_file(self):
         return self.ephemeris.source_file
-
-    def close(self) -> None:
-        if self.owns_ephemeris:
-            self.ephemeris.close()
 
     def itrf2gcrs(self, position_itrf_m: Sequence[float], epoch_utc: Epoch) -> np.ndarray:
         return self.terrestrial.itrf2gcrs(position_itrf_m, epoch_utc)

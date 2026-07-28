@@ -15,10 +15,6 @@ def _eq(station_key, epoch, station_id=None):
         station_key=station_key,
         reflector_key="apollo15",
         epoch=epoch,
-        metadata={
-            "station_id": station_id,
-            "station_name": station_key,
-        },
     )
 
 

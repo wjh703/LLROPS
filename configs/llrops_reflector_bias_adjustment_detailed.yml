@@ -247,10 +247,6 @@ programs:
         minimumOneWaySigmaM: 1.0e-3
         minimumFractionOfGroupMedian: 0.1
 
-      # Materialize A/l/sigma once per linearization point so repeated robust/VCE
-      # iterations use vectorized BLAS operations. The streaming backend remains
-      # available for numerical comparison and unusually large parameter sets.
-      linearizationBackend: dense
       warmStartStochasticModelAcrossStages: true
 
       # Nonlinear outer-loop limit. Each outer loop computes O-C/design once,
@@ -260,8 +256,8 @@ programs:
       # Default tolerance for parameter blocks without an explicit override.
       updateToleranceM: 2.0e-3
       updateToleranceByBlockM:
-        ReflectorPositionParametrization: 1.0e-3
-        StationRangeBiasParametrization: 2.0e-3
+        reflectorPosition: 1.0e-3
+        stationRangeBias: 2.0e-3
       # Require two successive outer iterations with a stable stochastic model
       # and sub-millimetre parameter corrections.
       requiredConsecutiveConvergedLinearizations: 1
@@ -271,18 +267,18 @@ programs:
       stages:
         - name: reflector
           parametrizations:
-            - ReflectorPositionParametrization
+            - reflectorPosition
           maximumLinearizations: 8
           updateToleranceM: 1.0e-3
         - name: bias
           parametrizations:
-            - StationRangeBiasParametrization
+            - stationRangeBias
           maximumLinearizations: 8
           updateToleranceM: 2.0e-3
         - name: joint
           parametrizations:
-            - ReflectorPositionParametrization
-            - StationRangeBiasParametrization
+            - reflectorPosition
+            - stationRangeBias
           # Half-step parameter updates suppress the observed Apollo 15 y/z
           # sign-alternating joint oscillation. Convergence is still tested
           # against the full, undamped candidate correction.

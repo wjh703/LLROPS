@@ -100,10 +100,6 @@ class NptDataset:
             f"n_invalid_records={self.n_invalid_records})"
         )
 
-    @property
-    def n_valid_records(self) -> int:
-        return len(self.records)
-
     def __len__(self) -> int:
         return len(self.records)
 

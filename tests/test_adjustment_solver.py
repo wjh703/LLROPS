@@ -42,7 +42,7 @@ def _equation(identity, value, station, wavelength=532.0):
         station_key=station,
         reflector_key="REF",
         epoch=Epoch.from_isot("2020-01-01T00:00:00", scale=TimeScale.UTC),
-        metadata={"station_name": station, "wavelength_nm": wavelength},
+        wavelength_nm=wavelength,
     )
 
 
@@ -99,18 +99,18 @@ def test_parametrization_selection_reuses_block_state():
 def test_parameter_convergence_policy_supports_block_tolerances():
     policy = ParameterConvergencePolicy(
         default_tolerance_m=1.0e-3,
-        tolerance_by_block_m={"StationRangeBiasParametrization": 2.0e-3},
+        tolerance_by_block_m={"stationRangeBias": 2.0e-3},
     )
     evaluation = policy.evaluate(
         {
-            "0:ReflectorPositionParametrization": 0.9e-3,
-            "1:StationRangeBiasParametrization": 1.5e-3,
+            "reflectorPosition": 0.9e-3,
+            "stationRangeBias": 1.5e-3,
         }
     )
 
     assert evaluation.converged
-    assert evaluation.tolerances_m["0:ReflectorPositionParametrization"] == pytest.approx(1.0e-3)
-    assert evaluation.tolerances_m["1:StationRangeBiasParametrization"] == pytest.approx(2.0e-3)
+    assert evaluation.tolerances_m["reflectorPosition"] == pytest.approx(1.0e-3)
+    assert evaluation.tolerances_m["stationRangeBias"] == pytest.approx(2.0e-3)
 
 
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), -1.0])
@@ -186,9 +186,7 @@ def test_prefit_uncertainty_qc_floors_only_abnormally_small_sigmas():
     assert records["tiny"]["status"] == "FLOORED"
     assert records["tiny"]["reported_sigma_m"] == pytest.approx(1.0e-5)
     assert records["normal-1"]["status"] == "UNCHANGED"
-    assert adjusted[0].metadata["uncertainty_quality_control"]["reason"] == (
-        "BELOW_PREFIT_UNCERTAINTY_FLOOR"
-    )
+    assert records["tiny"]["reason"] == "BELOW_PREFIT_UNCERTAINTY_FLOOR"
 
 
 def test_vce_assignment_rejects_unassigned_observation():
@@ -388,7 +386,7 @@ def _two_component_case():
     return equations, components
 
 
-def test_dense_linearization_matches_streaming_normals_and_vce():
+def test_dense_linearization_matches_streaming_normal_equations():
     equations, components = _two_component_case()
     parametrization = ParametrizationList([AffineParametrization()])
     parametrization.setup(equations, None)
@@ -426,44 +424,7 @@ def test_dense_linearization_matches_streaming_normals_and_vce():
     assert dense_solved.covariance == pytest.approx(
         streaming_solved.covariance, rel=1.0e-13
     )
-    residual_vector = dense.reduced_observations - dense.design @ dense_solved.delta
-    residuals = {
-        key: float(value) for key, value in zip(dense.identities, residual_vector)
-    }
-    estimator = HelmertVceEstimator(
-        components, minimum_effective_redundancy=1.0
-    )
-    streaming_estimate = estimator.estimate(
-        equations=equations,
-        residuals=residuals,
-        normals=streaming_normals,
-        parametrization=parametrization,
-        parameter_names=names,
-        assignments=assignments,
-        factors=factors,
-        scales=scales,
-        covariance=streaming_solved.covariance,
-    )
-    dense_estimate = estimator.estimate_dense(
-        design=dense.design,
-        sigmas=dense.sigmas,
-        residuals=residual_vector,
-        component_ids=np.asarray([assignments[key] for key in dense.identities]),
-        factors=np.asarray([factors[key] for key in dense.identities]),
-        scales=scales,
-        normals=dense_normals,
-        covariance=dense_solved.covariance,
-    )
-    assert dense_estimate.scales == pytest.approx(
-        streaming_estimate.scales, rel=1.0e-12
-    )
-    for component in components:
-        assert dense_estimate.diagnostics[component.id] == pytest.approx(
-            streaming_estimate.diagnostics[component.id], rel=1.0e-12
-        )
-
-
-def _run_backend(backend, *, initial_scales=None, initial_factors=None):
+def _run_adjustment(*, initial_scales=None, initial_factors=None):
     equations, components = _two_component_case()
     return LlrAdjustmentSolver(
         equation_source=lambda iteration: equations,
@@ -476,27 +437,16 @@ def _run_backend(backend, *, initial_scales=None, initial_factors=None):
             required_consecutive_converged_linearizations=99,
             minimum_mad_count=2,
             minimum_effective_redundancy=1.0,
-            linearization_backend=backend,
         ),
         initial_scales=initial_scales,
         initial_factors=initial_factors,
     ).run()
 
 
-def test_dense_and_streaming_adjustments_are_equivalent_and_warm_startable():
-    dense = _run_backend("dense")
-    streaming = _run_backend("streaming")
-
-    assert dense.scales == pytest.approx(streaming.scales, rel=1.0e-10)
-    assert dense.robust_factors == pytest.approx(
-        streaming.robust_factors, rel=1.0e-10
-    )
-    assert dense.normals.N == pytest.approx(streaming.normals.N, rel=1.0e-10)
-    assert dense.normals.W == pytest.approx(streaming.normals.W, rel=1.0e-10)
-    assert dense.state == streaming.state
-
-    warm = _run_backend(
-        "dense", initial_scales=dense.scales, initial_factors=dense.robust_factors
+def test_adjustment_is_warm_startable():
+    first = _run_adjustment()
+    warm = _run_adjustment(
+        initial_scales=first.scales, initial_factors=first.robust_factors
     )
     assert warm.settings["warm_started_scale_count"] == 2
     assert warm.settings["warm_started_factor_count"] == 12
@@ -827,7 +777,7 @@ def test_stochastic_iteration_limit_still_applies_parameter_update():
     assert not first["stochastic_converged"]
     assert first["stochastic_iteration_limit_reached"]
     assert first["parameter_update_factor"] == 0.5
-    candidate = first["candidate_update_by_block_m"]["0:OffsetParametrization"]
+    candidate = first["candidate_update_by_block_m"]["OffsetParametrization"]
     assert first["maximum_parameter_update_m"] == pytest.approx(candidate)
     applied = first["applied_update_by_block_m"]["OffsetParametrization"]
     assert applied == pytest.approx(0.5 * candidate)
@@ -936,7 +886,7 @@ def test_parameter_convergence_requires_two_confirmation_linearizations():
     first_linearization = result.linearizations[0]
     assert not first_linearization["parameter_converged"]
     assert first_linearization["applied_update_by_block_m"]["OffsetParametrization"] == pytest.approx(
-        first_linearization["candidate_update_by_block_m"]["0:OffsetParametrization"]
+        first_linearization["candidate_update_by_block_m"]["OffsetParametrization"]
     )
     assert "geometry_damping" not in result.settings
     assert result.summary["equation_evaluation_count"] == 4

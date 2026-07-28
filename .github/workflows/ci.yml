@@ -27,6 +27,6 @@ jobs:
       - name: Run tests
         run: uv run pytest
       - name: Build distributions
-        run: uv run python -m build --sdist --wheel --outdir dist
+        run: uv run -m build --sdist --wheel --outdir dist
       - name: Verify native distribution payload
         run: uv run python scripts/verify_distribution.py dist/*.tar.gz dist/*.whl

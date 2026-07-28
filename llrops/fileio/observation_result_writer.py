@@ -1,35 +1,14 @@
-"""CSV/JSON serialization of typed LLR observation results."""
+"""CSV/JSON serialization of observation rows."""
 from __future__ import annotations
 
 import csv
 import json
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
-
-from llrops.classes.observation import ObservationEquation, ObservationOutputLevel
+from typing import Mapping, Sequence
 
 
-def _rows(
-    results: Iterable[ObservationEquation | Mapping[str, object]],
-    level: ObservationOutputLevel | str,
-) -> list[dict]:
-    parsed_level = ObservationOutputLevel.parse(level)
-    rows: list[dict] = []
-    for result in results:
-        if isinstance(result, Mapping):
-            rows.append(dict(result))
-        else:
-            rows.append(result.to_row(parsed_level))
-    return rows
-
-
-def write_csv(
-    results: Sequence[ObservationEquation | Mapping[str, object]],
-    path,
-    *,
-    level: ObservationOutputLevel | str = ObservationOutputLevel.STANDARD,
-) -> None:
-    rows = _rows(results, level)
+def write_csv(results: Sequence[Mapping[str, object]], path) -> None:
+    rows = [dict(result) for result in results]
     if not rows:
         raise ValueError("No observation results to write.")
     path = Path(path)
@@ -47,47 +26,35 @@ def write_csv(
         writer.writerows(rows)
 
 
-def write_json(
-    results: Sequence[ObservationEquation | Mapping[str, object]],
-    path,
-    *,
-    level: ObservationOutputLevel | str = ObservationOutputLevel.STANDARD,
-) -> None:
+def write_json(results: Sequence[Mapping[str, object]], path) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        json.dumps(_rows(results, level), ensure_ascii=False, indent=2),
+        json.dumps([dict(result) for result in results], ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
 
 def write_csv_grouped(
-    results_by_source: Mapping[str, Sequence[ObservationEquation | Mapping[str, object]]],
+    results_by_source: Mapping[str, Sequence[Mapping[str, object]]],
     path,
-    *,
-    level: ObservationOutputLevel | str = ObservationOutputLevel.STANDARD,
 ) -> None:
-    merged = [
-        result
-        for source_results in results_by_source.values()
-        for result in source_results
-    ]
-    write_csv(merged, path, level=level)
+    write_csv(
+        [row for rows in results_by_source.values() for row in rows],
+        path,
+    )
 
 
 def write_json_grouped(
-    results_by_source: Mapping[str, Sequence[ObservationEquation | Mapping[str, object]]],
+    results_by_source: Mapping[str, Sequence[Mapping[str, object]]],
     path,
-    *,
-    level: ObservationOutputLevel | str = ObservationOutputLevel.STANDARD,
 ) -> None:
-    parsed_level = ObservationOutputLevel.parse(level)
-    payload = {
-        str(source): _rows(results, parsed_level)
-        for source, results in results_by_source.items()
-    }
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        str(source): [dict(result) for result in rows]
+        for source, rows in results_by_source.items()
+    }
     path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",

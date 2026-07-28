@@ -2,18 +2,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Hashable, Mapping, Optional, Sequence
+from typing import Mapping
 
 import numpy as np
 
-from llrops.base.parameter_name import ParameterName
-from llrops.classes.observation.equations import ObservationEquation
-from llrops.classes.parametrization.base import ParametrizationList
-from llrops.estimation.linearized_least_squares import solve_normal_equations
 from llrops.estimation.variance_components import VarianceComponentDefinition
 from llrops.fileio.normal_equations import NormalEquations
-
-ObsKey = Hashable
 
 
 @dataclass(frozen=True)
@@ -130,73 +124,6 @@ class HelmertVceEstimator:
         return VarianceComponentEstimate(updates, diagnostics)
 
     def estimate(
-        self,
-        *,
-        equations: Sequence[ObservationEquation],
-        residuals: Mapping[ObsKey, float],
-        normals: NormalEquations,
-        parametrization: ParametrizationList,
-        parameter_names: Sequence[ParameterName],
-        assignments: Mapping[ObsKey, str],
-        factors: Mapping[ObsKey, float],
-        scales: Mapping[str, float],
-        covariance: Optional[np.ndarray] = None,
-    ) -> VarianceComponentEstimate:
-        active = [
-            equation
-            for equation in equations
-            if factors[equation.identity] > self.minimum_nonzero_factor
-        ]
-        covariance = (
-            solve_normal_equations(normals).covariance
-            if covariance is None
-            else np.asarray(covariance, dtype=float)
-        )
-        if covariance is None:
-            raise RuntimeError(
-                "Equivalent-weight normal equation covariance is unavailable."
-            )
-        if normals.obs_count != len(active):
-            raise RuntimeError(
-                "Equivalent-weight normal equations and active observation set "
-                "are inconsistent."
-            )
-        component_normals = {
-            component.id: NormalEquations.zeros(parameter_names)
-            for component in self.components
-        }
-        counts = {component.id: 0 for component in self.components}
-        numerators = {component.id: 0.0 for component in self.components}
-        for equation in active:
-            component_id = assignments[equation.identity]
-            weight = factors[equation.identity] / (
-                scales[component_id] ** 2 * equation.sigma_m**2
-            )
-            component_normals[component_id].accumulate_sparse_row(
-                parametrization.design_entries(equation),
-                0.0,
-                weight=weight,
-            )
-            counts[component_id] += 1
-            numerators[component_id] += (
-                factors[equation.identity]
-                * residuals[equation.identity] ** 2
-                / equation.sigma_m**2
-            )
-        return self._finalize(
-            covariance=covariance,
-            component_normal_matrices={
-                component_id: component_normal.N
-                for component_id, component_normal in component_normals.items()
-            },
-            counts=counts,
-            numerators=numerators,
-            scales=scales,
-            normal_matrix=normals.N,
-            active_count=len(active),
-        )
-
-    def estimate_dense(
         self,
         *,
         design,

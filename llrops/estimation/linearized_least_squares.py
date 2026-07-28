@@ -14,7 +14,7 @@ time-memory tradeoff worthwhile.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Iterable, Iterator, Optional, Sequence
+from typing import Callable, Iterable, Optional, Sequence
 
 import numpy as np
 
@@ -22,16 +22,6 @@ from llrops.base.parameter_name import ParameterName
 from llrops.classes.observation.equations import ObservationEquation
 from llrops.classes.parametrization.base import ParametrizationList
 from llrops.fileio.normal_equations import NormalEquations
-
-
-@dataclass(frozen=True)
-class PostfitResidual:
-    """One linearized post-fit residual, evaluated before update absorption."""
-
-    equation: ObservationEquation
-    reduced_observation_m: float
-    sigma_m: float
-    residual_m: float
 
 
 @dataclass(frozen=True, eq=False, repr=False, slots=True)
@@ -168,23 +158,6 @@ def solve_normal_equations(normals: NormalEquations) -> NormalEquationSolution:
         method="cholesky",
         rank_deficient=False,
     )
-
-
-def postfit_residuals_streaming(
-    equations: Iterable[ObservationEquation],
-    parametrization: ParametrizationList,
-    delta: np.ndarray,
-) -> Iterator[PostfitResidual]:
-    """Yield linearized post-fit residuals ``v = l - a @ delta`` row by row."""
-    delta = np.asarray(delta, dtype=float).reshape(-1)
-    for eq in equations:
-        l = parametrization.reduced_observation(eq)
-        yield PostfitResidual(
-            equation=eq,
-            reduced_observation_m=float(l),
-            sigma_m=float(eq.sigma_m),
-            residual_m=float(l - parametrization.design_value(eq, delta)),
-        )
 
 
 def normal_matrix_condition(normals: NormalEquations) -> Optional[float]:

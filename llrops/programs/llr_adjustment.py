@@ -67,61 +67,58 @@ def llr_adjustment(config: dict, context: RunContext):
     warm_start_stochastic = plan.warm_start_stochastic_model_across_stages
     previous_scales = {}
     previous_factors = {}
-    try:
-        equation_source = build_equation_source(config, context, datasets, processor)
-        for stage in plan.stages:
-            stage_name = stage.name
-            active_stage["name"] = stage_name
-            stage_parametrization = (
-                parametrization
-                if not stage.parametrizations
-                else parametrization.select_blocks(stage.parametrizations)
-            )
-            stage_options = stage.apply(options)
-            result = LlrAdjustmentSolver(
-                equation_source=equation_source,
-                parametrization=stage_parametrization,
-                options=stage_options,
-                model_state=processor.model_state,
-                initial_scales=(previous_scales if warm_start_stochastic else None),
-                initial_factors=(previous_factors if warm_start_stochastic else None),
-                iteration_callback=(
-                    report_iteration if bool(config.get("showProgress", True)) else None
-                ),
-            ).run()
-            previous_scales = dict(result.scales)
-            previous_factors = dict(result.robust_factors)
-            performance = result.summary["performance_seconds"]
-            print(
-                "[LlrAdjustment:Performance] "
-                f"stage={stage_name} backend={result.settings['linearization_backend']} "
-                f"cache={performance['cache_build']:.3f}s "
-                f"solve={performance['normal_solve']:.3f}s "
-                f"leverage={performance['leverage']:.3f}s "
-                f"vce={performance['vce']:.3f}s "
-                f"warmScales={result.settings['warm_started_scale_count']} "
-                f"warmFactors={result.settings['warm_started_factor_count']}",
-                flush=True,
-            )
-            print(
-                "[LlrAdjustment:UncertaintyQC] "
-                f"stage={stage_name} action=floor "
-                f"floored={result.summary['uncertainty_sigma_floored_count']} "
-                f"retainedFloored={result.summary['retained_uncertainty_sigma_floored_count']}",
-                flush=True,
-            )
-            stage_results.append(
-                {
-                    "name": stage_name,
-                    "parametrizations": [
-                        type(block).__name__ for block in stage_parametrization.blocks
-                    ],
-                    "summary": result.summary,
-                    "state": result.state,
-                }
-            )
-    finally:
-        processor.close()
+    equation_source = build_equation_source(config, context, datasets, processor)
+    for stage in plan.stages:
+        stage_name = stage.name
+        active_stage["name"] = stage_name
+        stage_parametrization = (
+            parametrization
+            if not stage.parametrizations
+            else parametrization.select_blocks(stage.parametrizations)
+        )
+        stage_options = stage.apply(options)
+        result = LlrAdjustmentSolver(
+            equation_source=equation_source,
+            parametrization=stage_parametrization,
+            options=stage_options,
+            model_state=processor.model_state,
+            initial_scales=(previous_scales if warm_start_stochastic else None),
+            initial_factors=(previous_factors if warm_start_stochastic else None),
+            iteration_callback=(
+                report_iteration if bool(config.get("showProgress", True)) else None
+            ),
+        ).run()
+        previous_scales = dict(result.scales)
+        previous_factors = dict(result.robust_factors)
+        performance = result.summary["performance_seconds"]
+        print(
+            "[LlrAdjustment:Performance] "
+            f"stage={stage_name} "
+            f"cache={performance['cache_build']:.3f}s "
+            f"solve={performance['normal_solve']:.3f}s "
+            f"leverage={performance['leverage']:.3f}s "
+            f"vce={performance['vce']:.3f}s "
+            f"warmScales={result.settings['warm_started_scale_count']} "
+            f"warmFactors={result.settings['warm_started_factor_count']}",
+            flush=True,
+        )
+        print(
+            "[LlrAdjustment:UncertaintyQC] "
+            f"stage={stage_name} action=floor "
+            f"floored={result.summary['uncertainty_sigma_floored_count']} "
+            f"retainedFloored={result.summary['retained_uncertainty_sigma_floored_count']}",
+            flush=True,
+        )
+        stage_results.append(
+            {
+                "name": stage_name,
+                "parametrizations": [
+                    block.block_id for block in stage_parametrization.blocks
+                ],
+                "summary": result.summary,
+                "state": result.state,
+            }
+        )
 
     if config.get("outputJson"):
         path = context.resolve_path(config["outputJson"])

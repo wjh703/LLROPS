@@ -16,7 +16,7 @@ def test_observation_equation_normalizes_and_freezes_partials():
         station_key="STA",
         reflector_key="REF",
         epoch=_UTC_EPOCH,
-        metadata={"station_name": "Station"},
+        wavelength_nm=532.0,
     )
 
     assert equation.observed_minus_computed_m == 0.25

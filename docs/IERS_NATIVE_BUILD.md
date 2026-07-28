@@ -81,16 +81,19 @@ The project uses `meson-python` as its PEP 517 backend and NumPy f2py with an
 explicit `.pyf` signature. One private extension, `llrops._iers2010`, contains
 all selected IERS routines.
 
-This path was selected because it supports fixed-form Fortran 77, builds
-editable installs and standard wheels/sdists through the same configuration,
-and lets the signature file expose only reviewed entry points. Meson also
-handles mixed C/Fortran linking without relying on the removed
-`numpy.distutils` build layer.
+The build follows NumPy's own Meson pattern: it obtains the non-pure Python
+installation and dependency, generates the f2py C and Fortran wrappers, and
+passes those sources to `py.extension_module`. This supports fixed-form
+Fortran 77, editable installs, and standard wheels/sdists without relying on
+the removed `numpy.distutils` build layer.
 
 Rejected alternatives:
 
 - `setuptools` plus `numpy.distutils`: `numpy.distutils` was removed for
   Python 3.12 and is not a supported base for Python 3.14/NumPy 2.5.
+- a custom setuptools `build_ext`: it duplicates f2py generation, compiler
+  discovery, mixed-language linking, editable-install handling, and package
+  data installation in project-maintained Python code.
 - f2py automatic interface discovery: it would expose internal dependencies
   and make the Python API depend on upstream helper layout.
 - one extension per physical model: this duplicates f2py runtime glue,
@@ -340,7 +343,7 @@ development environment, and the non-isolated command records those paths.
 Standard distribution builds use isolation:
 
 ```bash
-python -m build --sdist --wheel
+uv run -m build
 ```
 
 The verified Linux toolchain is:

@@ -85,12 +85,13 @@ def build_worker_processor(spec: dict, shared_class_cache: Optional[dict] = None
         mpi_resources=spec.get("sharedResources"),
         class_cache=shared_class_cache,
     )
-    return build_observation_processor(
+    processor = build_observation_processor(
         context,
         spec["programConfig"],
         station_catalog=spec["stationCatalog"],
         reflector_catalog=spec["reflectorCatalog"],
     )
+    return context, processor
 
 
 def snapshot_catalog_state(model_state) -> dict:

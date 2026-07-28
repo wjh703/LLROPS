@@ -1,4 +1,4 @@
-"""Dataset-level orchestration for the typed LLR observation workflow."""
+"""Dataset orchestration for LLR measurement evaluation."""
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -8,9 +8,8 @@ import numpy as np
 
 from llrops.fileio.normal_points import NptDataset
 
-from .equations import ObservationEquation, build_observation_equation
-from .model import LlrObservationModel
-from .reduction import LlrObservationReducer
+from .equations import ObservationEquation, ObservationOutputLevel
+from .measurement import LlrMeasurement
 from .resolver import CatalogSelection, ObservationResolver, ResolvedObservation
 
 try:
@@ -21,8 +20,6 @@ except ImportError:  # pragma: no cover
 
 @dataclass(frozen=True, slots=True)
 class ObservationProcessingOptions:
-    """Controls catalog selection, reduction, and dataset execution."""
-
     station_name: str | None = None
     reflector_name: str | None = None
     min_elevation_deg: float = 0.0
@@ -54,21 +51,10 @@ class ObservationProcessingOptions:
 
 
 class LlrObservationProcessor:
-    """Orchestrate resolution, prediction, reduction, and result assembly."""
-
-    def __init__(
-        self,
-        *,
-        resolver: ObservationResolver,
-        model: LlrObservationModel,
-        reducer: LlrObservationReducer,
-    ) -> None:
-        if reducer.ephemeris is not model.ephemeris:
-            raise ValueError("reducer.ephemeris and model.ephemeris must be the same object.")
+    def __init__(self, resolver: ObservationResolver, measurement: LlrMeasurement) -> None:
         self.resolver = resolver
         self.model_state = resolver.model_state
-        self.model = model
-        self.reducer = reducer
+        self.measurement = measurement
 
     @property
     def station_catalog(self):
@@ -80,10 +66,7 @@ class LlrObservationProcessor:
 
     @property
     def ephemeris_file(self) -> str:
-        return str(self.model.ephemeris.source_file)
-
-    def close(self) -> None:
-        self.model.close()
+        return str(self.measurement.ephemeris.source_file)
 
     def _with_progress(
         self,
@@ -116,39 +99,60 @@ class LlrObservationProcessor:
 
         return generator()
 
-    def process(
+    def _observations(
+        self,
+        dataset: NptDataset,
+        options: ObservationProcessingOptions,
+    ) -> Iterable[ResolvedObservation]:
+        observations = self.resolver.validate(
+            dataset.records, options.catalog_selection
+        )
+        return self._with_progress(
+            observations,
+            total=len(observations),
+            options=options,
+        )
+
+    def equations(
         self,
         dataset: NptDataset,
         *,
         options: ObservationProcessingOptions | None = None,
     ) -> list[ObservationEquation]:
         options = options or ObservationProcessingOptions()
-        observations = self.resolver.validate(dataset.records, options.catalog_selection)
         return [
-            self.process_one(observation, options=options)
-            for observation in self._with_progress(
-                observations,
-                total=len(observations),
-                options=options,
-            )
+            self.measurement.evaluate(
+                observation,
+                min_elevation_deg=options.min_elevation_deg,
+                include_reflector_position_partial=(
+                    options.include_reflector_position_partial
+                ),
+            ).equation
+            for observation in self._observations(dataset, options)
         ]
 
-    def process_one(
+    def rows(
         self,
-        observation: ResolvedObservation,
+        dataset: NptDataset,
         *,
-        options: ObservationProcessingOptions,
-    ) -> ObservationEquation:
-        prediction = self.model.predict(
-            observation,
-            include_reflector_position_partial=options.include_reflector_position_partial,
-        )
-        reduction = self.reducer.reduce(
-            observation,
-            prediction,
-            min_elevation_deg=options.min_elevation_deg,
-        )
-        return build_observation_equation(observation, prediction, reduction)
+        options: ObservationProcessingOptions | None = None,
+        level: ObservationOutputLevel | str = ObservationOutputLevel.STANDARD,
+    ) -> list[dict[str, object]]:
+        options = options or ObservationProcessingOptions()
+        rows: list[dict[str, object]] = []
+        for observation in self._observations(dataset, options):
+            row = self.measurement.evaluate(
+                observation,
+                min_elevation_deg=options.min_elevation_deg,
+                include_reflector_position_partial=(
+                    options.include_reflector_position_partial
+                ),
+                output_level=level,
+            ).row
+            if row is None:
+                raise RuntimeError("Measurement row was not generated.")
+            rows.append(row)
+        return rows
 
 
 __all__ = ["LlrObservationProcessor", "ObservationProcessingOptions"]

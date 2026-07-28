@@ -7,7 +7,6 @@ from typing import Hashable, Mapping, Optional, Sequence
 
 import numpy as np
 
-from llrops.base.parameter_name import ParameterName
 from llrops.base.station_identity import canonical_station_id
 from llrops.classes.observation.equations import ObservationEquation
 from llrops.classes.parametrization.base import ParametrizationList
@@ -95,9 +94,7 @@ def floor_prefit_uncertainties(
             "reason": "BELOW_PREFIT_UNCERTAINTY_FLOOR" if floored else None,
         }
         records[equation.identity] = qc
-        metadata = dict(equation.metadata or {})
-        metadata["uncertainty_quality_control"] = qc
-        adjusted.append(replace(equation, sigma_m=effective, metadata=metadata))
+        adjusted.append(replace(equation, sigma_m=effective))
 
     for component_id, diagnostics in group_diagnostics.items():
         component_records = [
@@ -108,65 +105,6 @@ def floor_prefit_uncertainties(
             item["status"] == "FLOORED" for item in component_records
         )
     return adjusted, records, group_diagnostics
-
-
-def _bias_indices(names: Sequence[ParameterName]) -> np.ndarray:
-    return np.asarray(
-        [index for index, name in enumerate(names) if name.type == "rangeBias"],
-        dtype=int,
-    )
-
-
-def robust_bias_initial_values(
-    equations: Sequence[ObservationEquation],
-    parametrization: ParametrizationList,
-    names: Sequence[ParameterName],
-    *,
-    weight_cap: float,
-    maximum_iterations: int,
-) -> np.ndarray:
-    indices = _bias_indices(names)
-    if not len(indices):
-        return np.zeros(len(names), dtype=float)
-    design = np.vstack([parametrization.design_row(eq)[indices] for eq in equations])
-    observations = np.asarray(
-        [parametrization.reduced_observation(eq) for eq in equations], dtype=float
-    )
-    formal_weights = np.asarray(
-        [min(1.0 / (eq.sigma_m * eq.sigma_m), weight_cap) for eq in equations],
-        dtype=float,
-    )
-    if np.linalg.matrix_rank(design) < design.shape[1]:
-        return np.zeros(len(names), dtype=float)
-
-    robust_weights = formal_weights.copy()
-    beta = np.zeros(design.shape[1], dtype=float)
-    for _ in range(maximum_iterations):
-        normal = design.T @ (robust_weights[:, None] * design)
-        rhs = design.T @ (robust_weights * observations)
-        try:
-            next_beta = np.linalg.solve(normal, rhs)
-        except np.linalg.LinAlgError:
-            return np.zeros(len(names), dtype=float)
-        residuals = observations - design @ next_beta
-        median = float(np.median(residuals))
-        scale = 1.4826 * float(np.median(np.abs(residuals - median)))
-        if not np.isfinite(scale) or scale <= 1.0e-12:
-            beta = next_beta
-            break
-        magnitude = np.abs(residuals - median)
-        huber = np.ones_like(magnitude)
-        outside = magnitude > 1.345 * scale
-        huber[outside] = 1.345 * scale / magnitude[outside]
-        if np.max(np.abs(next_beta - beta)) <= 1.0e-10:
-            beta = next_beta
-            break
-        beta = next_beta
-        robust_weights = formal_weights * huber
-
-    delta = np.zeros(len(names), dtype=float)
-    delta[indices] = beta
-    return delta
 
 
 def initialize_mad_scales(
@@ -206,5 +144,4 @@ __all__ = [
     "initialize_mad_scales",
     "prefit_gross_rejections",
     "prefit_gross_threshold",
-    "robust_bias_initial_values",
 ]

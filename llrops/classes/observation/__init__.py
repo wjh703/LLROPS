@@ -10,7 +10,6 @@ from importlib import import_module
 from .equations import ObservationEquation
 
 _LAZY_EXPORTS = {
-    "FrozenMapping": ("frozen_mapping", "FrozenMapping"),
     "CatalogSelection": ("resolver", "CatalogSelection"),
     "ResolvedObservation": ("resolver", "ResolvedObservation"),
     "ObservationModelState": ("resolver", "ObservationModelState"),
@@ -20,10 +19,8 @@ _LAZY_EXPORTS = {
     "LightTimeSolution": ("light_time", "LightTimeSolution"),
     "LightTimeSolver": ("light_time", "LightTimeSolver"),
     "OpticalAtmosphere": ("light_time", "OpticalAtmosphere"),
-    "LlrObservationModel": ("model", "LlrObservationModel"),
-    "LlrPrediction": ("model", "LlrPrediction"),
-    "LlrObservationReducer": ("reduction", "LlrObservationReducer"),
-    "ObservationReduction": ("reduction", "ObservationReduction"),
+    "LlrMeasurement": ("measurement", "LlrMeasurement"),
+    "ObservationEvaluation": ("measurement", "ObservationEvaluation"),
     "LlrObservationProcessor": ("processor", "LlrObservationProcessor"),
     "ObservationProcessingOptions": ("processor", "ObservationProcessingOptions"),
     "ObservationOutputLevel": ("equations", "ObservationOutputLevel"),

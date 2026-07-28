@@ -24,9 +24,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
+from typing import TYPE_CHECKING, Mapping, Protocol
 
 from llrops.config.registry import register_factory, normalize_class_config
+
+if TYPE_CHECKING:
+    from llrops.classes.ephemerides import Ephemeris
+    from llrops.classes.frames import EarthOrientation, ReferenceFrameSystem
+    from llrops.config.context import RunContext
 
 
 _REMOVED_UNCERTAINTY_CONFIG_KEYS = frozenset({"uncertainty", "uncertaintyModel"})
@@ -50,33 +55,23 @@ class ObservationAssembly:
     reflector_catalog: Mapping[str, object]
 
 
-class _ObservationFactoryContext:
-    __slots__ = (
-        "run_context",
-        "ephemeris",
-        "earth_orientation",
-        "frames",
-        "cache_namespace",
-    )
+class _PathResolver(Protocol):
+    def resolve_path(self, value: object) -> Path: ...
 
-    def __init__(
-        self,
-        run_context: object,
-        ephemeris: object,
-        earth_orientation: object,
-        cache_namespace: str,
-    ) -> None:
-        self.run_context = run_context
-        self.ephemeris = ephemeris
-        self.earth_orientation = earth_orientation
-        self.frames = None
-        self.cache_namespace = cache_namespace
+
+@dataclass(frozen=True, slots=True)
+class _ObservationDependencies:
+    run_context: "RunContext"
+    ephemeris: "Ephemeris"
+    earth_orientation: "EarthOrientation"
+    frames: "ReferenceFrameSystem"
+    cache_namespace: str
 
     @property
     def mpi_resources(self):
         return self.run_context.mpi_resources
 
-    def resolve_path(self, value):
+    def resolve_path(self, value: object) -> Path:
         return self.run_context.resolve_path(value)
 
     def create_class(self, category: str, config=None, *, cache: bool = True):
@@ -107,10 +102,10 @@ def validate_observation_config(
             )
 
 
-def _resolve_optional_path(ctx, value):
+def _resolve_optional_path(ctx: _PathResolver | None, value: object):
     if value in (None, ""):
         return None
-    if ctx is not None and hasattr(ctx, "resolve_path"):
+    if ctx is not None:
         return ctx.resolve_path(value)
     return Path(str(value)).expanduser()
 
@@ -181,28 +176,13 @@ def _register_all() -> None:
     )
 
     def _required_earth_orientation(ctx):
-        try:
-            return ctx.earth_orientation
-        except AttributeError as exc:
-            raise RuntimeError(
-                "stationDisplacement requires an explicit Earth-orientation source."
-            ) from exc
+        return ctx.earth_orientation
 
     def _required_ephemeris(ctx):
-        try:
-            return ctx.ephemeris
-        except AttributeError as exc:
-            raise RuntimeError(
-                "reflectorDisplacement requires an explicit ephemeris."
-            ) from exc
+        return ctx.ephemeris
 
     def _required_frames(ctx):
-        frames = getattr(ctx, "frames", None)
-        if frames is None:
-            raise RuntimeError(
-                "stationDisplacement requires an explicit reference-frame system."
-            )
-        return frames
+        return ctx.frames
 
     def _station_sum(cfg: dict, ctx) -> CompositeStationDisplacement:
         components_cfg = cfg.get("components", [])
@@ -380,9 +360,8 @@ def build_observation_processor(
     from llrops.classes.frames import ReferenceFrameSystem
     from llrops.classes.observation import (
         LightTimeSolver,
-        LlrObservationModel,
+        LlrMeasurement,
         LlrObservationProcessor,
-        LlrObservationReducer,
         ObservationModelState,
         ObservationResolver,
     )
@@ -405,19 +384,17 @@ def build_observation_processor(
 
     ephemeris = context.create_class("ephemerides", eph_cfg, cache=True)
     earth_orientation = context.create_class("earthRotation", eop_cfg, cache=True)
-    factory_context = _ObservationFactoryContext(
-        run_context=context,
-        ephemeris=ephemeris,
-        earth_orientation=earth_orientation,
-        cache_namespace=f"observation:{id(ephemeris)}:{id(earth_orientation)}",
-    )
-
     frames = ReferenceFrameSystem(
         ephemeris=ephemeris,
         earth_orientation=earth_orientation,
-        owns_ephemeris=False,
     )
-    factory_context.frames = frames
+    factory_context = _ObservationDependencies(
+        run_context=context,
+        ephemeris=ephemeris,
+        earth_orientation=earth_orientation,
+        frames=frames,
+        cache_namespace=f"observation:{id(ephemeris)}:{id(earth_orientation)}",
+    )
     station_displacement = factory_context.create_class(
         "stationDisplacement",
         normalize_class_config(context.class_config("stationDisplacement", program_config)),
@@ -439,8 +416,7 @@ def build_observation_processor(
         station_displacement=station_displacement,
         reflector_displacement=reflector_displacement,
     )
-    model = LlrObservationModel(frames, solver)
-    model_state = ObservationModelState.from_catalogs(
+    model_state = ObservationModelState(
         assembly.station_catalog,
         assembly.reflector_catalog,
     )
@@ -453,14 +429,10 @@ def build_observation_processor(
         normalize_class_config(range_bias_cfg),
         cache=True,
     )
-    reducer = LlrObservationReducer(
-        ephemeris=ephemeris,
-        range_bias=range_bias,
-    )
+    measurement = LlrMeasurement(frames, solver, range_bias)
     processor = LlrObservationProcessor(
-        resolver=resolver,
-        model=model,
-        reducer=reducer,
+        resolver,
+        measurement,
     )
     return processor
 

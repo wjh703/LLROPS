@@ -132,7 +132,7 @@ def build_equation_source(config, context, datasets, processor):
         else:
             iteration_options = options.with_progress(f"linearization {iteration}")
             equations_by_source = {
-                source_name: processor.process(dataset, options=iteration_options)
+                source_name: processor.equations(dataset, options=iteration_options)
                 for source_name, dataset in datasets.items()
             }
         return [

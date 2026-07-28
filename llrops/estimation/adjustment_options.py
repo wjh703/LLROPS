@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from numbers import Real
 from typing import Mapping, Optional
 
@@ -20,13 +20,12 @@ class LlrAdjustmentOptions:
     ] = None
     maximum_linearizations: int = 20
     parameter_update_factor: float = 1.0
-    linearization_backend: str = "dense"
     uncertainty_floor_minimum_m: float = 0.0
     uncertainty_floor_group_median_fraction: float = 0.0
     update_tolerance_m: float = 1.0e-3
     update_tolerance_by_block_m: Optional[Mapping[str, float]] = None
     required_consecutive_converged_linearizations: int = 2
-    maximum_stochastic_iterations: int = 20
+    maximum_stochastic_iterations: int = 8
     k0: float = 1.5
     k1: float = 6.0
     minimum_one_minus_leverage: float = 1.0e-8
@@ -152,8 +151,6 @@ class LlrAdjustmentOptions:
                 raise ValueError(
                     "Prefit station thresholds must be finite and non-negative."
                 )
-        if self.linearization_backend not in {"dense", "streaming"}:
-            raise ValueError("Linearization backend must be dense or streaming.")
         if self.uncertainty_floor_minimum_m < 0.0:
             raise ValueError("Uncertainty floor minimum must be non-negative.")
         if not 0.0 <= self.uncertainty_floor_group_median_fraction <= 1.0:
@@ -200,6 +197,12 @@ class LlrAdjustmentOptions:
             <= self.maximum_variance_ratio_per_iteration
         ):
             raise ValueError("VCE variance-ratio limits must be positive and ordered.")
+
+    def settings(self) -> dict[str, object]:
+        """Return the validated numerical settings used by the solver."""
+        values = asdict(self)
+        values.pop("components")
+        return values
 
 
 __all__ = ["LlrAdjustmentOptions"]

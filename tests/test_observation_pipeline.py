@@ -10,9 +10,8 @@ from llrops.classes.displacement import Iers2010SolidEarthTide
 from llrops.classes.ephemerides import BodyState, Ephemeris
 from llrops.classes.frames import EarthOrientation, PolarMotion, ReferenceFrameSystem
 from llrops.classes.observation import (
-    LlrObservationModel,
+    LlrMeasurement,
     LlrObservationProcessor,
-    LlrObservationReducer,
     LightTimeSolver,
     ObservationModelState,
     ObservationProcessingOptions,
@@ -100,7 +99,7 @@ def _pipeline(troposphere_delay=None, *, frames=None, station_displacement=None)
         ),
         station_displacement=station_displacement,
     )
-    state = ObservationModelState.from_catalogs(
+    state = ObservationModelState(
         {
             "APOLLO": StationRecord(
                 name="Apache Point",
@@ -117,15 +116,9 @@ def _pipeline(troposphere_delay=None, *, frames=None, station_displacement=None)
         },
     )
     resolver = ObservationResolver(state)
-    model = LlrObservationModel(frames, solver)
-    reducer = LlrObservationReducer(
-        ephemeris=frames.ephemeris,
-        range_bias=ZeroRangeBiasModel(),
-    )
     return LlrObservationProcessor(
-        resolver=resolver,
-        model=model,
-        reducer=reducer,
+        resolver,
+        LlrMeasurement(frames, solver, ZeroRangeBiasModel()),
     )
 
 
@@ -141,7 +134,7 @@ class _RecordingStationDisplacement:
 
 def test_full_observation_pipeline_builds_one_equation():
     processor = _pipeline()
-    equation = processor.process(
+    equation = processor.equations(
         NptDataset([_record()]),
         options=ObservationProcessingOptions(
             min_elevation_deg=-90.0,
@@ -154,10 +147,13 @@ def test_full_observation_pipeline_builds_one_equation():
     assert equation.reflector_key == "APOLLO15"
     assert equation.converged
     assert equation.sigma_m == pytest.approx(0.5 * C * 100.0e-12)
-    assert equation.partials["station_range_bias"] == pytest.approx([1.0])
     assert equation.partials["reflector_position_pa"].shape == (3,)
-    assert equation.metadata["status"] == "ok"
-    assert equation.to_row("standard")["oc_one_way_m"] == pytest.approx(
+    row = processor.rows(
+        NptDataset([_record()]),
+        options=ObservationProcessingOptions(min_elevation_deg=-90.0),
+    )[0]
+    assert row["status"] == "ok"
+    assert row["oc_one_way_m"] == pytest.approx(
         equation.observed_minus_computed_m
     )
 
@@ -165,7 +161,7 @@ def test_full_observation_pipeline_builds_one_equation():
 def test_light_time_starts_from_fixed_round_trip_time(monkeypatch):
     processor = _pipeline()
     observation = processor.resolver.resolve(_record())
-    solver = processor.model.light_time_solver
+    solver = processor.measurement.light_time_solver
     calls = []
     original = LightTimeSolver._station_state_from_tdb
 
@@ -174,7 +170,7 @@ def test_light_time_starts_from_fixed_round_trip_time(monkeypatch):
         return original(self, request, epoch_tdb)
 
     monkeypatch.setattr(LightTimeSolver, "_station_state_from_tdb", record_receive_epoch)
-    processor.model.predict(observation)
+    processor.measurement.evaluate(observation, min_elevation_deg=-90.0)
 
     request, initial_receive_tdb = calls[0]
     transmit_station = solver._station_state_at_utc(request, request.transmit_epoch)
@@ -192,19 +188,25 @@ def test_native_solid_earth_tide_enters_transmit_and_receive_light_time():
     with_tide = _pipeline(frames=frames, station_displacement=recorder)
     observation = with_tide.resolver.resolve(_record())
 
-    native_prediction = with_tide.model.predict(observation)
-    zero_prediction = _pipeline().model.predict(observation)
-    solution = native_prediction.light_time
+    native = with_tide.measurement.evaluate(
+        observation, min_elevation_deg=-90.0, output_level="full"
+    ).row
+    zero = _pipeline().measurement.evaluate(
+        observation, min_elevation_deg=-90.0, output_level="full"
+    ).row
 
-    assert solution.converged
+    assert native["converged"]
     assert len(recorder.calls) >= 3
     assert {call.station_id for call in recorder.calls} == {"APOLLO"}
     assert recorder.calls[0].epoch_utc == observation.transmit_epoch
     assert any(call.epoch_utc != observation.transmit_epoch for call in recorder.calls)
-    assert np.linalg.norm(solution.station_displacement_transmit_itrf_m) > 1.0e-6
-    assert np.linalg.norm(solution.station_displacement_receive_itrf_m) > 1.0e-6
-    assert solution.observable_round_trip_time_s != pytest.approx(
-        zero_prediction.light_time.observable_round_trip_time_s,
+    assert np.linalg.norm([
+        native["station_displacement_transmit_dx_m"],
+        native["station_displacement_transmit_dy_m"],
+        native["station_displacement_transmit_dz_m"],
+    ]) > 1.0e-6
+    assert native["computed_rtt_raw_s"] != pytest.approx(
+        zero["computed_rtt_raw_s"],
         rel=0.0,
         abs=1.0e-15,
     )
@@ -219,33 +221,32 @@ def test_end_to_end_contribution_changes_rtt_and_oc_separately():
     without_tide = _pipeline()
     observation = with_tide.resolver.resolve(_record())
 
-    tide_prediction = with_tide.model.predict(observation)
-    zero_prediction = without_tide.model.predict(without_tide.resolver.resolve(_record()))
-    tide_reduction = with_tide.reducer.reduce(
-        observation,
-        tide_prediction,
-        min_elevation_deg=-90.0,
-    )
-    zero_reduction = without_tide.reducer.reduce(
+    tide = with_tide.measurement.evaluate(
+        observation, min_elevation_deg=-90.0, output_level="full"
+    ).row
+    zero = without_tide.measurement.evaluate(
         without_tide.resolver.resolve(_record()),
-        zero_prediction,
         min_elevation_deg=-90.0,
-    )
+        output_level="full",
+    ).row
 
-    delta_rtt_s = (
-        tide_reduction.computed_rtt_raw_s - zero_reduction.computed_rtt_raw_s
-    )
-    delta_oc_m = (
-        tide_reduction.observed_minus_computed_raw_one_way_m
-        - zero_reduction.observed_minus_computed_raw_one_way_m
-    )
+    delta_rtt_s = tide["computed_rtt_raw_s"] - zero["computed_rtt_raw_s"]
+    delta_oc_m = tide["oc_one_way_raw_m"] - zero["oc_one_way_raw_m"]
     assert abs(delta_rtt_s) > 1.0e-15
     assert delta_oc_m == pytest.approx(-0.5 * C * delta_rtt_s, abs=1.0e-9)
     assert np.linalg.norm(
-        tide_prediction.light_time.station_displacement_transmit_itrf_m
+        [
+            tide["station_displacement_transmit_dx_m"],
+            tide["station_displacement_transmit_dy_m"],
+            tide["station_displacement_transmit_dz_m"],
+        ]
     ) > 1.0e-6
     assert np.linalg.norm(
-        tide_prediction.light_time.station_displacement_receive_itrf_m
+        [
+            tide["station_displacement_receive_dx_m"],
+            tide["station_displacement_receive_dy_m"],
+            tide["station_displacement_receive_dz_m"],
+        ]
     ) > 1.0e-6
 
 
@@ -266,45 +267,41 @@ def test_fortran_troposphere_contributes_to_both_light_time_legs(monkeypatch):
     model = Iers2010MendesPavlisTroposphere()
     processor = _pipeline(model)
     observation = processor.resolver.resolve(_record())
-    with_troposphere = processor.model.predict(observation).light_time
-    without_troposphere = _pipeline().model.predict(observation).light_time
+    with_troposphere = processor.measurement.evaluate(
+        observation, min_elevation_deg=-90.0, output_level="full"
+    ).row
+    without_troposphere = _pipeline().measurement.evaluate(
+        observation, min_elevation_deg=-90.0, output_level="full"
+    ).row
 
-    assert with_troposphere.converged
-    assert with_troposphere.uplink.tropospheric_delay_m > 0.0
-    assert with_troposphere.downlink.tropospheric_delay_m > 0.0
-    assert np.rad2deg(
-        with_troposphere.uplink.troposphere_elevation_used_rad
-    ) == pytest.approx(30.0)
-    assert np.rad2deg(
-        with_troposphere.downlink.troposphere_elevation_used_rad
-    ) == pytest.approx(45.0)
-    assert with_troposphere.uplink.tropospheric_delay_m != pytest.approx(
-        with_troposphere.downlink.tropospheric_delay_m,
+    assert with_troposphere["converged"]
+    assert with_troposphere["tropo_up_m"] > 0.0
+    assert with_troposphere["tropo_down_m"] > 0.0
+    assert with_troposphere["tropo_elevation_up_used_deg"] == pytest.approx(30.0)
+    assert with_troposphere["tropo_elevation_down_used_deg"] == pytest.approx(45.0)
+    assert with_troposphere["tropo_up_m"] != pytest.approx(
+        with_troposphere["tropo_down_m"],
         rel=0.0,
         abs=1.0e-12,
     )
     assert (
-        with_troposphere.observable_round_trip_time_s
-        > without_troposphere.observable_round_trip_time_s
+        with_troposphere["computed_rtt_raw_s"]
+        > without_troposphere["computed_rtt_raw_s"]
     )
 
 
-def test_reducer_marks_geometry_below_requested_elevation():
+def test_measurement_marks_geometry_below_requested_elevation():
     processor = _pipeline()
     observation = processor.resolver.resolve(_record())
-    prediction = processor.model.predict(observation)
-    reduction = processor.reducer.reduce(
-        observation,
-        prediction,
-        min_elevation_deg=91.0,
+    result = processor.measurement.evaluate(
+        observation, min_elevation_deg=91.0, output_level="full"
     )
+    row = result.row
 
-    assert reduction.below_horizon
-    assert not reduction.valid_geometry
-    assert reduction.status == "below_horizon"
-    assert reduction.computed_rtt_s == pytest.approx(
-        prediction.light_time.observable_round_trip_time_s
-    )
+    assert row["below_horizon"]
+    assert not row["valid_geometry"]
+    assert row["status"] == "below_horizon"
+    assert row["computed_rtt_s"] == pytest.approx(row["computed_rtt_raw_s"])
 
 
 def test_resolver_reports_all_unresolved_records():
@@ -324,7 +321,7 @@ def test_resolver_reports_all_unresolved_records():
 
 def test_reflector_parametrization_updates_explicit_model_state():
     processor = _pipeline()
-    equation = processor.process(
+    equation = processor.equations(
         NptDataset([_record()]),
         options=ObservationProcessingOptions(
             include_reflector_position_partial=True,

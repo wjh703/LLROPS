@@ -16,31 +16,7 @@ Examples
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, List, Sequence
-
-
-KNOWN_PARAMETER_TYPES: frozenset[str] = frozenset(
-    {
-        # Implemented parameter blocks.
-        "position.x",
-        "position.y",
-        "position.z",
-        "rangeBias",
-        # Reserved names for planned blocks; keeping the registry here makes
-        # normal-equation files self-checking as new blocks are introduced.
-        "eop.xp",
-        "eop.yp",
-        "eop.ut1MinusUtc",
-        "orbitState.x0",
-        "orbitState.y0",
-        "orbitState.z0",
-        "orbitState.vx0",
-        "orbitState.vy0",
-        "orbitState.vz0",
-        "loveNumber.h2",
-        "loveNumber.l2",
-    }
-)
+from typing import List, Sequence
 
 
 @dataclass(frozen=True, order=True, slots=True)
@@ -57,6 +33,8 @@ class ParameterName:
             if ":" in text:
                 raise ValueError(f"ParameterName.{field_name} must not contain ':' characters.")
             object.__setattr__(self, field_name, text)
+        if not self.type:
+            raise ValueError("ParameterName.type must not be empty.")
 
     def __str__(self) -> str:
         return f"{self.object}:{self.type}:{self.temporal}:{self.interval}"
@@ -77,25 +55,8 @@ def strings_to_names(strings: Sequence[str]) -> List[ParameterName]:
     return [ParameterName.parse(s) for s in strings]
 
 
-def validate_parameter_types(
-    names: Iterable[ParameterName],
-    *,
-    allowed_types: Iterable[str] = KNOWN_PARAMETER_TYPES,
-) -> None:
-    """Validate parameter-name ``type`` fields against the LLROPS schema."""
-    allowed = set(allowed_types)
-    unknown = sorted({name.type for name in names if name.type and name.type not in allowed})
-    if unknown:
-        raise ValueError(
-            "Unknown parameter type(s) in structured names: "
-            f"{unknown!r}. Register the type in llrops.base.parameter_name."
-        )
-
-
 __all__ = [
-    "KNOWN_PARAMETER_TYPES",
     "ParameterName",
     "names_to_strings",
     "strings_to_names",
-    "validate_parameter_types",
 ]

@@ -21,20 +21,17 @@ def llr_normal_equations(config: dict, context: RunContext):
     parametrization = build_parametrization(config, context)
     processor = build_processor(config, context)
 
-    try:
-        equation_source = build_equation_source(config, context, datasets, processor)
-        equations = equation_source(1)
-        parametrization.setup(equations, processor.model_state)
-        names = parametrization.parameter_names()
-        normals = build_normal_equations_streaming(
-            equations,
-            parametrization,
-            parameter_names=names,
-            sources=sorted(datasets),
-            ephemeris=processor.ephemeris_file,
-        )
-    finally:
-        processor.close()
+    equation_source = build_equation_source(config, context, datasets, processor)
+    equations = equation_source(1)
+    parametrization.setup(equations, processor.model_state)
+    names = parametrization.parameter_names()
+    normals = build_normal_equations_streaming(
+        equations,
+        parametrization,
+        parameter_names=names,
+        sources=sorted(datasets),
+        ephemeris=processor.ephemeris_file,
+    )
 
     out = context.resolve_path(config["outputNormals"])
     normals.save(out)
