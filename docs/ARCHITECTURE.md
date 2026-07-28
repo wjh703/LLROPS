@@ -1,337 +1,54 @@
-# llrops — GROOPS-inspired architecture for LLR processing
+# Architecture
 
-This document explains the v24 → llrops restructuring: the layer model, how it
-maps to GROOPS concepts, where every v24 module went, and how each of the four
-planned extensions plugs in.
-
-## 1. Why restructure
-
-The v24 layout coupled concerns that must evolve independently:
-
-| v24 location | Coupled concerns |
-|---|---|
-| `pipeline.py` (1117 lines) | model assembly, catalog resolution, per-NP forward model, reflector partials, CSV/JSON writers, options for all of the above |
-| six `run_*.py` scripts | duplicated argparse wiring, duplicated model assembly, copy-pasted MPI variants |
-
-Every planned extension (non-tidal displacement, new lunar tide models, more
-estimated parameters, lunar orbit/attitude integration) would have had to be
-threaded through one monolithic pipeline constructor, one oversized option object,
-the estimator and all six scripts simultaneously.
-
-## 2. Layer model (GROOPS mapping)
-
-```
-llrops/
-├── config/        GROOPS "config": class registry, config loader, run context
-│   ├── registry.py    polymorphic class factory: create("troposphere", {...})
-│   ├── loader.py      YAML/JSON scenario files, {var} substitution, loops
-│   └── context.py     explicit runtime/MPI dependencies and class cache
-├── base/          GROOPS "base": constants, Epoch, ParameterName, array validation
-├── fileio/        GROOPS "files" layer: every on-disk format in one place
-│   ├── mini.py, crd.py                 source adapters: MINI→NPT and CRD→NPT
-│   ├── normal_points.py                canonical in-memory normal-point model
-│   ├── llrops_normal_point_file.py     versioned LLROPS JSONL
-│   ├── catalogs.py, builtin_catalogs.py  catalog records, loaders, built-ins
-│   ├── normal_point_inputs.py          side-effect-free discovery and dispatch
-│   ├── observation_result_writer.py    O-C result tables
-│   └── normal_equations.py             N, W, lPl, names — save/load/add/solve
-├── classes/       GROOPS "classes": config-selectable model implementations
-│   ├── ephemerides/   typed ephemeris interface and CALCEPH implementation
-│   │   ├── base.py            BodyState, Ephemeris (TDB Epoch queries)
-│   │   ├── longitude_libration.py  optional longitude-libration corrections
-│   │   └── calceph.py         CalcephEphemeris
-│   ├── frames/        typed Earth orientation and composable frame transforms
-│   │   ├── earth_orientation.py  IERS C04 source
-│   │   ├── terrestrial.py        ITRF ↔ GCRS
-│   │   ├── lunar.py              PA ↔ LCRS
-│   │   ├── relativistic.py       GCRS/LCRS ↔ BCRS
-│   │   └── reference_frame_system.py  ReferenceFrameSystem facade
-│   ├── delays/       troposphere + gravitational delay models
-│   ├── displacement/  typed station & reflector displacement models
-│   │   ├── base.py             immutable inputs, protocols, zero/composite models
-│   │   ├── solid_earth_tide.py  IERS 2010 solid-Earth tide
-│   │   ├── pole_tide.py        IERS 2010 solid-Earth pole tide
-│   │   ├── ocean_pole_tide.py  grid reader + IERS 2010 ocean pole-tide loading
-│   │   └── lunar_solid_tide.py  Moon-fixed lunar solid tide
-│   ├── range_bias/       range-bias models and declarative tables
-│   ├── observation/   typed observation workflow
-│   │   ├── light_time.py   request/solver/solution for two-way propagation
-│   │   ├── model.py        pure theoretical LLR observable + reflector partial
-│   │   ├── resolver.py     catalog resolution + explicit mutable model state
-│   │   ├── reduction.py   deterministic corrections + scalar diagnostics
-│   │   ├── frozen_mapping.py  immutable mappings for transport types
-│   │   ├── processor.py   dataset orchestration only
-│   │   └── equations.py   immutable equation, diagnostics, table projections
-│   ├── parametrization/  base + reflectorPosition + stationRangeBias
-│   └── observation_factory.py  config type registration and workflow assembly
-├── estimation/
-│   ├── adjustment_config.py       strict canonical config and staged plan
-│   ├── adjustment_options.py      validated numerical invariants
-│   ├── adjustment_preprocessing.py  outlier/uncertainty/initial-scale preprocessing
-│   ├── adjustment_results.py      result types and pure report assembly
-│   ├── adjustment_solver.py       nonlinear relinearization + IGGIII/VCE coordination
-│   ├── convergence.py             parameter-block convergence policy
-│   ├── robust_weights.py          IGGIII equivalent-weight model
-│   ├── variance_components.py     component definitions and strict assignment
-│   ├── helmert_vce.py             Helmert trace VCE
-│   └── linearized_least_squares.py  dense/streaming least-squares core
-├── programs/      GROOPS "programs": one task each, driven by config
-│   ├── crd_to_mini.py, normal_points_to_llrops.py, llr_residuals.py
-│   ├── llr_adjustment.py, llr_normal_equations.py
-│   ├── normals_combine_solve.py
-│   └── registry.py
-├── parallel/      single-process serial + MPI master-worker backend
-│   ├── worker_cache.py  worker-cache lifecycle and resource cleanup
-│   └── observation_spec.py  picklable model specs and catalog-state transfer
-├── resource_lifecycle.py  shared resource cleanup
-└── cli.py         python -m llrops run config.yml [--mpi] --set var=value
-```
-
-GROOPS concept → llrops equivalent:
-
-| GROOPS | llrops |
-|---|---|
-| XML scenario file with global elements, loops | YAML/JSON run config: `variables`, `globals`, `programs`, `loop` |
-| Class categories (`troposphere`, `tides`, `ephemerides`, ...) selected by type | `config/registry.py` categories; `observation_factory.py` registrations |
-| `parametrization*` classes producing named parameters | `classes/parametrization/` + `base/parameter_name.py` (`object:type:temporal:interval`) |
-| Observation equations (l, A) per arc/epoch | `classes/observation/equations.py` — l, sigma, named partial blocks |
-| Normal-equation files; accumulate/combine/solve programs | `fileio/normal_equations.py`; `LlrNormalEquations`, `NormalsCombineSolve` |
-| Programs run in sequence sharing config globals | `programs/` + `RunContext` object cache |
-
-## 2.1 Unified time contract
-
-`Epoch` is the only scalar time value passed between LLROPS modules. It stores
-`jd1`, `jd2`, and an explicit `TimeScale` (`utc`, `tt`, or `tdb`). File readers
-construct UTC epochs from their native civil fields:
-
-```python
-Epoch.from_calendar(year, month, day, hour, minute, second)   # CRD H4
-Epoch.from_date_seconds(yyyymmdd, seconds_of_day)             # MINI / CRD records
-Epoch.from_isot(text)                                         # config/catalog input
-```
-
-UTC<->TT is handled entirely by ERFA. TT<->TDB is
-performed only by `TimeScaleConverter` using the configured
-`Ephemeris.tdb_minus_tt_sec`; no generic time library is allowed to perform that
-scale conversion. TDB epochs are serialized as two-part Julian dates.
-Human-readable ISOT output converts TDB to TT/UTC through the ephemeris first.
-
-`LightTimeSolution` stores only three event epochs (`transmit`, `bounce`,
-`receive`), all in TDB. UTC copies are computed only at boundaries that actually
-need civil time, Earth orientation, ITRF station motion, or output formatting.
-See [`TIME.md`](TIME.md) for construction, conversion, arithmetic, and serialization rules.
-See [`NORMAL_POINTS.md`](NORMAL_POINTS.md) for source adapters and the canonical
-LLROPS normal-point file contract.
-
-## 2.2 Data objects and behavior classes
-
-Use `dataclass` only for objects whose primary purpose is to carry data: typed
-inputs and outputs, configuration records, table entries, value objects, and
-immutable iteration snapshots. These classes may validate or normalize their
-fields in `__post_init__`, but they must not own resources or coordinate a
-workflow.
-
-Use a regular `class` for services, solvers, reference-frame transforms,
-physical models, correction strategies, resource owners, and zero/composite
-implementations. Their constructor states dependencies and validation
-explicitly; generated equality and value-style representations are not part of
-their contract. If initialization grows beyond field normalization, move it to
-an explicit `__init__` instead of expanding `__post_init__`.
-
-## 3. The two key contracts
-
-### 3.1 Observation workflow = typed stages, not row-dict plumbing
-
-The observation layer has one-way dependency flow:
+LLROPS follows GROOPS-like boundaries: configuration selects classes and
+programs, typed objects carry data between layers, and each program owns one
+complete processing task.
 
 ```text
-NptRecord
-  -> ObservationResolver -> ResolvedObservation
-  -> LlrObservationModel -> LlrPrediction
-  -> LlrObservationReducer -> ObservationReduction
-  -> build_observation_equation() -> ObservationEquation
-  -> LlrObservationProcessor (orchestration and progress)
-  -> equation.to_row(level)
+config/       registry, YAML loader, run context and shared object cache
+base/         Epoch, constants, parameter names and validation helpers
+fileio/       MINI/CRD/LLROPS readers, catalogs, normal equations and writers
+classes/      ephemerides, frames, delays, displacement, observation and
+              parametrization implementations
+estimation/   nonlinear adjustment, robust weights, VCE and least squares
+programs/     independently selectable processing tasks
+parallel/     MPI transport and worker lifecycle
 ```
 
-`LightTimeSolver.solve(LightTimeRequest)` owns only the two-way propagation
-problem. `LlrObservationModel` adds the theoretical observable and optional
-reflector PA partial. Catalog resolution, bias correction, input uncertainty
-propagation, progress reporting, and table projection remain separate concerns.
-`ObservationEquation` is the sole final observation type, so residuals,
-uncertainties, identities, catalog keys, convergence, and partials have one
-source of truth.
-The estimator never reconstructs equations from table dictionaries.
+## Runtime flow
 
-```python
-ObservationEquation(
-    observed_minus_computed_m=reduction.observed_minus_computed_one_way_m,
-    sigma_m=record.range_uncertainty_one_way_m,
-    partials={
-        "reflector_position_pa": [d/dx, d/dy, d/dz],
-        "station_range_bias": [1.0],
-    },
-    identity=record.index,
-    station_key=observation.station_key,
-    reflector_key=observation.reflector_key,
-    epoch=observation.transmit_epoch,  # UTC Epoch
-)
+```text
+input file
+  -> NptRecord
+  -> ObservationResolver
+  -> LightTimeSolver
+  -> LlrMeasurement
+  -> ObservationEquation
+  -> residual table, normal equations, or adjustment
 ```
 
-`ObservationEquation` is pickle-safe for MPI transport. CSV/JSON writers project
-it to `standard` or `full` rows only at the file-I/O boundary.
+`ObservationEquation` is the estimation contract. It contains the one-way
+residual, input-derived sigma, identity keys, epoch, and named partial blocks.
+CSV/JSON diagnostics are created at the output boundary; estimators do not
+reconstruct equations from output dictionaries.
 
-### 3.2 Parametrization = columns + update absorption
+`Parametrization` blocks declare named columns, provide design entries, and
+absorb solved updates into model state. `LlrAdjustment` relinearizes after
+updates. `LlrNormalEquations` writes one fixed-linearization system, while
+`NormalsCombineSolve` aligns, combines, and solves such systems once.
 
-A `Parametrization` block declares `ParameterName`s, fills its design columns
-from partial blocks, optionally reduces `l` by its current value (bias-type
-parameters), and absorbs solved corrections back into model state (catalog
-positions, bias tables, force-model coefficients, integrator initial
-conditions). `LlrAdjustmentSolver` and the normal-equation engine are fully
-generic over the block list — they never learn what a "reflector" is.
+## Extension points
 
-`LlrAdjustment`, `LlrNormalEquations` and `NormalsCombineSolve` share the same
-normal-equation representation.  `LlrAdjustment` is the nonlinear iteration
-controller: each linearization reruns the forward model, performs the bounded
-IGGIII/Helmert-VCE stochastic iteration at fixed geometry, applies the parameter
-update, and checks block-specific convergence. Its final report relinearizes at
-the applied state so state, residuals, normals, and remaining corrections agree.
-`LlrNormalEquations` writes one fixed-linearization normal-equation file.
-`NormalsCombineSolve` only loads, aligns, adds and solves those files once.
+To add a physical model, implement the typed interface in the relevant
+`classes/` category, register a configuration type, and add focused tests for
+units, signs, and reference values. To add an estimable quantity, implement a
+`Parametrization` and provide its named partial block. The solver,
+normal-equation format, and CLI then remain unchanged.
 
-## 4. v24 → llrops migration table
+## Resource and parallelism rules
 
-| v24 | llrops | change |
-|---|---|---|
-| `constants.py`, `time_scales.py` | `base/{constants,epoch}.py`, `classes/{time_scale_converter,relativistic/constants,frames/constants,displacement/constants}.py` | unified scalar `Epoch`, ephemeris-owned `TimeScaleConverter`, and model-owned constants |
-| MINI/CRD readers and catalog constants | `fileio/{mini,crd,builtin_catalogs}.py` | moved |
-| `frame_transform.py`, `iers_config.py` | `classes/frames/{earth_orientation,terrestrial,lunar,relativistic,reference_frame_system}.py` | split into typed data source and composable transforms |
-| `ephemeris.py` | `classes/ephemerides/{base,longitude_libration,calceph}.py` | split into interface, immutable query/result objects, correction model and CALCEPH implementation |
-| `iers_delay_models.py` | `classes/delays/{base,shapiro,troposphere}.py` | moved; registered as `troposphere`/`relativity` types |
-| `tidal_displacement.py` | `classes/displacement/{base,solid_earth_tide,pole_tide,ocean_pole_tide,lunar_solid_tide}.py` | split into typed inputs, composable interfaces, independent physics models and explicit backend injection |
-| `range_bias.py` | `classes/range_bias/table.py` | moved into an explicit station-indexed table model |
-| `uncertainty_model.py` | `fileio/normal_points.py` | external uncertainty models removed; each input record owns its two-way uncertainty |
-| `light_time.py` | `classes/observation/light_time.py` | request/solver/result API; long keyword-list interface removed |
-| `pipeline.py` StationRecord/ReflectorRecord/resolve | `fileio/catalogs.py` | moved + config loaders added |
-| `pipeline.py` observation workflow | `classes/observation/{resolver,model,reduction,equations,processor}.py` plus domain model packages | split into typed, independently testable stages; assembled by `observation_factory.build_observation_processor` |
-| `pipeline.py` writers | `fileio/observation_result_writer.py` | serializes rows projected from typed `ObservationEquation` objects |
-| `reflector_fit.py` | removed | reflector fitting is now `LlrAdjustment` + `reflectorPosition` (+ optional `stationRangeBias`) |
-| — | `estimation/adjustment_{config,options,preprocessing,results,solver}.py` | typed nonlinear adjustment components |
-| — | `estimation/linearized_least_squares.py` | shared dense/streaming normal-equation core |
-| `run_llr_np_oc.py` | program `LlrResiduals` | config-driven |
-| `run_llr_reflector_fit.py` | removed | use program `LlrAdjustment` with reflector parametrization |
-| six argparse CLIs | `python -m llrops run config.yml` | one entry point |
-
-Breaking changes: package renamed (`llr_processor_refactored` → `llrops`),
-CLI replaced by configs, observation assembly is centralized in
-`observation_factory.build_observation_processor`, and observation uncertainty
-comes only from normal-point records. Physics formulas are preserved, while
-public APIs and dependency injection are intentionally redesigned during
-development.
-
-## 5. Extension guides
-
-### 5.1 Non-tidal station displacement (atmospheric/hydrological loading, ...)
-
-Category already exists: `stationDisplacement`. Steps:
-
-1. Implement `StationDisplacement.displacement_itrf_m(data)` in
-   `classes/displacement/non_tidal.py`.  `data` is a frozen
-   `StationDisplacementInput` containing a read-only ITRF vector and scalar UTC
-   epoch.  Return one finite `np.ndarray(3)` in ITRF meters.
-2. Register it in `observation_factory.py`:
-   `register_factory("stationDisplacement", "atmosphericLoading", ...)`.
-3. Combine independent components with the registered `sum` model:
-
-   ```yaml
-   stationDisplacement:
-     type: sum
-     components:
-       - type: iers2010SolidEarthTide
-       - type: iers2010PoleTide
-       - type: iers2010OceanPoleTide
-         coefficientFile: /path/to/opoleloadcoefcmcor.txt.gz
-       - type: atmosphericLoading
-         file: /path/to/loading.product
-   ```
-
-
-The light-time layer only consumes the `ReferenceFrameSystem` facade; new displacement components do not require changes to frame or ephemeris internals.
-
-### 5.2 New lunar tidal model
-
-Category `reflectorDisplacement`, interface
-`displacement_lcrs_m(data)`, where `data` is a frozen
-`ReflectorDisplacementInput`.  Models that need ephemerides receive the typed `Ephemeris` object
-in their constructor; dependencies are fixed during construction and must not
-be replaced at runtime. Implement in
-`classes/displacement/`, register a new type name, and select it in the config.
-If the model has estimable parameters (e.g. h2/l2), also expose partials — see
-5.3.
-
-### 5.3 Estimating more parameters
-
-Three-step recipe, all local:
-
-1. **Partial block** — compute the one-way range derivative in
-   `LlrObservationModel` (or a dedicated partial provider), then add it to the
-   named partial blocks passed directly into `ObservationEquation`. Table
-   serialization does not participate.
-2. **Parametrization** — subclass `Parametrization` in
-   `classes/parametrization/`: declare `ParameterName`s (use the
-   `temporal`/`interval` fields for time-resolved parameters such as daily
-   EOP), place the block into columns, implement `apply_update` (write into
-   the catalog / Earth-orientation source / model coefficients so the next iteration
-   relinearizes), decorate with `@register("parametrization", "myType")`.
-3. **Config** — add `{type: myType, ...}` to the `parametrization:` list of
-   `LlrAdjustment` / `LlrNormalEquations`.
-
-Estimator, normal equations, IO and CLI are untouched. Because parameters are
-*named*, per-station or per-epoch normal equations built in separate program
-calls combine in `NormalsCombineSolve`.  For nonlinear
-parameters, `NormalsCombineSolve` is a single fixed-linearization solve; use
-`LlrAdjustment` when updates must be applied and the model relinearized.
-
-### 5.4 Lunar orbit / attitude integration
-
-1. New category `lunarDynamics` (or reuse `ephemerides`): implement an
-   `IntegratedLunarEphemeris` implementing `Ephemeris`
-   (`body_state_bcrs`, `pa2lcrs_matrix`, `tdb_minus_tt_sec`, `lb_minus_ll`)
-   but backed by numerical integration of the orbit/attitude equations,
-   with force-model classes (point masses, Earth/Moon harmonics, tides)
-   registered under a `forces` category — the direct GROOPS analogue.
-2. Add a program `LunarOrbitIntegration` that integrates state + variational
-   equations over the data span and writes the trajectory + state transition
-   matrices to `fileio/` (GROOPS "orbit file" pattern), so the expensive
-   integration is shared by subsequent programs.
-3. Estimating initial state / dynamical parameters: the variational-equation
-   output is exactly a partial block (`"orbit_state"`, shape (n_dyn,)) —
-   interpolate the state transition matrix at each bounce epoch t2, project
-   onto the range direction, and add a `LunarOrbitStateParametrization`
-   whose `apply_update` feeds corrections back to the integrator's initial
-   conditions before the next Gauss–Newton iteration.
-
-## 6. Operational notes
-
-* `RunContext` caches class instances by config hash: `CalcephEphemeris` and
-  `C04EarthOrientation` objects are opened once per run and shared by frame, delay and
-  displacement models. Raw native handles are never copied into model state.
-* Loops + `--set` replace the SLURM/salloc shell wrappers: submit
-  `python -m llrops run cfg.yml --set station=apollo` per array task.
-* Two execution modes (see `llrops/parallel/`): single-process serial, and MPI
-  master-worker (`llrops/parallel/mpi.py`): `mpirun/srun python -m llrops run
-  cfg.yml --mpi`. Worker ranks enter the receive loop before program/config
-  modules are imported. Rank 0 alone parses inputs, registers programs and
-  writes outputs. Each observation spec is broadcast once: catalogs and the
-  rank-0-parsed EOP columns are cached by `specId`, while later chunk tasks carry
-  only that ID and their NptRecords. After the broadcast, rank 0 explicitly asks
-  every worker to construct its processor and process-local CALCEPH handle, then
-  waits for all workers to report ready. Observation timing and task dispatch
-  begin only after this initialization barrier. CALCEPH native handles remain
-  process-local because C-library handles cannot be serialized or shared safely
-  between MPI processes. Supported by
-  `LlrResiduals`, `LlrAdjustment` and `LlrNormalEquations`; the current
-  linearization point is snapshotted into each task as `catalogState`.
-* Validation strategy: validate `LlrAdjustment` against trusted scientific
-  datasets and compare convergence, residual statistics and solved parameter
-  updates. Reflector fitting is no longer a separate validated v24 path.
+`RunContext` owns shared catalogs, ephemerides, EOP data, and native resources.
+MPI workers construct process-local handles after their initialization barrier;
+native handles are never serialized between ranks. `mpi.chunksize` controls
+task granularity. The removed local `ProcessPoolExecutor` and legacy
+`LlrReflectorFit` paths are not supported.
