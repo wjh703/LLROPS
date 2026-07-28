@@ -75,9 +75,8 @@ Relevant current modules:
 - [x] Add one private native extension, provisionally named
       `llrops._iers2010`, instead of creating a separate extension for every
       physical model.
-- [x] Evaluate `meson-python` plus `f2py` and an explicit `.pyf` signature file
-      as the preferred build path. Record the decision and rejected
-      alternatives.
+- [x] Use `meson-python` plus `f2py` and an explicit `.pyf` signature file as
+      the preferred build path. Record the decision and rejected alternatives.
 - [x] Confirm support for the project's Python and NumPy versions, fixed-form
       Fortran 77, editable installs, source distributions, and Linux wheels.
 - [x] Expose only the required top-level routines. Do not expose internal
