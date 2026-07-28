@@ -12,6 +12,7 @@ estimation.
 | Prepare MINI, CRD, or canonical LLROPS inputs | [INPUTS.md](INPUTS.md) |
 | Configure reflector and station-bias adjustment | [ADJUSTMENT.md](ADJUSTMENT.md) |
 | Understand module boundaries and extension points | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| Review the GROOPS-aligned file and program roadmap | [GROOPS_FILE_PROGRAM_DESIGN.md](GROOPS_FILE_PROGRAM_DESIGN.md) |
 | Build and validate the IERS native extension | [DEVELOPMENT.md](DEVELOPMENT.md) |
 
 ## Minimal command line
