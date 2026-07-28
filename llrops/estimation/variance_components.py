@@ -109,7 +109,7 @@ class VarianceComponentDefinition:
             return False
         if canonical_station_id(equation.station_key) != self.station:
             return False
-        wavelength = (equation.metadata or {}).get("wavelength_nm")
+        wavelength = equation.wavelength_nm
         if self.wavelength_min_nm is not None or self.wavelength_max_exclusive_nm is not None:
             if wavelength is None:
                 return False

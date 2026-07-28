@@ -18,7 +18,6 @@ def _eq(station="APOLLO"):
         station_key=station,
         reflector_key="REF",
         epoch=Epoch.from_isot("2008-01-01T00:00:00", scale=TimeScale.UTC),
-        metadata={"station_name": station},
     )
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
+from collections.abc import Callable
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
@@ -280,6 +281,54 @@ class StationRangeBiasParametrization(Parametrization):
         return float(
             sum(self.values.get(key, 0.0) for key in self._active_keys_for(eq))
         )
+
+    def initial_update(
+        self,
+        equations: Sequence[ObservationEquation],
+        reduced_observation: Callable[[ObservationEquation], float],
+        *,
+        weight_cap: float,
+        maximum_iterations: int,
+    ) -> np.ndarray:
+        parameter_count = len(self.keys)
+        if not parameter_count:
+            return np.zeros(0, dtype=float)
+        design = np.vstack([self.design_columns(eq) for eq in equations])
+        observations = np.asarray(
+            [reduced_observation(eq) for eq in equations], dtype=float
+        )
+        formal_weights = np.asarray(
+            [min(1.0 / eq.sigma_m**2, weight_cap) for eq in equations],
+            dtype=float,
+        )
+        if np.linalg.matrix_rank(design) < parameter_count:
+            return np.zeros(parameter_count, dtype=float)
+
+        weights = formal_weights.copy()
+        beta = np.zeros(parameter_count, dtype=float)
+        for _ in range(maximum_iterations):
+            normal = design.T @ (weights[:, None] * design)
+            rhs = design.T @ (weights * observations)
+            try:
+                next_beta = np.linalg.solve(normal, rhs)
+            except np.linalg.LinAlgError:
+                return np.zeros(parameter_count, dtype=float)
+            residuals = observations - design @ next_beta
+            median = float(np.median(residuals))
+            scale = 1.4826 * float(np.median(np.abs(residuals - median)))
+            if not np.isfinite(scale) or scale <= 1.0e-12:
+                beta = next_beta
+                break
+            magnitude = np.abs(residuals - median)
+            huber = np.ones_like(magnitude)
+            outside = magnitude > 1.345 * scale
+            huber[outside] = 1.345 * scale / magnitude[outside]
+            if np.max(np.abs(next_beta - beta)) <= 1.0e-10:
+                beta = next_beta
+                break
+            beta = next_beta
+            weights = formal_weights * huber
+        return beta
 
     def apply_update(self, delta: np.ndarray) -> None:
         updates = parameter_vector(

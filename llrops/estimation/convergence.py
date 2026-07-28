@@ -36,18 +36,8 @@ class ParameterConvergencePolicy:
                 "Block parameter tolerances must be finite and non-negative."
             )
 
-    @staticmethod
-    def _block_type(label: str) -> str:
-        return label.split(":", 1)[-1]
-
     def tolerance_for(self, label: str) -> float:
-        block_type = self._block_type(label)
-        return float(
-            self.tolerance_by_block_m.get(
-                label,
-                self.tolerance_by_block_m.get(block_type, self.default_tolerance_m),
-            )
-        )
+        return float(self.tolerance_by_block_m.get(label, self.default_tolerance_m))
 
     def evaluate(self, updates_m: Mapping[str, float]) -> ParameterConvergenceEvaluation:
         if any(

@@ -136,7 +136,6 @@ def test_reference_frame_system_owns_one_time_converter():
     system = ReferenceFrameSystem(
         ephemeris=ephemeris,
         earth_orientation=earth_orientation,
-        owns_ephemeris=True,
     )
 
     assert not earth_orientation.installed
@@ -147,8 +146,7 @@ def test_reference_frame_system_owns_one_time_converter():
     lunar_bcrs = system.lcrs2bcrs([1.0, 2.0, 3.0], _tdb())
     assert np.allclose(system.bcrs2lcrs(lunar_bcrs, _tdb()), [1.0, 2.0, 3.0])
 
-    system.close()
-    assert ephemeris.closed
+    assert not ephemeris.closed
 
 
 def test_zero_libration_factory_and_shapiro_use_epoch():

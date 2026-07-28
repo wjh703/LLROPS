@@ -27,8 +27,8 @@ as in the serial path.
 Task kinds:
 
 ``observation_equations``
-    chunk of NptRecords -> typed observation equations (used by ``LlrResiduals`` and by the
-    equation sources of ``LlrAdjustment`` / ``LlrNormalEquations``).
+    chunk of NptRecords -> typed equations for estimation or rows for residual
+    output.
 """
 
 from __future__ import annotations
@@ -38,7 +38,6 @@ import traceback
 from dataclasses import asdict
 from typing import Callable, Dict, List, Optional, Sequence
 
-from llrops.parallel.worker_cache import close_cached_objects
 from llrops.parallel.observation_spec import (
     apply_catalog_state as _apply_catalog_state,
     build_worker_processor,
@@ -70,16 +69,28 @@ def _processor_for_task(cache: dict, spec: dict):
     """Return one cached processor per observation spec on each worker rank.
 
     The v31 worker rebuilt the light-time processor for every tiny MPI chunk.
-    Heavy CALCEPH/EOP objects were cached, but the processor/resolver/reducer
-    graph was still reconstructed for every task and then closed immediately.
+    Heavy CALCEPH/EOP objects were cached, but the processor graph was still
+    reconstructed for every task and then closed immediately.
     Keep the processor warm for the lifetime of the worker, matching the MPI
     architecture documented at the top of this module.
     """
     processor_key = ("processor", spec["specId"])
     if processor_key not in cache:
         shared_class_cache = cache.setdefault("sharedClassCache", {})
-        cache[processor_key] = build_worker_processor(spec, shared_class_cache)
+        context, processor = build_worker_processor(spec, shared_class_cache)
+        cache[("context", spec["specId"])] = context
+        cache[processor_key] = processor
     return cache[processor_key]
+
+
+def _close_worker_contexts(cache: dict) -> None:
+    contexts = [
+        value
+        for key, value in cache.items()
+        if isinstance(key, tuple) and key and key[0] == "context"
+    ]
+    for context in contexts:
+        context.close()
 
 
 def _initialized_processor_for_task(cache: dict, spec: dict):
@@ -131,10 +142,6 @@ def _handle_observation_equations(payload: dict, cache: dict):
         n_input_records=len(records),
         n_invalid_records=0,
     )
-    equations = processor.process(
-        local,
-        options=options,
-    )
     response = {
         "sourceName": payload["sourceName"],
         "startIndex": payload["startIndex"],
@@ -142,9 +149,9 @@ def _handle_observation_equations(payload: dict, cache: dict):
     }
     if payload.get("returnRows"):
         level = ObservationOutputLevel.parse(payload.get("outputLevel", "standard"))
-        response["items"] = [equation.to_row(level) for equation in equations]
+        response["items"] = processor.rows(local, options=options, level=level)
     else:
-        response["items"] = equations
+        response["items"] = processor.equations(local, options=options)
     return response
 
 
@@ -381,7 +388,7 @@ class MpiRuntime:
                         (True, task_id, traceback.format_exc()), dest=0, tag=TAG_RESULT
                     )
         finally:
-            close_cached_objects(cache)
+            _close_worker_contexts(cache)
 
     # -- master side -----------------------------------------------------------
     def map_tasks(
@@ -482,7 +489,7 @@ class MpiRuntime:
         if self.has_workers:
             for worker in range(1, self.size):
                 self.comm.send(None, dest=worker, tag=TAG_STOP)
-        close_cached_objects(self._serial_cache)
+        _close_worker_contexts(self._serial_cache)
         self._serial_cache.clear()
         self._prepared_spec_ids.clear()
         self._initialized_spec_ids.clear()

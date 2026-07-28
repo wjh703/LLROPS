@@ -12,7 +12,6 @@ from llrops.classes.observation.equations import ObservationEquation
 from llrops.classes.parametrization.base import ParametrizationList
 from llrops.estimation.linearized_least_squares import (
     normal_matrix_condition,
-    solve_normal_equations,
 )
 from llrops.estimation.variance_components import VarianceComponentDefinition
 from llrops.fileio.normal_equations import NormalEquations
@@ -181,16 +180,17 @@ def parameter_records(
     normals: NormalEquations,
     delta: np.ndarray,
     names: Sequence[ParameterName],
+    covariance: np.ndarray,
+    sigma0_post: Optional[float],
 ) -> tuple[list[dict[str, object]], dict[str, object]]:
     delta = np.asarray(delta, dtype=float)
     if delta.shape != (len(names),):
         raise ValueError("Parameter correction length does not match parameter names.")
     if not np.all(np.isfinite(delta)):
         raise ValueError("Parameter corrections must be finite.")
-    solved = solve_normal_equations(normals)
-    covariance = solved.covariance
-    if covariance is None:
-        raise RuntimeError("Final parameter covariance is unavailable.")
+    covariance = np.asarray(covariance, dtype=float)
+    if covariance.shape != (len(names), len(names)):
+        raise ValueError("Parameter covariance shape does not match parameter names.")
     diagonal = np.maximum(np.diag(covariance), 0.0)
     cofactor_sigmas = np.sqrt(diagonal)
     denominator = np.outer(cofactor_sigmas, cofactor_sigmas)
@@ -215,8 +215,8 @@ def parameter_records(
                 "cofactor_sigma_m": float(cofactor_sigmas[index]),
                 "formal_sigma_m": (
                     None
-                    if solved.sigma0_post is None
-                    else float(solved.sigma0_post * cofactor_sigmas[index])
+                    if sigma0_post is None
+                    else float(sigma0_post * cofactor_sigmas[index])
                 ),
                 "maximum_absolute_correlation": (
                     None
@@ -233,8 +233,119 @@ def parameter_records(
         "parameter_count": len(names),
         "rank": int(np.linalg.matrix_rank(normals.N)),
         "condition_number": normal_matrix_condition(normals),
-        "sigma0_post": solved.sigma0_post,
+        "sigma0_post": sigma0_post,
     }
+
+
+def variance_component_records(
+    equations: Sequence[ObservationEquation],
+    residuals: Mapping[ObsKey, float],
+    standardized: Mapping[ObsKey, float],
+    scales: Mapping[str, float],
+    initial_scales: Mapping[str, float],
+    factors: Mapping[ObsKey, float],
+    proposed_factors: Mapping[ObsKey, float],
+    *,
+    assignments: Mapping[ObsKey, str],
+    components: Sequence[VarianceComponentDefinition],
+    diagnostics: Mapping[str, Mapping[str, object]],
+    uncertainty_qc_groups: Mapping[str, Mapping[str, object]],
+    active_threshold: float,
+) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    for component in components:
+        selected = [
+            equation
+            for equation in equations
+            if assignments[equation.identity] == component.id
+        ]
+        residual_values = np.asarray(
+            [residuals[equation.identity] for equation in selected], dtype=float
+        )
+        standardized_values = np.asarray(
+            [standardized[equation.identity] for equation in selected], dtype=float
+        )
+        factor_summary = robust_factor_summary(
+            selected, factors, active_threshold=active_threshold
+        )
+        weights = np.asarray(
+            [
+                factors[equation.identity]
+                / (scales[component.id] ** 2 * equation.sigma_m**2)
+                for equation in selected
+            ],
+            dtype=float,
+        )
+        weight_sum = float(np.sum(weights))
+        item = dict(diagnostics.get(component.id, {}))
+        item.update(
+            {
+                "component_id": component.id,
+                "configured_start": component.start,
+                "configured_end": component.end_exclusive or "present",
+                "actual_start_epoch": (
+                    min(equation.epoch for equation in selected).isot()
+                    if selected
+                    else None
+                ),
+                "actual_end_epoch": (
+                    max(equation.epoch for equation in selected).isot()
+                    if selected
+                    else None
+                ),
+                "proposed_scale_applied": False,
+                "observation_count": len(selected),
+                "retained_observation_count": sum(
+                    value == component.id for value in assignments.values()
+                ),
+                "initial_scale": float(initial_scales[component.id]),
+                "final_scale": float(scales[component.id]),
+                "variance_component": float(scales[component.id] ** 2),
+                "uncertainty_quality_control": dict(
+                    uncertainty_qc_groups[component.id]
+                ),
+                "residual_rms_m": (
+                    float(np.sqrt(np.mean(residual_values**2)))
+                    if len(residual_values)
+                    else None
+                ),
+                "standardized_rms": (
+                    float(np.sqrt(np.mean(standardized_values**2)))
+                    if len(standardized_values)
+                    else None
+                ),
+                "median_standardized_residual": (
+                    float(np.median(standardized_values))
+                    if len(standardized_values)
+                    else None
+                ),
+                "mad_standardized_residual": distribution_summary(
+                    standardized_values
+                ).get("mad"),
+                "residual_wrms_m": (
+                    None
+                    if weight_sum <= 0.0
+                    else float(
+                        np.sqrt(np.sum(weights * residual_values**2) / weight_sum)
+                    )
+                ),
+                "residual_summary_m": distribution_summary(residual_values),
+                "standardized_residual_summary": distribution_summary(
+                    standardized_values
+                ),
+                "robust_factor_summary": factor_summary,
+                "final_state_proposed_robust_factor_summary": robust_factor_summary(
+                    selected,
+                    proposed_factors,
+                    active_threshold=active_threshold,
+                ),
+                "full_weight_count": factor_summary["full_weight_count"],
+                "downweighted_count": factor_summary["downweighted_count"],
+                "rejected_count": factor_summary["rejected_count"],
+            }
+        )
+        records.append(item)
+    return records
 
 
 def observation_records(
@@ -248,7 +359,6 @@ def observation_records(
     proposed_factors: Mapping[ObsKey, float],
     *,
     assignments: Mapping[ObsKey, str],
-    names: Sequence[ParameterName],
     parametrization: ParametrizationList,
     components: Sequence[VarianceComponentDefinition],
     uncertainty_qc_records: Mapping[ObsKey, Mapping[str, object]],
@@ -262,12 +372,7 @@ def observation_records(
         factor = float(factors[equation.identity])
         proposed_factor = float(proposed_factors[equation.identity])
         component_id = assignments[equation.identity]
-        design_row = parametrization.design_row(equation)
-        matched_bias = [
-            str(name)
-            for index, name in enumerate(names)
-            if name.type == "rangeBias" and design_row[index] != 0.0
-        ]
+        matched_parameters = parametrization.matched_parameter_names(equation)
         status = (
             "REJECTED"
             if factor <= active_threshold
@@ -314,7 +419,7 @@ def observation_records(
                 "equivalent_weight_per_m2": float(factor / base_variance),
                 "applied_robust_status": status,
                 "final_state_proposed_robust_status": proposed_status,
-                "matched_bias_ids": matched_bias,
+                "matched_parameter_names": matched_parameters,
             }
         )
     return records
@@ -328,4 +433,5 @@ __all__ = [
     "parameter_records",
     "residual_summary",
     "robust_factor_summary",
+    "variance_component_records",
 ]

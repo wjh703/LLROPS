@@ -27,7 +27,6 @@ def test_canonical_adjustment_schema_maps_to_typed_plan():
             "adjustment": {
                 "maximumLinearizations": 9,
                 "parameterUpdateFactor": 0.5,
-                "linearizationBackend": "streaming",
                 "uncertaintyFloor": {
                     "minimumOneWaySigmaM": 0.002,
                     "minimumFractionOfGroupMedian": 0.1,
@@ -82,7 +81,6 @@ def test_canonical_adjustment_schema_maps_to_typed_plan():
 
     assert options.maximum_linearizations == 9
     assert options.parameter_update_factor == pytest.approx(0.5)
-    assert options.linearization_backend == "streaming"
     assert options.prefit_gross_threshold_m is None
     assert options.maximum_stochastic_iterations == 6
     assert options.robust_factor_change_quantile == pytest.approx(0.99)

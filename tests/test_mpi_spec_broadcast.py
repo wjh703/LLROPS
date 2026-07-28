@@ -220,7 +220,7 @@ def test_worker_processors_share_only_the_immutable_class_cache(monkeypatch):
 
     def build(spec, shared_class_cache):
         class_caches.append(shared_class_cache)
-        return object()
+        return object(), object()
 
     monkeypatch.setattr("llrops.parallel.mpi.build_worker_processor", build)
     first = _processor_for_task(cache, {"specId": "first"})

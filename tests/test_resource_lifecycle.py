@@ -1,6 +1,5 @@
 import logging
 
-from llrops.parallel.worker_cache import close_cached_objects
 from llrops.resource_lifecycle import close_resources
 
 
@@ -16,7 +15,4 @@ def test_close_resources_deduplicates_resources(caplog):
     resource = Resource()
     with caplog.at_level(logging.WARNING):
         close_resources([resource, resource], owner="test")
-    assert resource.count == 1
-    resource.count = 0
-    close_cached_objects({"direct": resource, "nested": {"same": resource}})
     assert resource.count == 1

@@ -100,7 +100,7 @@ def test_serial_equation_source_reuses_processor_and_sets_iteration_progress():
     calls = []
 
     class Processor:
-        def process(self, dataset, *, options):
+        def equations(self, dataset, *, options):
             calls.append((dataset, options))
             return [dataset]
 

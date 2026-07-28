@@ -63,25 +63,24 @@ def llr_residuals(config: dict, context: RunContext):
         processor = build_processor(config, context)
         results_by_file: Dict[str, list] = {}
         total = 0
-        try:
-            for source_name, dataset in datasets.items():
-                results = processor.process(dataset, options=options)
-                results_by_file[source_name] = results
-                total += len(results)
-        finally:
-            processor.close()
+        for source_name, dataset in datasets.items():
+            results = processor.rows(
+                dataset,
+                options=options,
+                level=table_level,
+            )
+            results_by_file[source_name] = results
+            total += len(results)
 
     if config.get("outputCsv"):
         observation_result_writer.write_csv_grouped(
             results_by_file,
             context.resolve_path(config["outputCsv"]),
-            level=table_level,
         )
     if config.get("outputJson"):
         observation_result_writer.write_json_grouped(
             results_by_file,
             context.resolve_path(config["outputJson"]),
-            level=table_level,
         )
     print(f"[LlrResiduals] {total} normal points over {len(results_by_file)} source file(s)")
     return results_by_file

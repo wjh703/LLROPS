@@ -53,14 +53,6 @@ class ObservationModelState:
         self.station_catalog = dict(station_catalog)
         self.reflector_catalog = dict(reflector_catalog)
 
-    @classmethod
-    def from_catalogs(
-        cls,
-        station_catalog: Mapping[str, StationRecord],
-        reflector_catalog: Mapping[str, ReflectorRecord],
-    ) -> "ObservationModelState":
-        return cls(station_catalog, reflector_catalog)
-
     def reflector_positions(self) -> dict[str, tuple[float, float, float]]:
         return {
             key: tuple(float(value) for value in record.moon_fixed_xyz_m)

@@ -6,7 +6,7 @@ from llrops.fileio.normal_equations import NormalEquations
 
 
 def test_normal_equations_use_W_and_np_solve_convention(tmp_path):
-    names = [ParameterName("x"), ParameterName("y")]
+    names = [ParameterName("test", "x"), ParameterName("test", "y")]
     A = np.array([[1.0, 2.0], [3.0, 4.0], [2.0, -1.0]])
     L = np.array([5.0, 11.0, 1.0])
     sigma = np.array([1.0, 2.0, 0.5])
@@ -34,7 +34,7 @@ def test_normal_equations_use_W_and_np_solve_convention(tmp_path):
 
 
 def test_exactly_determined_system_has_no_posterior_variance_factor():
-    names = [ParameterName("x"), ParameterName("y")]
+    names = [ParameterName("test", "x"), ParameterName("test", "y")]
     normals = NormalEquations.zeros(names)
     normals.accumulate(
         np.eye(2),
@@ -50,7 +50,7 @@ def test_exactly_determined_system_has_no_posterior_variance_factor():
 
 
 def test_inconsistent_residual_quadratic_form_is_rejected():
-    normals = NormalEquations.zeros([ParameterName("x")])
+    normals = NormalEquations.zeros([ParameterName("test", "x")])
     normals.N[0, 0] = 1.0
     normals.W[0] = 2.0
     normals.lPl = 1.0
@@ -61,6 +61,6 @@ def test_inconsistent_residual_quadratic_form_is_rejected():
 
 
 def test_normal_equation_parameter_names_must_be_unique():
-    name = ParameterName("x")
+    name = ParameterName("test", "x")
     with pytest.raises(ValueError, match="must be unique"):
         NormalEquations.zeros([name, name])

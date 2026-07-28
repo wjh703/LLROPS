@@ -15,11 +15,12 @@ Love-number or orbit-state parameters never touches them.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Sequence
+from collections.abc import Callable
+from typing import Dict, List, Sequence
 
 import numpy as np
 
-from llrops.base.parameter_name import ParameterName, validate_parameter_types
+from llrops.base.parameter_name import ParameterName
 from llrops.base.array_validation import parameter_vector
 from llrops.classes.observation.equations import ObservationEquation
 
@@ -29,6 +30,10 @@ class Parametrization:
 
     #: overridden by subclasses
     category = "parametrization"
+
+    @property
+    def block_id(self) -> str:
+        return str(getattr(type(self), "_registry_type", type(self).__name__))
 
     def setup(self, equations: Sequence[ObservationEquation], model_state) -> None:
         """Inspect the dataset once before the first iteration (e.g. discover
@@ -72,6 +77,16 @@ class Parametrization:
         """Current parameter values for reporting."""
         return {}
 
+    def initial_update(
+        self,
+        equations: Sequence[ObservationEquation],
+        reduced_observation: Callable[[ObservationEquation], float],
+        *,
+        weight_cap: float,
+        maximum_iterations: int,
+    ) -> np.ndarray:
+        return np.zeros(self.parameter_count, dtype=float)
+
 
 class ParametrizationList:
     """Concatenation of parametrization blocks into one design matrix.
@@ -98,8 +113,12 @@ class ParametrizationList:
             next_offset = offset + len(block_names)
             slices.append(slice(offset, next_offset))
             offset = next_offset
+        block_ids = [block.block_id for block in self.blocks]
+        if len(set(block_ids)) != len(block_ids):
+            raise ValueError(f"Parametrization block IDs must be unique: {block_ids!r}.")
+        if len(set(names)) != len(names):
+            raise ValueError("Parametrization parameter names must be unique.")
         self._parameter_names = names
-        validate_parameter_types(self._parameter_names)
         self._slices = slices
 
     def setup(self, equations: Sequence[ObservationEquation], model_state) -> None:
@@ -116,15 +135,15 @@ class ParametrizationList:
     def select_blocks(self, selectors: Sequence[str]) -> "ParametrizationList":
         """Return a view over selected parameter blocks, reusing block state.
 
-        Selectors are exact class names, for example
-        ``ReflectorPositionParametrization``. An empty selector list is invalid
+        Selectors are stable registry type names, for example
+        ``reflectorPosition``. An empty selector list is invalid
         so a processing step cannot silently solve a zero-parameter system.
         """
         requested = {str(value).strip() for value in selectors if str(value).strip()}
         if not requested:
             raise ValueError("At least one parametrization block selector is required.")
-        selected = [block for block in self.blocks if type(block).__name__ in requested]
-        found = {type(block).__name__ for block in selected}
+        selected = [block for block in self.blocks if block.block_id in requested]
+        found = {block.block_id for block in selected}
         missing = requested - found
         if missing:
             raise KeyError(f"Unknown parametrization block selector(s): {sorted(missing)}")
@@ -193,32 +212,40 @@ class ParametrizationList:
         values = parameter_vector(delta, expected_size=self.parameter_count, name="delta")
         return [values[block_slice] for block_slice in self._slices]
 
+    def update_norms(self, delta: np.ndarray) -> Dict[str, float]:
+        return {
+            block.block_id: float(block.max_update_norm(block_delta))
+            for block, block_delta in zip(self.blocks, self.split(delta))
+        }
+
     def apply_update(self, delta: np.ndarray) -> Dict[str, float]:
         """Apply all block updates; returns per-block max update norms."""
-        norms: Dict[str, float] = {}
-        duplicate_types = {
-            type(block).__name__
-            for block in self.blocks
-            if sum(type(other).__name__ == type(block).__name__ for other in self.blocks) > 1
-        }
-        for index, (block, block_delta) in enumerate(zip(self.blocks, self.split(delta))):
+        norms = self.update_norms(delta)
+        for block, block_delta in zip(self.blocks, self.split(delta)):
             block.apply_update(block_delta)
-            label = type(block).__name__
-            if label in duplicate_types:
-                label = f"{index}:{label}"
-            norms[label] = block.max_update_norm(block_delta)
         return norms
 
     def state(self) -> Dict[str, object]:
-        merged: Dict[str, object] = {}
-        duplicate_types = {
-            type(block).__name__
+        return {block.block_id: block.state() for block in self.blocks}
+
+    def initial_update(
+        self,
+        equations: Sequence[ObservationEquation],
+        *,
+        weight_cap: float,
+        maximum_iterations: int,
+    ) -> np.ndarray:
+        updates = [
+            block.initial_update(
+                equations,
+                self.reduced_observation,
+                weight_cap=weight_cap,
+                maximum_iterations=maximum_iterations,
+            )
             for block in self.blocks
-            if sum(type(other).__name__ == type(block).__name__ for other in self.blocks) > 1
-        }
-        for index, block in enumerate(self.blocks):
-            label = type(block).__name__
-            if label in duplicate_types:
-                label = f"{index}:{label}"
-            merged[label] = block.state()
-        return merged
+        ]
+        return np.concatenate(updates) if updates else np.zeros(0, dtype=float)
+
+    def matched_parameter_names(self, eq: ObservationEquation) -> list[str]:
+        names = self.parameter_names()
+        return [str(names[index]) for index, _ in self.design_entries(eq)]
