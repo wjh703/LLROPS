@@ -3,9 +3,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from llrops.base.epoch import Epoch, TimeScale, utc2tt
-from llrops.classes.time_scale_converter import TimeScaleConverter
-from llrops.classes.ephemerides import BodyState, Ephemeris
+from lunarops.base.epoch import Epoch, TimeScale, utc2tt
+from lunarops.classes.time_scale_converter import TimeScaleConverter
+from lunarops.classes.ephemerides import BodyState, Ephemeris
 
 
 class _ConstantOffsetEphemeris(Ephemeris):

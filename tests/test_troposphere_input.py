@@ -3,7 +3,7 @@ from dataclasses import FrozenInstanceError
 import numpy as np
 import pytest
 
-from llrops.classes.delays import (
+from lunarops.classes.delays import (
     Iers2010MendesPavlisTroposphere,
     TroposphereInput,
     ZeroTroposphereDelay,

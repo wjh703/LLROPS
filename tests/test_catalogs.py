@@ -1,12 +1,12 @@
 import numpy as np
 import pytest
 
-from llrops.base.station_identity import (
+from lunarops.base.station_identity import (
     canonical_station_id,
     station_display_name,
     station_ilrs_code,
 )
-from llrops.fileio.catalogs import (
+from lunarops.fileio.catalogs import (
     ReflectorRecord,
     StationRecord,
     load_reflector_catalog,

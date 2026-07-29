@@ -4,10 +4,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from llrops.base.epoch import Epoch, TimeScale
-from llrops.classes.time_scale_converter import TimeScaleConverter
-from llrops.classes.ephemerides import BodyState, Ephemeris
-from llrops.classes.frames import (
+from lunarops.base.epoch import Epoch, TimeScale
+from lunarops.classes.time_scale_converter import TimeScaleConverter
+from lunarops.classes.ephemerides import BodyState, Ephemeris
+from lunarops.classes.frames import (
     C04EarthOrientation,
     EarthOrientation,
     EarthOrientationSample,
@@ -150,8 +150,8 @@ def test_reference_frame_system_owns_one_time_converter():
 
 
 def test_zero_libration_factory_and_shapiro_use_epoch():
-    from llrops.classes.delays import Iers2010ShapiroDelay
-    from llrops.classes.ephemerides import make_longitude_libration_correction
+    from lunarops.classes.delays import Iers2010ShapiroDelay
+    from lunarops.classes.ephemerides import make_longitude_libration_correction
 
     epoch = _tdb()
     correction = make_longitude_libration_correction("none")
@@ -185,7 +185,7 @@ def test_c04_duplicate_mjd_policy_is_explicit():
 
 
 def test_parse_eop_c04_and_finals_rows(tmp_path):
-    from llrops.classes.frames.earth_orientation import read_iers_c04
+    from lunarops.classes.frames.earth_orientation import read_iers_c04
 
     path = tmp_path / "eop.txt"
     path.write_text(
@@ -209,7 +209,7 @@ def test_parse_eop_c04_and_finals_rows(tmp_path):
 
 
 def test_eop_parse_error_includes_preview(tmp_path):
-    from llrops.classes.frames.earth_orientation import read_iers_c04
+    from lunarops.classes.frames.earth_orientation import read_iers_c04
 
     path = tmp_path / "bad_eop.txt"
     path.write_text("not an eop row\nstill not eop\n", encoding="utf-8")
@@ -233,7 +233,7 @@ def test_c04_mpi_payload_roundtrip_uses_arrays():
 
 
 def test_terrestrial_transform_gcrs_itrf_round_trip(monkeypatch):
-    from llrops.classes.frames import TerrestrialFrameTransform
+    from lunarops.classes.frames import TerrestrialFrameTransform
 
     transform = TerrestrialFrameTransform(_FakeEarthOrientation())
     matrix = np.array(

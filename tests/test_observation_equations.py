@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from llrops.base.epoch import Epoch, TimeScale
-from llrops.classes.observation.equations import ObservationEquation
+from lunarops.base.epoch import Epoch, TimeScale
+from lunarops.classes.observation.equations import ObservationEquation
 
 _UTC_EPOCH = Epoch(2458849.5, 0.0, TimeScale.UTC)
 

@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
 
-from llrops.base.epoch import Epoch, TimeScale
-from llrops.classes.observation.equations import ObservationEquation
-from llrops.classes.parametrization.station_range_bias import StationRangeBiasParametrization
+from lunarops.base.epoch import Epoch, TimeScale
+from lunarops.classes.observation.equations import ObservationEquation
+from lunarops.classes.parametrization.station_range_bias import StationRangeBiasParametrization
 
 
 def _eq(station_key, epoch, station_id=None):

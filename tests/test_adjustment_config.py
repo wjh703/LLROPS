@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from llrops.config.loader import load_config_file
-from llrops.estimation.adjustment_config import parse_adjustment_plan
+from lunarops.config.loader import load_config_file
+from lunarops.estimation.adjustment_config import parse_adjustment_plan
 
 
 def _component(component_id="A"):
@@ -183,7 +183,7 @@ def test_variance_component_dates_are_validated():
 def test_detailed_adjustment_config_uses_the_canonical_schema():
     root = Path(__file__).resolve().parents[1]
     config = load_config_file(
-        root / "configs" / "llrops_reflector_bias_adjustment_detailed.yml"
+        root / "configs" / "lunarops_reflector_bias_adjustment_detailed.yml"
     )
     adjustment_program = next(
         item for item in config["programs"] if item.get("program") == "LlrAdjustment"

@@ -4,30 +4,30 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from llrops.base.epoch import Epoch, TimeScale
-from llrops.base.parameter_name import ParameterName
-from llrops.classes.observation.equations import ObservationEquation
-from llrops.classes.parametrization.base import Parametrization, ParametrizationList
-from llrops.estimation.adjustment_preprocessing import floor_prefit_uncertainties
-from llrops.estimation.convergence import ParameterConvergencePolicy
-from llrops.estimation.linearized_least_squares import (
+from lunarops.base.epoch import Epoch, TimeScale
+from lunarops.base.parameter_name import ParameterName
+from lunarops.classes.observation.equations import ObservationEquation
+from lunarops.classes.parametrization.base import Parametrization, ParametrizationList
+from lunarops.estimation.adjustment_preprocessing import floor_prefit_uncertainties
+from lunarops.estimation.convergence import ParameterConvergencePolicy
+from lunarops.estimation.linearized_least_squares import (
     DenseLinearization,
     build_normal_equations_streaming,
     solve_normal_equations,
 )
-from llrops.estimation.adjustment_options import LlrAdjustmentOptions
-from llrops.estimation.adjustment_solver import (
+from lunarops.estimation.adjustment_options import LlrAdjustmentOptions
+from lunarops.estimation.adjustment_solver import (
     LlrAdjustmentSolver,
 )
-from llrops.estimation.robust_weights import (
+from lunarops.estimation.robust_weights import (
     Igg3WeightModel,
     active_set_change_fraction,
     igg3_factors,
     maximum_robust_factor_change,
     robust_factor_change_quantile,
 )
-from llrops.estimation.helmert_vce import HelmertVceEstimator
-from llrops.estimation.variance_components import (
+from lunarops.estimation.helmert_vce import HelmertVceEstimator
+from lunarops.estimation.variance_components import (
     VarianceComponentDefinition,
     assign_variance_components,
 )
@@ -526,7 +526,15 @@ def test_llr_adjustment_runs_joint_helmert_vce_cycle():
     json.dumps(payload)
     assert payload["summary"]["source_observation_count"] == len(equations)
     assert payload["summary"]["equation_evaluation_count"] == len(payload["equation_evaluations"])
-    assert payload["parameters"][0]["formal_sigma_m"] is not None
+    assert payload["summary"][
+        "parameter_uncertainty_sigma_multiplier"
+    ] == pytest.approx(3.0)
+    parameter = payload["parameters"][0]
+    assert parameter["formal_uncertainty_m"] is not None
+    assert parameter["formal_uncertainty_m"] == pytest.approx(
+        payload["summary"]["sigma0_post"] * parameter["cofactor_uncertainty_m"]
+    )
+    assert "formal_sigma_m" not in parameter
     assert payload["global_residuals"]["residual_m"]["count"] == len(equations)
     assert payload["variance_components"][0]["actual_start_epoch"] is not None
     counts = ("full_weight_count", "downweighted_count", "rejected_count")
@@ -588,7 +596,7 @@ def test_adjustment_reports_prefit_uncertainty_floor():
     ] == 1
 
 
-from llrops.classes.parametrization.station_range_bias import StationRangeBiasParametrization
+from lunarops.classes.parametrization.station_range_bias import StationRangeBiasParametrization
 
 
 def test_open_bias_interval_remains_active():

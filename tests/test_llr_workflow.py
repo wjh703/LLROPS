@@ -1,12 +1,12 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-from llrops.classes.observation import ObservationOutputLevel
-from llrops.classes.parametrization.station_range_bias import (
+from lunarops.classes.observation import ObservationOutputLevel
+from lunarops.classes.parametrization.station_range_bias import (
     StationRangeBiasParametrization,
 )
-from llrops.config.context import RunContext
-from llrops.llr_workflow import (
+from lunarops.config.context import RunContext
+from lunarops.llr_workflow import (
     build_equation_source,
     build_parametrization,
     load_datasets,
@@ -33,7 +33,7 @@ def test_load_datasets_uses_working_directory_and_assigns_global_indices(
     monkeypatch,
     tmp_path,
 ):
-    from llrops.fileio import normal_point_inputs
+    from lunarops.fileio import normal_point_inputs
 
     source_paths = [tmp_path / "a.npt", tmp_path / "b.npt"]
     datasets_by_path = {

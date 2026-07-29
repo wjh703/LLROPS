@@ -1,9 +1,9 @@
 import pytest
 
-import llrops.cli as cli
-from llrops.config.context import RunContext
-from llrops.fileio.archive import atomic_text_writer
-from llrops.programs.registry import (
+import lunarops.cli as cli
+from lunarops.config.context import RunContext
+from lunarops.fileio.archive import atomic_text_writer
+from lunarops.programs.registry import (
     ProgramSpec,
     available_programs,
     program,
@@ -52,7 +52,7 @@ def test_program_discovery_registers_every_configurable_program():
     } <= set(available_programs())
     assert {
         "CrdToMini",
-        "NormalPointsToLlrops",
+        "NormalPointsToLunarOps",
         "NormalsCombineSolve",
     }.isdisjoint(available_programs())
 

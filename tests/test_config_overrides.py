@@ -1,6 +1,6 @@
 import pytest
 
-from llrops.config.loader import (
+from lunarops.config.loader import (
     iter_program_calls,
     load_config_file,
     parse_set_overrides,

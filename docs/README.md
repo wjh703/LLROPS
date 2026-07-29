@@ -1,6 +1,6 @@
-# LLROPS documentation
+# LunarOps documentation
 
-LLROPS is a configuration-driven Lunar Laser Ranging processor with a
+LunarOps is a configuration-driven Lunar Laser Ranging processor with a
 GROOPS-inspired split between files, classes, parametrizations, programs, and
 estimation.
 
@@ -9,7 +9,7 @@ estimation.
 | Task | Document |
 |---|---|
 | Run a program or choose an output | [PROGRAMS.md](PROGRAMS.md) |
-| Prepare MINI, CRD, or canonical LLROPS inputs | [INPUTS.md](INPUTS.md) |
+| Prepare MINI, CRD, or canonical LunarOps inputs | [INPUTS.md](INPUTS.md) |
 | Configure reflector and station-bias adjustment | [ADJUSTMENT.md](ADJUSTMENT.md) |
 | Understand module boundaries and extension points | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Review the GROOPS-aligned file and program contract | [GROOPS_FILE_PROGRAM_DESIGN.md](GROOPS_FILE_PROGRAM_DESIGN.md) |
@@ -18,12 +18,12 @@ estimation.
 ## Minimal command line
 
 ```bash
-python -m llrops list-programs
-python -m llrops describe-program LlrResiduals
-python -m llrops validate configs/llrops_oc_residuals.yml
-python -m llrops list-classes
-python -m llrops run configs/llrops_oc_residuals.yml
-python -m llrops run configs/llrops_oc_residuals.yml --mpi
+python -m lunarops list-programs
+python -m lunarops describe-program LlrResiduals
+python -m lunarops validate configs/lunarops_oc_residuals.yml
+python -m lunarops list-classes
+python -m lunarops run configs/lunarops_oc_residuals.yml
+python -m lunarops run configs/lunarops_oc_residuals.yml --mpi
 ```
 
 `--set name=value` overrides a value in the config `variables` section. Paths
@@ -45,4 +45,4 @@ configuration keys in the program registry.
 - Range-bias corrections in `globals.rangeBias` are deterministic forward
   corrections. Estimated `stationRangeBias` parameters are separate.
 - The production Earth-orientation path uses explicit IERS C04 data, ERFA,
-  and the private `llrops._iers2010` extension.
+  and the private `lunarops._iers2010` extension.

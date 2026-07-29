@@ -3,7 +3,7 @@
 ## Build
 
 The project uses `meson-python`, NumPy f2py, and one private extension named
-`llrops._iers2010`. Official IERS Conventions v1.3.0 Fortran sources are kept
+`lunarops._iers2010`. Official IERS Conventions v1.3.0 Fortran sources are kept
 unchanged under `external/iers2010/src`; project-specific signatures and
 wrappers live under `external/iers2010/bindings`.
 

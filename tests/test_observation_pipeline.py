@@ -3,13 +3,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from llrops.base.constants import C
-from llrops.base.epoch import Epoch, TimeScale
-from llrops.classes.delays import Iers2010MendesPavlisTroposphere, ZeroTroposphereDelay
-from llrops.classes.displacement import Iers2010SolidEarthTide
-from llrops.classes.ephemerides import BodyState, Ephemeris
-from llrops.classes.frames import EarthOrientation, PolarMotion, ReferenceFrameSystem
-from llrops.classes.observation import (
+from lunarops.base.constants import C
+from lunarops.base.epoch import Epoch, TimeScale
+from lunarops.classes.delays import Iers2010MendesPavlisTroposphere, ZeroTroposphereDelay
+from lunarops.classes.displacement import Iers2010SolidEarthTide
+from lunarops.classes.ephemerides import BodyState, Ephemeris
+from lunarops.classes.frames import EarthOrientation, PolarMotion, ReferenceFrameSystem
+from lunarops.classes.observation import (
     LlrMeasurement,
     LlrObservationProcessor,
     LightTimeSolver,
@@ -17,12 +17,12 @@ from llrops.classes.observation import (
     ObservationProcessingOptions,
     ObservationResolver,
 )
-from llrops.classes.parametrization.reflector_position import (
+from lunarops.classes.parametrization.reflector_position import (
     ReflectorPositionParametrization,
 )
-from llrops.classes.range_bias.models import ZeroRangeBiasModel
-from llrops.fileio.catalogs import ReflectorRecord, StationRecord
-from llrops.fileio.normal_points import NptDataset, NptRecord
+from lunarops.classes.range_bias.models import ZeroRangeBiasModel
+from lunarops.fileio.catalogs import ReflectorRecord, StationRecord
+from lunarops.fileio.normal_points import NptDataset, NptRecord
 
 
 class _Ephemeris(Ephemeris):

@@ -1,6 +1,6 @@
 # Architecture
 
-LLROPS follows GROOPS-like boundaries: configuration selects classes and
+LunarOps follows GROOPS-like boundaries: configuration selects classes and
 programs, typed objects carry data between layers, and each program owns one
 complete processing task.
 

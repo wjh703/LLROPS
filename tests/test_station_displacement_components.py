@@ -3,8 +3,8 @@ from dataclasses import FrozenInstanceError
 import numpy as np
 import pytest
 
-from llrops.classes.observation_factory import ensure_registered
-from llrops.classes.displacement import (
+from lunarops.classes.observation_factory import ensure_registered
+from lunarops.classes.displacement import (
     CompositeStationDisplacement,
     Iers2010OceanPoleTide,
     Iers2010PoleTide,
@@ -17,11 +17,11 @@ from llrops.classes.displacement import (
     ZeroStationDisplacement,
     secular_pole_2018_arcsec,
 )
-from llrops.config.context import RunContext
-from llrops.base.epoch import Epoch, TimeScale
-from llrops.classes.ephemerides import BodyState, Ephemeris
-from llrops.classes.frames import EarthOrientation, PolarMotion, ReferenceFrameSystem
-from llrops.classes.displacement.terrestrial_geometry import enu2itrf
+from lunarops.config.context import RunContext
+from lunarops.base.epoch import Epoch, TimeScale
+from lunarops.classes.ephemerides import BodyState, Ephemeris
+from lunarops.classes.frames import EarthOrientation, PolarMotion, ReferenceFrameSystem
+from lunarops.classes.displacement.terrestrial_geometry import enu2itrf
 
 
 class _ConstantDisplacement:

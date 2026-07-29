@@ -10,7 +10,7 @@ import sys
 import numpy as np
 import pytest
 
-from llrops import _iers2010
+from lunarops import _iers2010
 
 
 _FCUL_ZD_EXPECTED_M = np.array(
@@ -202,7 +202,7 @@ def test_dehanttideinel_matches_iers_reference_and_source_cases(xsta, xsun, xmon
 
 
 def test_hardisp_matches_official_onsala_case():
-    assert not hasattr(_iers2010, "llrops_hardisp")
+    assert not hasattr(_iers2010, "lunarops_hardisp")
 
     actual = np.column_stack(
         _iers2010.hardisp(
@@ -345,15 +345,15 @@ def test_installed_iers_sources_match_pinned_hashes():
         "TDFRPH.F": "24068e0cd1e2e210fab7dd8d4473bb60ff8335bfcb53a2fc12dad7e6d1cccd19",
         "TOYMD.F": "9b69b6a27d544215c516da60351e4ec51d03b04ce9bf71b6608ebf55080bf70a",
     }
-    root = importlib.resources.files("llrops").joinpath("_external", "iers2010", "src")
+    root = importlib.resources.files("lunarops").joinpath("_external", "iers2010", "src")
 
     for filename, expected_hash in expected.items():
         source = root.joinpath(filename)
         assert hashlib.sha256(source.read_bytes()).hexdigest() == expected_hash
 
     assert not root.joinpath("HARDISP.F").is_file()
-    assert not root.joinpath("LLROPS_HARDISP.F").is_file()
-    license_text = importlib.resources.files("llrops").joinpath(
+    assert not root.joinpath("LunarOps_HARDISP.F").is_file()
+    license_text = importlib.resources.files("lunarops").joinpath(
         "_external", "iers2010", "LICENSE"
     ).read_text(encoding="utf-8")
     assert "IERS Conventions Software License" in license_text
@@ -370,7 +370,7 @@ def test_native_extension_imports_in_mpi_workers():
 
     worker_code = """
 from mpi4py import MPI
-from llrops import _iers2010
+from lunarops import _iers2010
 
 value = _iers2010.fcul_a(30.67166667, 2075.0, 300.15, 15.0)
 values = MPI.COMM_WORLD.allgather(value)

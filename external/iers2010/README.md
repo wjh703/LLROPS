@@ -1,8 +1,8 @@
 # IERS 2010 Fortran 源码导览
 
-本目录保存 LLROPS 使用的 IERS Conventions (2010) Fortran 例程、f2py
+本目录保存 LunarOps 使用的 IERS Conventions (2010) Fortran 例程、f2py
 接口定义及完整许可证。所有例程被编译进一个私有扩展模块
-`llrops._iers2010`，而不是分别生成多个扩展。
+`lunarops._iers2010`，而不是分别生成多个扩展。
 
 本文只说明 vendored 源码的组成、调用关系和维护边界。项目级构建方式、
 上游版本固定、生产模型约定和验证要求见
@@ -19,7 +19,7 @@
 Canonical model 分类不是一回事：
 
 - **主要接口**：出现在 `bindings/iers2010.pyf` 中，可以从
-  `llrops._iers2010` 调用。
+  `lunarops._iers2010` 调用。
 - **辅助例程**：参与同一扩展的编译和链接，但没有在 `.pyf` 中暴露，
   只能由其他 Fortran 例程内部调用。
 
@@ -59,7 +59,7 @@ Canonical model 分类不是一回事：
 |---|---|---|---|
 | `HARDISP_WRAP.F` / `HARDISP_WRAP` | `hardisp` | 将上游独立程序 `HARDISP.F` 改造成无文件 I/O 的可调用数组接口，展开 BLQ 潮汐系数并生成规则时间序列。 | 输入 UTC 起始时刻、样本数、步长及 `(3, 11)` BLQ 振幅/相位；返回 Up、South、West 米制位移序列。 |
 
-`HARDISP_WRAP.F` 是 LLROPS 派生适配，不是 IERS Conventions Center 发布的
+`HARDISP_WRAP.F` 是 LunarOps 派生适配，不是 IERS Conventions Center 发布的
 原始例程。生产观测历元通常不规则，因此当前 Python 生产路径使用单点
 `N=1`；规则序列接口仍保留给离线产品。
 
