@@ -1,9 +1,8 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import date, datetime
-import json
-import math
 from pathlib import Path
 from typing import Iterable, Mapping, Optional, Sequence
 
@@ -242,13 +241,12 @@ def builtin_range_bias_table(name: object) -> RangeBiasTable:
 
 def load_range_bias_table(path: str | Path) -> RangeBiasTable:
     file = Path(path).expanduser()
+    if file.suffix.lower() not in {".yml", ".yaml"}:
+        raise ValueError(f"Range-bias tables must use .yml or .yaml: {file}")
     text = file.read_text(encoding="utf-8")
-    if file.suffix.lower() in {".yml", ".yaml"}:
-        import yaml
+    import yaml
 
-        data = yaml.safe_load(text)
-    else:
-        data = json.loads(text)
+    data = yaml.safe_load(text)
     if not isinstance(data, Mapping):
         raise ValueError(f"Range-bias table file must contain a mapping: {file}")
     return RangeBiasTable.from_mapping(data, source_file=file)

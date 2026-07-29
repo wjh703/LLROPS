@@ -7,10 +7,15 @@ from llrops.base.station_identity import (
     station_ilrs_code,
 )
 from llrops.fileio.catalogs import (
+    ReflectorRecord,
     StationRecord,
     load_reflector_catalog,
     load_station_catalog,
+    read_reflector_catalog,
+    read_station_catalog,
     resolve_catalog_key,
+    write_reflector_catalog,
+    write_station_catalog,
 )
 
 
@@ -58,3 +63,31 @@ def test_builtin_station_identity_has_one_canonical_catalog_key():
     assert station_ilrs_code("APOL") == "70610"
     assert station_display_name("APOLLO") == "Apache Point Observatory"
     assert resolve_catalog_key("APOL", stations, "Station") == "APOLLO"
+
+
+def test_typed_catalog_files_round_trip(tmp_path):
+    stations = {
+        "TEST": StationRecord(
+            "Test Station",
+            [1.0, 2.0, 3.0],
+            aliases=["T 1"],
+            itrf_velocity_m_per_year=[0.1, 0.2, 0.3],
+            position_epoch_utc="2020-01-01T00:00:00",
+        )
+    }
+    reflectors = {
+        "REF": ReflectorRecord("Test Reflector", [4.0, 5.0, 6.0], aliases=["R 1"])
+    }
+    station_path = tmp_path / "stations.txt.gz"
+    reflector_path = tmp_path / "reflectors.txt.gz"
+
+    write_station_catalog(stations, station_path)
+    write_reflector_catalog(reflectors, reflector_path)
+    recovered_station = read_station_catalog(station_path)["TEST"]
+    recovered_reflector = read_reflector_catalog(reflector_path)["REF"]
+
+    assert recovered_station.name == "Test Station"
+    assert recovered_station.aliases == ("T 1",)
+    assert np.allclose(recovered_station.itrf_velocity_m_per_year, [0.1, 0.2, 0.3])
+    assert recovered_reflector.name == "Test Reflector"
+    assert recovered_reflector.aliases == ("R 1",)

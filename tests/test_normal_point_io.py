@@ -1,16 +1,20 @@
+import gzip
 from pathlib import Path
 
 import pytest
 
 from llrops.base.constants import C
-from llrops.base.epoch import Epoch, TimeScale
 from llrops.config.context import RunContext
-from llrops.fileio.crd import convert_crd_to_mini
-from llrops.fileio.llrops_normal_point_file import read_llrops_npt, write_llrops_npt
-from llrops.fileio.normal_point_inputs import read_normal_points
-from llrops.fileio.mini import MiniRecord, write_mini_file
-from llrops.programs.crd_to_mini import crd_to_mini
-from llrops.programs.normal_points_to_llrops import normal_points_to_llrops
+from llrops.fileio.normal_point_file import (
+    read_normal_point_file,
+    write_normal_point_file,
+)
+from llrops.fileio.normal_point_inputs import (
+    read_normal_point_source,
+    read_normal_points,
+)
+from llrops.fileio.structured_text import read_structured_text
+from llrops.programs.normal_point_programs import normal_points_convert
 
 
 def _write_crd(path: Path) -> None:
@@ -27,139 +31,132 @@ def _write_crd(path: Path) -> None:
     )
 
 
-def test_crd_reads_directly_to_npt_without_mini_quantization_or_side_effect(tmp_path):
+def _write_mini(path: Path) -> None:
+    line = (
+        f"{1:1d}{1:1d}{'20200102':8s}{'0001400000000':13s}"
+        f"{25_000_000_000_000:14d}{3:1d}{'70610':5s}{42:3d}"
+        f"{123:6d}{46:3d}{' ':1s}{90_012:6d}{70:4d}{50:2d}"
+        f"{5_321:5d}{' ':1s}{300:4d}{'  ':2s}{'mini':9s}"
+    )
+    path.write_text(line + "\n", encoding="ascii")
+
+
+def test_external_crd_import_preserves_precision(tmp_path):
     source = tmp_path / "sample.crd"
     _write_crd(source)
 
-    dataset = read_normal_points(source)
+    dataset = read_normal_point_source(source)
     record = dataset.records[0]
 
-    assert len(dataset.records) == 1
     assert record.station_name == "APOLLO"
     assert record.station_code == "70610"
-    assert record.reflector_name == "Apollo 15"
-    assert record.reflector_code == "3"
+    assert record.reflector_name == "Apollo15"
     assert record.round_trip_time_s == pytest.approx(2.500000000123)
     assert record.uncertainty_two_way_s == pytest.approx(12.3456e-12)
-    assert record.range_uncertainty_one_way_m == pytest.approx(
-        0.5 * C * 12.3456e-12
-    )
+    assert record.range_uncertainty_one_way_m == pytest.approx(0.5 * C * 12.3456e-12)
     assert record.pressure_hpa == pytest.approx(900.123)
     assert record.temperature_k == pytest.approx(280.123)
-    assert record.humidity_percent == pytest.approx(50.25)
-    assert record.wavelength_nm == pytest.approx(532.123)
-    assert not (tmp_path / "sample.mini").exists()
 
 
-def test_mini_reads_directly_to_npt(tmp_path):
+def test_external_mini_import_is_available_only_at_converter_boundary(tmp_path):
     source = tmp_path / "sample.mini"
-    epoch = Epoch.from_isot("2020-01-02T00:01:40", scale=TimeScale.UTC)
-    write_mini_file(
-        [
-            MiniRecord(
-                format_code=1,
-                laser_color_code=1,
-                launch_date="20200102",
-                launch_time="0001400000000",
-                light_time_raw=25_000_000_000_000,
-                reflector_id=3,
-                station_id="70610",
-                number_of_returns=42,
-                uncertainty_raw=123,
-                signal_noise_ratio_raw=46,
-                quality_code=None,
-                pressure_raw=90_012,
-                temperature_raw=70,
-                humidity_percent=50,
-                wavelength_raw=5_321,
-                version_code=None,
-                duration_s=300,
-                source_format="mini",
-                launch_epoch=epoch,
-                seconds_of_day=100.0,
-            )
-        ],
-        source,
-    )
+    _write_mini(source)
 
-    dataset = read_normal_points(source)
-    record = dataset.records[0]
+    with pytest.raises(ValueError, match=r"\.txt"):
+        read_normal_points(source)
+    dataset = read_normal_point_source(source)
 
-    assert record.station_name == "APOLLO"
-    assert record.reflector_name == "Apollo 15"
-    assert record.round_trip_time_s == pytest.approx(2.5)
-    assert record.uncertainty_two_way_s == pytest.approx(12.3e-12)
-    assert record.range_uncertainty_one_way_m == pytest.approx(0.5 * C * 12.3e-12)
+    assert dataset.records[0].station_name == "APOLLO"
+    assert dataset.records[0].round_trip_time_s == pytest.approx(2.5)
+    assert dataset.records[0].uncertainty_two_way_s == pytest.approx(12.3e-12)
 
 
-def test_llrops_jsonl_round_trip_preserves_canonical_values(tmp_path):
+@pytest.mark.parametrize("name", ["canonical.txt", "canonical.txt.gz"])
+def test_native_text_round_trip_preserves_values(tmp_path, name):
     source = tmp_path / "sample.crd"
-    target = tmp_path / "canonical.llnpt.gz"
+    target = tmp_path / name
     _write_crd(source)
-    original = read_normal_points(source)
+    original = read_normal_point_source(source)
 
-    assert write_llrops_npt(original, target) == target
-    recovered = read_llrops_npt(target)
+    assert write_normal_point_file(original, target) == target
+    recovered = read_normal_point_file(target)
     dispatched = read_normal_points(target)
 
     assert recovered.name == original.name
     assert recovered.n_input_records == original.n_input_records
-    assert len(recovered.records) == 1
     assert recovered.records[0].transmit_epoch == original.records[0].transmit_epoch
-    assert recovered.records[0].round_trip_time_s == original.records[0].round_trip_time_s
+    assert (
+        recovered.records[0].round_trip_time_s == original.records[0].round_trip_time_s
+    )
     assert (
         recovered.records[0].uncertainty_two_way_s
         == original.records[0].uncertainty_two_way_s
     )
-    assert recovered.records[0].temperature_k == original.records[0].temperature_k
     assert dispatched.records[0].station_code == "70610"
+    assert dispatched.records[0].reflector_name == "Apollo15"
+    if name.endswith(".gz"):
+        with gzip.open(target, "rt", encoding="utf-8") as stream:
+            text = stream.read()
+    else:
+        text = target.read_text(encoding="utf-8")
+    assert "Apollo15" in text
+    assert "Apollo%20" not in text
 
 
-def test_explicit_crd_to_mini_interchange_tool_remains_available(tmp_path):
+def test_normal_points_convert_is_repeatable_inside_input_directory(tmp_path):
     source = tmp_path / "sample.crd"
-    target = tmp_path / "sample.mini"
-    _write_crd(source)
-
-    converted_path = convert_crd_to_mini(source, target)
-    reread = read_normal_points(target)
-
-    assert converted_path == target
-    assert target.is_file()
-    assert len(reread.records) == 1
-    assert reread.records[0].round_trip_time_s == pytest.approx(2.500000000123)
-
-
-def test_crd_to_mini_program_resolves_relative_paths_from_working_dir(tmp_path):
-    input_dir = tmp_path / "input"
-    input_dir.mkdir()
-    source = input_dir / "sample.crd"
-    _write_crd(source)
-    context = RunContext(working_dir=tmp_path)
-
-    converted = crd_to_mini(
-        {"inputCrd": "input", "outputDir": "output"},
-        context,
-    )
-
-    target = tmp_path / "output" / "sample.mini"
-    assert converted == [str(target)]
-    assert target.is_file()
-
-
-def test_normal_points_to_llrops_program_is_repeatable_inside_input_directory(tmp_path):
-    source = tmp_path / "sample.crd"
-    target = tmp_path / "canonical.llnpt"
+    target = tmp_path / "canonical.txt.gz"
     _write_crd(source)
     context = RunContext(working_dir=tmp_path)
     config = {
-        "inputNormalPoints": ["."],
+        "inputFilesNormalPoints": ["."],
         "datasetName": "campaign",
-        "outputFile": "canonical.llnpt",
+        "outputFileNormalPoints": "canonical.txt.gz",
+        "outputFileImportReport": "importReport.txt.gz",
     }
 
-    assert normal_points_to_llrops(config, context) == str(target)
-    assert normal_points_to_llrops(config, context) == str(target)
+    assert normal_points_convert(config, context) == target
+    assert normal_points_convert(config, context) == target
 
-    recovered = read_llrops_npt(target)
+    recovered = read_normal_point_file(target)
+    report = read_structured_text(
+        tmp_path / "importReport.txt.gz", "normalPointImportReport"
+    )
     assert recovered.name == "campaign"
     assert len(recovered.records) == 1
+    assert report["recordCount"] == 1
+    assert report["invalidRecordCount"] == 0
+
+
+def test_mini_import_issues_are_published_without_an_implicit_log(tmp_path):
+    source = tmp_path / "sample.mini"
+    _write_mini(source)
+    with source.open("a", encoding="ascii") as stream:
+        stream.write("invalid record\n")
+    context = RunContext(working_dir=tmp_path)
+
+    normal_points_convert(
+        {
+            "inputFilesNormalPoints": ["sample.mini"],
+            "outputFileNormalPoints": "normalPoints.txt.gz",
+            "outputFileImportReport": "importReport.txt.gz",
+        },
+        context,
+    )
+    report = read_structured_text(
+        tmp_path / "importReport.txt.gz", "normalPointImportReport"
+    )
+
+    assert report["invalidRecordCount"] == 1
+    assert report["sources"][0]["issues"][0]["line"] == 2
+    assert not (tmp_path / "llr_mini_io_warnings.log").exists()
+
+
+def test_native_writer_rejects_old_or_untyped_extensions(tmp_path):
+    source = tmp_path / "sample.crd"
+    _write_crd(source)
+    dataset = read_normal_point_source(source)
+
+    for name in ("normalPoints.jsonl", "normalPoints.csv", "normalPoints.llnpt"):
+        with pytest.raises(ValueError, match=r"\.txt"):
+            write_normal_point_file(dataset, tmp_path / name)

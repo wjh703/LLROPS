@@ -1,10 +1,9 @@
 """
-CRD normal-point reader and explicit MINI interchange converter.
+CRD normal-point reader.
 
 Reads ILRS Consolidated Range Data (CRD, v1/v2) normal-point files directly
-into canonical :class:`llrops.fileio.normal_points.NptRecord` objects.  The optional
-``convert_crd_to_mini`` function emits MINI fixed-width lines for external
-interchange only.  The following CRD records are interpreted:
+into canonical :class:`llrops.fileio.normal_points.NptRecord` objects.  The
+following CRD records are interpreted:
 
     H1  format header           (CRD version)
     H2  station header          (station name, pad / system / occupancy ids)
@@ -14,13 +13,8 @@ interchange only.  The following CRD records are interpreted:
     11  normal point            (epoch, time of flight, window, returns, RMS)
     20  meteorological record   (pressure, temperature, humidity)
 
-Usage:
-
-    from llrops.fileio.crd import convert_crd_to_mini
-    convert_crd_to_mini("apollo_2023.npt", "apollo_2023.mini")
-
-Caveats (documented, by design of the MINI format):
-  * MINI's launch epoch is the ground *transmit* time.  CRD record 11 field
+Caveats:
+  * The canonical launch epoch is the ground *transmit* time.  CRD record 11 field
     "epoch event" tells which event the timestamp refers to; event 2
     (transmit) converts directly, event 1 (bounce) is shifted by half the
     time of flight (an approximation good to ~ (tau_up - tau_down)/2; refine
@@ -28,10 +22,8 @@ Caveats (documented, by design of the MINI format):
   * Known station names and aliases are resolved by the central station
     identity registry. When no match is found, the CRD pad id is zero-padded
     to 5 characters.
-  * MINI's temperature field is written with the same convention used by the
-    reader in :mod:`.mini_io` (0.1 deg C).  Flip ``_temperature_raw_from_k``
-    together with the reader if your archive uses 0.1 K.
 """
+
 from __future__ import annotations
 
 import gzip
@@ -41,21 +33,27 @@ from typing import List, Optional, Sequence
 
 from llrops.base.epoch import Epoch, TimeScale
 from llrops.base.station_identity import canonical_station_id, station_ilrs_code
-
-from llrops.fileio.mini import (
-    MiniRecord,
-    SECONDS_PER_DAY,
-    write_mini_file,
-)
+from llrops.fileio.mini import SECONDS_PER_DAY
 
 # CRD target token -> (canonical catalog name, MINI interchange id).
 CRD_REFLECTOR_IDENTITY_BY_NAME = {
-    "APOLLO11": ("Apollo 11", 0), "A11": ("Apollo 11", 0), "AP11": ("Apollo 11", 0),
-    "LUNOKHOD1": ("Lunokhod 1", 1), "LUNA17": ("Lunokhod 1", 1), "L1": ("Lunokhod 1", 1),
-    "APOLLO14": ("Apollo 14", 2), "A14": ("Apollo 14", 2), "AP14": ("Apollo 14", 2),
-    "APOLLO15": ("Apollo 15", 3), "A15": ("Apollo 15", 3), "AP15": ("Apollo 15", 3),
-    "LUNOKHOD2": ("Lunokhod 2", 4), "LUNA21": ("Lunokhod 2", 4), "L2": ("Lunokhod 2", 4),
+    "APOLLO11": ("Apollo 11", 0),
+    "A11": ("Apollo 11", 0),
+    "AP11": ("Apollo 11", 0),
+    "LUNOKHOD1": ("Lunokhod 1", 1),
+    "LUNA17": ("Lunokhod 1", 1),
+    "L1": ("Lunokhod 1", 1),
+    "APOLLO14": ("Apollo 14", 2),
+    "A14": ("Apollo 14", 2),
+    "AP14": ("Apollo 14", 2),
+    "APOLLO15": ("Apollo 15", 3),
+    "A15": ("Apollo 15", 3),
+    "AP15": ("Apollo 15", 3),
+    "LUNOKHOD2": ("Lunokhod 2", 4),
+    "LUNA21": ("Lunokhod 2", 4),
+    "L2": ("Lunokhod 2", 4),
 }
+
 
 def _canonical(token: str) -> str:
     return "".join(ch for ch in str(token or "").upper() if ch.isalnum())
@@ -92,7 +90,7 @@ def looks_like_crd_file(path) -> bool:
 def _to_float(text: str) -> Optional[float]:
     try:
         value = float(text)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return value
 
@@ -100,7 +98,7 @@ def _to_float(text: str) -> Optional[float]:
 def _to_int(text: str) -> Optional[int]:
     try:
         return int(float(text))
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
@@ -177,11 +175,15 @@ def parse_crd_sessions(path) -> List[_CrdSession]:
                 # H4 <data type> Y M D h m s  Y M D h m s ...
                 try:
                     year, month, day = int(fields[2]), int(fields[3]), int(fields[4])
-                    hour, minute, second = int(fields[5]), int(fields[6]), int(fields[7])
+                    hour, minute, second = (
+                        int(fields[5]),
+                        int(fields[6]),
+                        int(fields[7]),
+                    )
                     current.start_epoch = Epoch.from_calendar(
                         year, month, day, hour, minute, second, scale=TimeScale.UTC
                     )
-                except (IndexError, ValueError):
+                except IndexError, ValueError:
                     current.start_epoch = None
 
             elif tag == "C0" and current is not None:
@@ -202,7 +204,11 @@ def parse_crd_sessions(path) -> List[_CrdSession]:
                 np_window = _to_float(fields[5]) if len(fields) > 5 else None
                 n_ranges = _to_int(fields[6]) if len(fields) > 6 else None
                 bin_rms = _to_float(fields[7]) if len(fields) > 7 else None
-                snr = _to_float(fields[13]) if (crd_version >= 2 and len(fields) > 13) else None
+                snr = (
+                    _to_float(fields[13])
+                    if (crd_version >= 2 and len(fields) > 13)
+                    else None
+                )
                 current.normal_points.append(
                     _CrdNormalPoint(
                         seconds_of_day=seconds_of_day,
@@ -222,7 +228,9 @@ def parse_crd_sessions(path) -> List[_CrdSession]:
                         seconds_of_day=_to_float(fields[1]) or 0.0,
                         pressure_hpa=_to_float(fields[2]) if len(fields) > 2 else None,
                         temperature_k=_to_float(fields[3]) if len(fields) > 3 else None,
-                        humidity_percent=_to_float(fields[4]) if len(fields) > 4 else None,
+                        humidity_percent=_to_float(fields[4])
+                        if len(fields) > 4
+                        else None,
                     )
                 )
 
@@ -255,15 +263,14 @@ def _reflector_identity(session: _CrdSession) -> tuple[str, int]:
     )
 
 
-def _temperature_raw_from_k(temperature_k: float) -> int:
-    # Written with the same convention as the mini_io reader: 0.1 deg C.
-    return int(round((temperature_k - 273.15) * 10.0))
-
-
-def _nearest_meteo(meteo: Sequence[_CrdMeteo], seconds_of_day: float) -> Optional[_CrdMeteo]:
+def _nearest_meteo(
+    meteo: Sequence[_CrdMeteo], seconds_of_day: float
+) -> Optional[_CrdMeteo]:
     if not meteo:
         return None
-    return min(meteo, key=lambda rec: _circular_distance(rec.seconds_of_day, seconds_of_day))
+    return min(
+        meteo, key=lambda rec: _circular_distance(rec.seconds_of_day, seconds_of_day)
+    )
 
 
 @dataclass
@@ -323,7 +330,9 @@ def _crd_observations(sessions: Sequence[_CrdSession]) -> List[_CrdObservation]:
             )
             meteo = _nearest_meteo(session.meteo, seconds)
             if meteo is None:
-                raise ValueError(f"{label}: the CRD session has no '20' meteorological record.")
+                raise ValueError(
+                    f"{label}: the CRD session has no '20' meteorological record."
+                )
             if (
                 meteo.pressure_hpa is None
                 or meteo.temperature_k is None
@@ -414,74 +423,3 @@ def parse_crd_file(path):
         n_input_records=sum(len(session.normal_points) for session in sessions),
         n_invalid_records=0,
     )
-
-
-def crd_sessions_to_mini_records(sessions: Sequence[_CrdSession]) -> List[MiniRecord]:
-    """Convert parsed CRD sessions into MINI records for explicit interchange."""
-
-    records: List[MiniRecord] = []
-    for observation in _crd_observations(sessions):
-        iso = observation.transmit_epoch.isot(scale=TimeScale.UTC)
-        date_part, time_part = iso.split("T")
-        launch_date = date_part.replace("-", "")
-        hh, mm, ss = time_part.split(":")
-        sec_int, _, frac = ss.partition(".")
-        frac_100ns = (frac + "0000000")[:7]
-        launch_time = f"{hh}{mm}{sec_int}{frac_100ns}"
-
-        hour, minute = int(hh), int(mm)
-        seconds_of_day = (
-            hour * 3600.0
-            + minute * 60.0
-            + int(sec_int)
-            + int(frac_100ns) * 1.0e-7
-        )
-
-        records.append(
-            MiniRecord(
-                format_code=1,
-                laser_color_code=2 if observation.wavelength_nm > 800.0 else 1,
-                launch_date=launch_date,
-                launch_time=launch_time,
-                light_time_raw=int(round(observation.time_of_flight_s / 1.0e-13)),
-                reflector_id=observation.reflector_id,
-                station_id=observation.station_code,
-                number_of_returns=observation.number_of_returns,
-                uncertainty_raw=int(
-                    round(observation.uncertainty_two_way_s / 1.0e-13)
-                ),
-                signal_noise_ratio_raw=(
-                    None
-                    if observation.signal_noise_ratio is None
-                    else int(round(observation.signal_noise_ratio * 10.0))
-                ),
-                quality_code=None,
-                pressure_raw=int(round(observation.pressure_hpa * 100.0)),
-                temperature_raw=_temperature_raw_from_k(observation.temperature_k),
-                humidity_percent=int(round(observation.humidity_percent)),
-                wavelength_raw=int(round(observation.wavelength_nm * 10.0)),
-                version_code=None,
-                duration_s=(
-                    None
-                    if observation.duration_s is None
-                    else int(round(observation.duration_s))
-                ),
-                source_format=observation.source_format.replace("-", "_"),
-                launch_epoch=observation.transmit_epoch,
-                seconds_of_day=seconds_of_day,
-            )
-        )
-
-    for i, rec in enumerate(records):
-        rec.index = i
-    return records
-
-
-def convert_crd_to_mini(crd_path, mini_path):
-    """Convert a CRD normal-point file to a MINI fixed-width interchange file."""
-    sessions = parse_crd_sessions(crd_path)
-    if not sessions:
-        raise ValueError(f"No CRD normal-point sessions found in {crd_path}")
-    records = crd_sessions_to_mini_records(sessions)
-    write_mini_file(records, mini_path)
-    return Path(mini_path)

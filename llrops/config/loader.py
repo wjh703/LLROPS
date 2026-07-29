@@ -1,6 +1,6 @@
-"""Config file loader: variables, substitution, loops, program sequence.
+"""YAML config loader: variables, substitution, loops, program sequence.
 
-A run config (YAML or JSON) mirrors a GROOPS scenario file::
+A YAML run config mirrors a GROOPS scenario file::
 
     variables:
       dataDir: /data/llr
@@ -11,39 +11,46 @@ A run config (YAML or JSON) mirrors a GROOPS scenario file::
       earthRotation: {type: iersC04, file: "{dataDir}/eopc04.1962-now"}
 
     programs:
-      - program: NormalPointsToLlrops
-        inputNormalPoints: ["{dataDir}/crd"]
-        outputFile: "{dataDir}/normal-points.llnpt.gz"
+      - program: NormalPointsConvert
+        inputFilesNormalPoints: ["{dataDir}/crd"]
+        outputFileNormalPoints: "{dataDir}/normalPoints.txt.gz"
       - program: LlrResiduals
         loop: {variable: station, values: [APOLLO, GRASSE, WETTZELL]}
-        inputNormalPoints: ["{dataDir}/normal-points.llnpt.gz"]
-        outputCsv: "oc_{station}.csv"
+        inputFilesNormalPoints: ["{dataDir}/normalPoints.txt.gz"]
+        outputFileObservationResults: "oc_{station}.txt.gz"
 
 ``{name}`` placeholders are substituted recursively from ``variables`` (and
 from loop variables inside a loop body).  CLI ``--set name=value`` overrides
 entries in ``variables``.
 """
+
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Tuple
+from typing import Any, Dict, Iterator, List, Mapping, Tuple
 
 _PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
 def load_config_file(path) -> dict:
     path = Path(path).expanduser()
+    if path.suffix.lower() not in (".yml", ".yaml"):
+        raise ValueError(f"LLROPS configuration files must use .yml or .yaml: {path}")
     text = path.read_text(encoding="utf-8")
-    if path.suffix.lower() in (".yml", ".yaml"):
-        import yaml
+    import yaml
 
-        data = yaml.safe_load(text)
-    else:
-        data = json.loads(text)
+    data = yaml.safe_load(text)
     if not isinstance(data, dict):
         raise ValueError(f"Top-level config must be a mapping: {path}")
+    unknown = set(data) - {"variables", "globals", "programs"}
+    if unknown:
+        raise ValueError(f"Unknown top-level config key(s): {sorted(unknown)}")
+    for key in ("variables", "globals"):
+        if data.get(key) is not None and not isinstance(data[key], Mapping):
+            raise TypeError(f"Top-level {key!r} section must be a mapping.")
+    if data.get("programs") is not None and not isinstance(data["programs"], list):
+        raise TypeError("Top-level 'programs' section must be a list.")
     return data
 
 
@@ -75,7 +82,7 @@ def _parse_set_value(value: str) -> Any:
     The command line has no type system, but config substitution keeps native
     variable types when a full string is ``{name}``.  Parsing here prevents
     common surprises such as ``--set enabled=false`` being treated as a truthy
-    string, and allows small JSON/YAML lists or mappings for batch scripts.
+    string, and allows small YAML lists or mappings for batch scripts.
     """
     text = str(value).strip()
     lowered = text.lower()
@@ -86,27 +93,29 @@ def _parse_set_value(value: str) -> Any:
     if lowered in {"null", "none"}:
         return None
 
-    # Prefer JSON/YAML for quoted strings and containers.  This keeps
+    # Use the YAML scalar grammar for quoted strings and containers.  This keeps
     # ``--set x="001"`` as the string ``001`` while ``--set x=1`` is int.
     if text.startswith(("'", '"', "[", "{")):
         try:
-            return json.loads(text)
-        except Exception:
-            try:
-                import yaml
+            import yaml
 
-                parsed = yaml.safe_load(text)
-                if isinstance(parsed, (str, int, float, bool, list, dict)) or parsed is None:
-                    return parsed
-            except Exception:
-                pass
+            parsed = yaml.safe_load(text)
+            if (
+                isinstance(parsed, (str, int, float, bool, list, dict))
+                or parsed is None
+            ):
+                return parsed
+        except Exception:
+            pass
 
     if re.fullmatch(r"[+-]?(?:0|[1-9][0-9]*)", text):
         try:
             return int(text)
         except ValueError:
             pass
-    if re.fullmatch(r"[+-]?(?:(?:[0-9]+\.[0-9]*)|(?:\.[0-9]+)|(?:[0-9]+))(?:[eE][+-]?[0-9]+)?", text):
+    if re.fullmatch(
+        r"[+-]?(?:(?:[0-9]+\.[0-9]*)|(?:\.[0-9]+)|(?:[0-9]+))(?:[eE][+-]?[0-9]+)?", text
+    ):
         try:
             return float(text)
         except ValueError:
@@ -128,29 +137,66 @@ def parse_set_overrides(pairs: List[str]) -> Dict[str, Any]:
     return overrides
 
 
-def iter_program_calls(config: dict, overrides: Dict[str, Any] | None = None) -> Iterator[Tuple[str, dict, dict]]:
+def iter_program_calls(
+    config: dict, overrides: Dict[str, Any] | None = None
+) -> Iterator[Tuple[str, dict, dict]]:
     """Yield ``(program_name, resolved_program_config, resolved_globals)``.
 
     Loop entries are expanded; ``enabled: false`` entries are skipped.
     """
-    variables = dict(config.get("variables") or {})
+    if not isinstance(config, Mapping):
+        raise TypeError("Run configuration must be a mapping.")
+    variables_raw = config.get("variables") or {}
+    globals_raw = config.get("globals") or {}
+    programs = config.get("programs") or []
+    if not isinstance(variables_raw, Mapping):
+        raise TypeError("Top-level 'variables' section must be a mapping.")
+    if not isinstance(globals_raw, Mapping):
+        raise TypeError("Top-level 'globals' section must be a mapping.")
+    if not isinstance(programs, list):
+        raise TypeError("Top-level 'programs' section must be a list.")
+
+    variables = dict(variables_raw)
     variables.update(overrides or {})
 
-    globals_raw = config.get("globals") or {}
-
-    for entry in config.get("programs") or []:
+    for entry in programs:
         if not isinstance(entry, dict) or "program" not in entry:
             raise ValueError(f"Each program entry needs a 'program' key: {entry!r}")
-        if entry.get("enabled", True) in (False, "false", "no", 0):
+        enabled = entry.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise TypeError("Program 'enabled' must be a YAML boolean.")
+        if not enabled:
             continue
-        name = str(entry["program"])
+        if not isinstance(entry["program"], str) or not entry["program"].strip():
+            raise ValueError("Program names must be non-empty strings.")
+        name = entry["program"].strip()
         loop = entry.get("loop")
-        body = {k: v for k, v in entry.items() if k not in ("program", "loop", "enabled")}
-        if loop:
-            loop_var = str(loop["variable"])
-            for loop_value in loop["values"]:
+        body = {
+            k: v for k, v in entry.items() if k not in ("program", "loop", "enabled")
+        }
+        if loop is not None:
+            if not isinstance(loop, Mapping):
+                raise TypeError("Program loop must be a mapping.")
+            if set(loop) != {"variable", "values"}:
+                raise ValueError(
+                    "Program loop requires exactly 'variable' and 'values'."
+                )
+            loop_var = loop["variable"]
+            loop_values = loop["values"]
+            if (
+                not isinstance(loop_var, str)
+                or _PLACEHOLDER.fullmatch("{" + loop_var + "}") is None
+            ):
+                raise ValueError("Program loop variable must be a valid identifier.")
+            if not isinstance(loop_values, list) or not loop_values:
+                raise ValueError("Program loop values must be a non-empty list.")
+            for loop_value in loop_values:
                 local_vars = dict(variables)
                 local_vars[loop_var] = loop_value
-                yield name, substitute(body, local_vars), substitute(globals_raw, local_vars)
+                yield (
+                    name,
+                    substitute(body, local_vars),
+                    substitute(globals_raw, local_vars),
+                )
         else:
             yield name, substitute(body, variables), substitute(globals_raw, variables)

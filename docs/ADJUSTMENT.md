@@ -77,10 +77,11 @@ Stages can solve blocks separately and then jointly. The standard pattern is
 reflector, Bias, and joint stages, with a smaller update factor available for a
 known oscillating joint solution. Parameter convergence is evaluated per block.
 
-`outputJson` contains the termination status, iteration history, stochastic
-diagnostics, parameter precision/correlation, and observation summaries.
-`outputNormals` writes the final weighted normal equations and parameter names
-for independent inspection or combination.
+`outputFileAdjustmentReport` contains termination status, iteration history,
+stochastic diagnostics, parameter precision/correlation, and observation
+summaries. `outputFileAdjustmentState` is the fingerprinted restart product.
+`outputFileSolution`, `outputFileCovariance`, and
+`outputFileNormalEquations` publish the numerical products independently.
 
 At minimum, inspect parameter updates, Bias uncertainty, group redundancy and
 scale, residual distributions, robust-factor counts, rank/condition diagnostics,

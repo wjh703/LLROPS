@@ -114,16 +114,23 @@ programs:
   # generation and combination are separate configurable programs.
 
   # ---------------------------------------------------------------------------
+  # Explicit external-format import
+  # ---------------------------------------------------------------------------
+  - program: NormalPointsConvert
+    inputFilesNormalPoints:
+      - "{dataDir}/polac/TOTALOBS6924.DAT"
+    outputFileNormalPoints: "{outputDir}/normal_points.txt.gz"
+    outputFileImportReport: "{outputDir}/normal_point_import_report.txt.gz"
+    datasetName: totalobs6924
+
+  # ---------------------------------------------------------------------------
   # Main nonlinear adjustment
   # ---------------------------------------------------------------------------
   - program: LlrAdjustment
     enabled: true
 
-    # MINI, CRD/FRD, or LLROPS .llnpt/.llrops.jsonl files and directories.
-    inputNormalPoints:
-      - "{dataDir}/polac/TOTALOBS6924.DAT"
-
-    miniIoLog: "{outputDir}/mini_io_log.txt"
+    inputFilesNormalPoints:
+      - "{outputDir}/normal_points.txt.gz"
 
     # Input grouping. If true, all sources become one combined dataset.
     # normal_point_index remains globally unique either way.
@@ -355,16 +362,14 @@ programs:
     mpi:
       chunksize: 32
 
-    # Full diagnostic JSON. In addition to observation records, this contains:
+    # Human/audit report. In addition to observation records, this contains:
     # - summary and termination_reason;
     # - equation_evaluations and nonlinear linearizations;
     # - fixed-linearization stochastic iterations;
     # - parameter precision/correlation diagnostics;
     # - global and component residual/factor distributions.
-    outputJson: "{outputDir}/reflector_bias_adjustment4.json"
-
-    # Final weighted normal equations for independent inspection/re-solving.
-    # writes:
-    #   {outputNormals}.npz
-    #   {outputNormals}.parameters.json
-    outputNormals: "{outputDir}/reflector_bias_adjustment_normals4"
+    outputFileAdjustmentReport: "{outputDir}/reflector_bias_adjustment_report4.txt.gz"
+    outputFileAdjustmentState: "{outputDir}/reflector_bias_adjustment_state4.txt.gz"
+    outputFileSolution: "{outputDir}/reflector_bias_adjustment_solution4.txt.gz"
+    outputFileCovariance: "{outputDir}/reflector_bias_adjustment_covariance4"
+    outputFileNormalEquations: "{outputDir}/reflector_bias_adjustment_normals4"

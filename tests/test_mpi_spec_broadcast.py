@@ -1,13 +1,17 @@
-import json
-
 from llrops.classes.observation_factory import resolve_observation_assembly
 from llrops.config.context import RunContext
+from llrops.fileio.catalogs import (
+    ReflectorRecord,
+    StationRecord,
+    write_reflector_catalog,
+    write_station_catalog,
+)
 from llrops.parallel.mpi import (
-    MpiRuntime,
     TAG_BROADCAST_SPEC,
     TAG_INITIALIZE_SPEC,
     TAG_READY,
     TAG_STOP,
+    MpiRuntime,
     _processor_for_task,
 )
 from llrops.parallel.observation_spec import make_observation_spec
@@ -177,31 +181,17 @@ def test_observation_specs_are_unique_and_use_explicit_catalogs():
 
 
 def test_serial_and_mpi_catalog_resolution_share_working_directory(tmp_path):
-    (tmp_path / "stations.json").write_text(
-        json.dumps(
-            {
-                "TEST": {
-                    "name": "Test station",
-                    "itrf_xyz_m": [1.0, 2.0, 3.0],
-                }
-            }
-        ),
-        encoding="utf-8",
+    write_station_catalog(
+        {"TEST": StationRecord("Test station", [1.0, 2.0, 3.0])},
+        tmp_path / "stations.txt",
     )
-    (tmp_path / "reflectors.json").write_text(
-        json.dumps(
-            {
-                "REF": {
-                    "name": "Test reflector",
-                    "moon_fixed_xyz_m": [4.0, 5.0, 6.0],
-                }
-            }
-        ),
-        encoding="utf-8",
+    write_reflector_catalog(
+        {"REF": ReflectorRecord("Test reflector", [4.0, 5.0, 6.0])},
+        tmp_path / "reflectors.txt",
     )
     config = {
-        "stationCatalog": "stations.json",
-        "reflectorCatalog": "reflectors.json",
+        "stationCatalog": "stations.txt",
+        "reflectorCatalog": "reflectors.txt",
     }
     context = RunContext(working_dir=tmp_path)
 

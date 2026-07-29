@@ -46,8 +46,7 @@ def test_load_datasets_uses_working_directory_and_assigns_global_indices(
         captured["inputs"] = paths
         return source_paths
 
-    def read(path, *, mini_io_log_path):
-        captured.setdefault("logs", []).append(mini_io_log_path)
+    def read(path):
         return datasets_by_path[Path(path)]
 
     monkeypatch.setattr(normal_point_inputs, "resolve_normal_point_inputs", resolve)
@@ -56,8 +55,7 @@ def test_load_datasets_uses_working_directory_and_assigns_global_indices(
 
     datasets = load_datasets(
         {
-            "inputNormalPoints": ["input"],
-            "miniIoLog": "logs/mini.log",
+            "inputFilesNormalPoints": ["input"],
             "startTime": "2020-01-01",
             "endTime": "2021-01-01",
         },
@@ -65,7 +63,6 @@ def test_load_datasets_uses_working_directory_and_assigns_global_indices(
     )
 
     assert captured["inputs"] == [tmp_path / "input"]
-    assert captured["logs"] == [tmp_path / "logs/mini.log"] * 2
     assert list(datasets) == ["a", "b"]
     assert [record.index for record in datasets["a"].records] == [0, 1]
     assert [record.index for record in datasets["b"].records] == [2]

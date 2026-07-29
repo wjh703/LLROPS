@@ -41,6 +41,14 @@ biases:
     assert table.two_way_cm(["GRASSE"], epoch) == -0.5
 
 
+def test_range_bias_table_rejects_json_filename(tmp_path: Path):
+    path = tmp_path / "range_bias.json"
+    path.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"\.yml"):
+        load_range_bias_table(path)
+
+
 def test_declarative_range_bias_rejects_old_entries_key():
     with pytest.raises(ValueError, match="unknown key"):
         RangeBiasTable.from_mapping(

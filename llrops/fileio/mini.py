@@ -39,15 +39,11 @@ MINI data never carries such corrections, so they are never represented.
 VALIDATION CONTRACT: every quantity carried by the MINI file and needed by
 the downstream O-C / fit computation - launch epoch, light time, reflector,
 station, MINI uncertainty, pressure, temperature, humidity, and laser wavelength
-- is *guaranteed present and physically plausible* after parsing.  Invalid
-records are never allowed into the returned NPT dataset: each invalid input line
-writes a warning-level log entry that includes the 1-based line number, the
-validation reason, and the original line content, then that record is skipped.
-At the end of a file with skipped records, a summary warning-level log entry
-reports how many nonblank data lines were read and how many valid records were
-produced.  Downstream code
-therefore never needs None checks, meteo lookups, uncertainty fallbacks, or
-default wavelengths for MINI-owned fields.
+- is *guaranteed present and physically plausible* after parsing. Invalid
+records never enter the returned NPT records; their line number, validation
+reason, and original content are retained as structured import issues for the
+converter report. Downstream code therefore never needs None checks, meteo
+lookups, uncertainty fallbacks, or default wavelengths for MINI-owned fields.
 
 NOTE on the temperature unit: this module follows the convention used by the
 existing processing chain, ``temperature_c = raw / 10`` (i.e. 0.1 deg C).
@@ -55,13 +51,13 @@ Some MINI documentation describes the field as 0.1 K instead.  The conversion
 is isolated in MINI-to-NPT conversion so that it
 can be flipped in a single place if your data files use the 0.1 K convention.
 """
+
 from __future__ import annotations
 
 import gzip
-import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import List, Optional
 
 from llrops.base.epoch import Epoch, TimeScale
 from llrops.base.station_identity import canonical_station_id, station_display_name
@@ -69,13 +65,13 @@ from llrops.base.station_identity import canonical_station_id, station_display_n
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-TIME_UNIT_S = 1.0e-13          # light-time / uncertainty unit: 0.1 ps
-TIME_100NS_S = 1.0e-7          # launch-time fractional unit: 100 ns
+TIME_UNIT_S = 1.0e-13  # light-time / uncertainty unit: 0.1 ps
+TIME_100NS_S = 1.0e-7  # launch-time fractional unit: 100 ns
 C_LIGHT_M_PER_S = 299_792_458.0
 SECONDS_PER_DAY = 86400.0
 
-MINI_LINE_MIN_LENGTH = 78      # duration field ends at col 78
-MINI_LINE_FULL_LENGTH = 89     # source-format field ends at col 89
+MINI_LINE_MIN_LENGTH = 78  # duration field ends at col 78
+MINI_LINE_FULL_LENGTH = 89  # source-format field ends at col 89
 
 LASER_COLORS = {
     1: "green",
@@ -89,38 +85,6 @@ REFLECTOR_NAMES = {
     3: "Apollo 15",
     4: "Lunokhod 2",
 }
-
-DEFAULT_MINI_IO_WARNING_LOG = "llr_mini_io_warnings.log"
-_LOGGER = logging.getLogger(__name__)
-_LOGGER.addHandler(logging.NullHandler())
-_MINI_IO_LOG_HANDLERS: dict[Path, logging.Handler] = {}
-
-
-def _resolve_mini_io_log_path(log_path=None) -> Path:
-    """Return the concrete warning-log path used for skipped MINI records."""
-    target = Path(log_path or DEFAULT_MINI_IO_WARNING_LOG).expanduser()
-    if not target.is_absolute():
-        target = Path.cwd() / target
-    return target.resolve()
-
-
-def _mini_io_warning_logger(log_path=None) -> logging.Logger:
-    """Logger that writes invalid-record diagnostics to a file only."""
-    target = _resolve_mini_io_log_path(log_path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-
-    logger = _LOGGER
-    logger.setLevel(logging.WARNING)
-    logger.propagate = False  # keep invalid-record details off stderr/stdout
-
-    if target not in _MINI_IO_LOG_HANDLERS:
-        handler = logging.FileHandler(target, mode="a", encoding="utf-8")
-        handler.setLevel(logging.WARNING)
-        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s: %(message)s"))
-        logger.addHandler(handler)
-        _MINI_IO_LOG_HANDLERS[target] = handler
-
-    return logger
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +103,9 @@ def _blank_to_none(text: str) -> Optional[str]:
     return value if value else None
 
 
-def _parse_int(text: str, *, field: str, line_no: int, required: bool = True) -> Optional[int]:
+def _parse_int(
+    text: str, *, field: str, line_no: int, required: bool = True
+) -> Optional[int]:
     value = _blank_to_none(text)
     if value is None:
         if required:
@@ -148,7 +114,9 @@ def _parse_int(text: str, *, field: str, line_no: int, required: bool = True) ->
     try:
         return int(value)
     except ValueError as exc:
-        raise ValueError(f"line {line_no}: invalid MINI integer field {field!r}: {text!r}") from exc
+        raise ValueError(
+            f"line {line_no}: invalid MINI integer field {field!r}: {text!r}"
+        ) from exc
 
 
 def looks_like_mini_line(raw_line: str) -> bool:
@@ -193,19 +161,19 @@ class MiniRecord:
     # --- raw MINI fields, in column order -------------------------------
     format_code: int
     laser_color_code: Optional[int]
-    launch_date: str               # YYYYMMDD as written in the file
-    launch_time: str               # HHMMSSsssssss as written in the file
-    light_time_raw: int            # two-way light time, 0.1 ps
+    launch_date: str  # YYYYMMDD as written in the file
+    launch_time: str  # HHMMSSsssssss as written in the file
+    light_time_raw: int  # two-way light time, 0.1 ps
     reflector_id: int
-    station_id: str                # normalized 5-char ILRS code
+    station_id: str  # normalized 5-char ILRS code
     number_of_returns: Optional[int]
-    uncertainty_raw: int                   # original MINI two-way sigma, 0.1 ps
+    uncertainty_raw: int  # original MINI two-way sigma, 0.1 ps
     signal_noise_ratio_raw: Optional[int]  # S/N * 10
     quality_code: Optional[str]
-    pressure_raw: int                      # hPa * 100 (> 0)
-    temperature_raw: int                   # 0.1 deg (see module docstring)
-    humidity_percent: int                  # %, 0..100
-    wavelength_raw: int                    # 0.1 nm (> 0)
+    pressure_raw: int  # hPa * 100 (> 0)
+    temperature_raw: int  # 0.1 deg (see module docstring)
+    humidity_percent: int  # %, 0..100
+    wavelength_raw: int  # 0.1 nm (> 0)
     version_code: Optional[str]
     duration_s: Optional[int]
     source_format: Optional[str]
@@ -213,9 +181,9 @@ class MiniRecord:
     # --- derived, computed once at parse time ---------------------------
     launch_epoch: Epoch = field(repr=False)
     seconds_of_day: float = 0.0
-    index: int = 0                 # 0-based record index within the file
-    source_line_no: int = 0        # 1-based line number in the source MINI file
-    source_line: str = ""         # original source line without trailing newline
+    index: int = 0  # 0-based record index within the file
+    source_line_no: int = 0  # 1-based line number in the source MINI file
+    source_line: str = ""  # original source line without trailing newline
 
     def __post_init__(self) -> None:
         if not isinstance(self.launch_epoch, Epoch):
@@ -310,9 +278,13 @@ def _parse_launch_epoch(
     time_value = time_text.strip()
 
     if len(date_value) != 8 or not date_value.isdigit():
-        raise ValueError(f"line {line_no}: invalid MINI launch date {date_text!r}; expected YYYYMMDD")
+        raise ValueError(
+            f"line {line_no}: invalid MINI launch date {date_text!r}; expected YYYYMMDD"
+        )
     if len(time_value) != 13 or not time_value.isdigit():
-        raise ValueError(f"line {line_no}: invalid MINI launch time {time_text!r}; expected HHMMSSsssssss")
+        raise ValueError(
+            f"line {line_no}: invalid MINI launch time {time_text!r}; expected HHMMSSsssssss"
+        )
 
     hour = int(time_value[0:2])
     minute = int(time_value[2:4])
@@ -338,7 +310,9 @@ def parse_mini_line(raw_line: str, *, line_no: int = 0, index: int = 0) -> MiniR
 
     launch_date = padded[2:10].strip()
     launch_time = padded[10:23].strip()
-    launch_epoch, seconds_of_day = _parse_launch_epoch(launch_date, launch_time, line_no=line_no)
+    launch_epoch, seconds_of_day = _parse_launch_epoch(
+        launch_date, launch_time, line_no=line_no
+    )
 
     station_id_raw = padded[38:43].strip()
     if not station_id_raw:
@@ -378,22 +352,30 @@ def parse_mini_line(raw_line: str, *, line_no: int = 0, index: int = 0) -> MiniR
 
     return MiniRecord(
         format_code=_parse_int(padded[0:1], field="format_code", line_no=line_no),
-        laser_color_code=_parse_int(padded[1:2], field="laser_color_code", line_no=line_no, required=False),
+        laser_color_code=_parse_int(
+            padded[1:2], field="laser_color_code", line_no=line_no, required=False
+        ),
         launch_date=launch_date,
         launch_time=launch_time,
         light_time_raw=_parse_int(padded[23:37], field="light_time", line_no=line_no),
         reflector_id=_parse_int(padded[37:38], field="reflector_id", line_no=line_no),
         station_id=station_id,
-        number_of_returns=_parse_int(padded[43:46], field="number_of_returns", line_no=line_no, required=False),
+        number_of_returns=_parse_int(
+            padded[43:46], field="number_of_returns", line_no=line_no, required=False
+        ),
         uncertainty_raw=uncertainty_raw,
-        signal_noise_ratio_raw=_parse_int(padded[52:55], field="signal_noise_ratio", line_no=line_no, required=False),
+        signal_noise_ratio_raw=_parse_int(
+            padded[52:55], field="signal_noise_ratio", line_no=line_no, required=False
+        ),
         quality_code=_blank_to_none(padded[55:56]),
         pressure_raw=pressure_raw,
         temperature_raw=temperature_raw,
         humidity_percent=humidity_percent,
         wavelength_raw=wavelength_raw,
         version_code=_blank_to_none(padded[73:74]),
-        duration_s=_parse_int(padded[74:78], field="duration", line_no=line_no, required=False),
+        duration_s=_parse_int(
+            padded[74:78], field="duration", line_no=line_no, required=False
+        ),
         source_format=_blank_to_none(padded[80:89]),
         launch_epoch=launch_epoch,
         seconds_of_day=seconds_of_day,
@@ -401,15 +383,13 @@ def parse_mini_line(raw_line: str, *, line_no: int = 0, index: int = 0) -> MiniR
     )
 
 
-def parse_mini_file(path, *, mini_io_log_path=None):
+def parse_mini_file(path):
     """Parse a MINI normal-point file (.dat / .mini, optionally gzipped).
 
-    Invalid nonblank records are written to ``mini_io_log_path`` and skipped;
-    there is deliberately no ``raise`` / ``skip`` policy switch.  Every log
-    entry contains the 1-based line number, the validation reason, and the
-    original line content so data problems can be traced back to the source file.
-    If ``mini_io_log_path`` is omitted, invalid records are appended to
-    ``llr_mini_io_warnings.log`` in the current working directory.
+    Invalid nonblank records are skipped and returned as structured import
+    issues on the resulting dataset. ``NormalPointsConvert`` publishes those
+    issues in its typed import report; the parser never creates an implicit log
+    file.
 
     After this function returns, every record in the dataset is guaranteed to
     carry complete MINI-owned data: launch epoch, observed two-way light time,
@@ -419,12 +399,14 @@ def parse_mini_file(path, *, mini_io_log_path=None):
     """
     path = Path(path)
     if not looks_like_mini_file(path):
-        raise ValueError(f"Input does not look like a MINI fixed-width normal-point file: {path}")
+        raise ValueError(
+            f"Input does not look like a MINI fixed-width normal-point file: {path}"
+        )
 
     records: List[MiniRecord] = []
     n_input_records = 0
     n_invalid_records = 0
-    invalid_record_logger = None
+    import_issues: list[dict[str, object]] = []
 
     with _open_text(path, encoding="ascii", errors="strict") as fh:
         for line_no, raw in enumerate(fh, start=1):
@@ -438,28 +420,14 @@ def parse_mini_file(path, *, mini_io_log_path=None):
                 records.append(record)
             except ValueError as exc:
                 n_invalid_records += 1
-                if invalid_record_logger is None:
-                    invalid_record_logger = _mini_io_warning_logger(mini_io_log_path)
                 original = raw.rstrip("\r\n")
-                invalid_record_logger.warning(
-                    "%s: invalid MINI record at line %s: %s; content=%r; skipping.",
-                    path,
-                    line_no,
-                    exc,
-                    original,
+                import_issues.append(
+                    {
+                        "line": line_no,
+                        "reason": str(exc),
+                        "content": original,
+                    }
                 )
-
-    if n_invalid_records:
-        if invalid_record_logger is None:
-            invalid_record_logger = _mini_io_warning_logger(mini_io_log_path)
-        invalid_record_logger.warning(
-            "%s: MINI read summary: data lines read=%s, valid records=%s, "
-            "invalid records skipped=%s.",
-            path,
-            n_input_records,
-            len(records),
-            n_invalid_records,
-        )
 
     if not records:
         raise ValueError(
@@ -474,55 +442,5 @@ def parse_mini_file(path, *, mini_io_log_path=None):
         name=path.stem,
         n_input_records=n_input_records,
         n_invalid_records=n_invalid_records,
+        import_issues=import_issues,
     )
-
-
-# ---------------------------------------------------------------------------
-# Writing (used by the CRD -> MINI converter and for round-tripping)
-# ---------------------------------------------------------------------------
-def _format_opt_int(value: Optional[int], width: int) -> str:
-    if value is None:
-        return " " * width
-    text = f"{int(value):0{width}d}" if value >= 0 else f"{int(value):d}"
-    if len(text) > width:
-        raise ValueError(f"Integer value {value} does not fit in {width} MINI columns")
-    return text.rjust(width)
-
-
-def format_mini_line(record: MiniRecord) -> str:
-    """Serialize a :class:`MiniRecord` to one 89-character MINI line."""
-    parts = [
-        f"{int(record.format_code):1d}",
-        " " if record.laser_color_code is None else f"{int(record.laser_color_code):1d}",
-        f"{record.launch_date:>8s}",
-        f"{record.launch_time:>13s}",
-        f"{int(record.light_time_raw):014d}",
-        f"{int(record.reflector_id):1d}",
-        f"{record.station_id:>5s}",
-        _format_opt_int(record.number_of_returns, 3),
-        f"{int(record.uncertainty_raw):06d}",
-        _format_opt_int(record.signal_noise_ratio_raw, 3),
-        (record.quality_code or " ")[:1],
-        f"{int(record.pressure_raw):06d}",
-        f"{int(record.temperature_raw):04d}" if record.temperature_raw >= 0 else f"{int(record.temperature_raw):4d}",
-        f"{int(record.humidity_percent):02d}",
-        f"{int(record.wavelength_raw):05d}",
-        (record.version_code or " ")[:1],
-        _format_opt_int(record.duration_s, 4),
-        "  ",  # cols 79-80 unused
-        f"{(record.source_format or ''):<9s}",
-    ]
-    line = "".join(parts)
-    assert len(line) == MINI_LINE_FULL_LENGTH, f"internal error: MINI line length {len(line)}"
-    return line
-
-
-def write_mini_file(records: Sequence[MiniRecord], path) -> None:
-    """Write MINI records to a fixed-width file (gzip if path ends in .gz)."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    opener = gzip.open if path.name.lower().endswith(".gz") else open
-    with opener(path, "wt", encoding="ascii", newline="\n") as fh:
-        for record in records:
-            fh.write(format_mini_line(record))
-            fh.write("\n")

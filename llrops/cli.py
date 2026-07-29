@@ -4,11 +4,14 @@ Usage::
 
     python -m llrops run config.yml [--set name=value ...] [--working-dir DIR]
     python -m llrops list-programs
+    python -m llrops describe-program LlrNormalEquations
+    python -m llrops validate config.yml
     python -m llrops list-classes [category]
 
 The config drives everything (GROOPS style); ``--set`` overrides entries of
 the ``variables:`` section for scripted batch runs (e.g. SLURM arrays).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -20,12 +23,14 @@ def _import_programs() -> None:
     # Importing registers the @program entries.  This is deliberately called
     # only on rank 0 after MPI rank splitting; worker ranks never need the
     # program registry.
-    import llrops.programs.crd_to_mini  # noqa: F401
+    import llrops.programs.catalog_programs  # noqa: F401
+    import llrops.programs.inspection_programs  # noqa: F401
     import llrops.programs.llr_adjustment  # noqa: F401
     import llrops.programs.llr_normal_equations  # noqa: F401
+    import llrops.programs.llr_observation_equations  # noqa: F401
     import llrops.programs.llr_residuals  # noqa: F401
-    import llrops.programs.normal_points_to_llrops  # noqa: F401
-    import llrops.programs.normals_combine_solve  # noqa: F401
+    import llrops.programs.normal_equation_programs  # noqa: F401
+    import llrops.programs.normal_point_programs  # noqa: F401
 
 
 def cmd_run(args) -> int:
@@ -47,8 +52,7 @@ def cmd_run(args) -> int:
             return 0
 
         print(
-            f"=== MPI mode: {runtime.size} rank(s), "
-            f"{runtime.size - 1} worker(s) ===",
+            f"=== MPI mode: {runtime.size} rank(s), {runtime.size - 1} worker(s) ===",
             flush=True,
         )
         if runtime.size == 1:
@@ -73,7 +77,9 @@ def cmd_run(args) -> int:
         config = load_config_file(args.config)
         overrides = parse_set_overrides(args.set or [])
 
-        for name, program_config, global_configs in iter_program_calls(config, overrides):
+        for name, program_config, global_configs in iter_program_calls(
+            config, overrides
+        ):
             if context is None or context.global_class_configs != global_configs:
                 if context is not None:
                     context.close()
@@ -107,6 +113,67 @@ def cmd_list_programs(_args) -> int:
 
     for name in available_programs():
         print(name)
+    return 0
+
+
+def cmd_describe_program(args) -> int:
+    import yaml
+
+    _import_programs()
+    from llrops.programs.registry import get_program
+
+    print(
+        yaml.safe_dump(get_program(args.name).spec.describe(), sort_keys=False), end=""
+    )
+    return 0
+
+
+def cmd_validate(args) -> int:
+    _import_programs()
+    from llrops.config.context import RunContext
+    from llrops.config.loader import (
+        iter_program_calls,
+        load_config_file,
+        parse_set_overrides,
+    )
+    from llrops.programs.registry import (
+        get_program,
+        validate_program_artifacts,
+        validate_program_config,
+    )
+
+    config = load_config_file(args.config)
+    overrides = parse_set_overrides(args.set or [])
+    count = 0
+    produced = {}
+    for name, program_config, globals_config in iter_program_calls(config, overrides):
+        context = RunContext(
+            global_class_configs=globals_config,
+            working_dir=args.working_dir,
+        )
+        try:
+            validate_program_config(name, program_config)
+            validate_program_artifacts(
+                name,
+                program_config,
+                context,
+                available_artifacts=produced,
+            )
+            for slot in get_program(name).spec.outputs:
+                value = program_config.get(slot.key)
+                if value is not None:
+                    values = value if slot.many else [value]
+                    for path in values:
+                        resolved = context.resolve_path(path).resolve()
+                        if resolved in produced:
+                            raise ValueError(
+                                f"Scenario publishes more than one artifact to {resolved}."
+                            )
+                        produced[resolved] = slot.artifact_type
+        finally:
+            context.close()
+        count += 1
+    print(f"valid: {count} program call(s)")
     return 0
 
 
@@ -153,6 +220,20 @@ def main(argv=None) -> int:
 
     p_lp = sub.add_parser("list-programs", help="List registered programs.")
     p_lp.set_defaults(func=cmd_list_programs)
+
+    p_dp = sub.add_parser(
+        "describe-program", help="Show one declarative program contract."
+    )
+    p_dp.add_argument("name")
+    p_dp.set_defaults(func=cmd_describe_program)
+
+    p_validate = sub.add_parser(
+        "validate", help="Validate a YAML scenario and its typed inputs."
+    )
+    p_validate.add_argument("config")
+    p_validate.add_argument("--set", action="append", metavar="NAME=VALUE")
+    p_validate.add_argument("--working-dir", default=".")
+    p_validate.set_defaults(func=cmd_validate)
 
     p_lc = sub.add_parser("list-classes", help="List registered model classes.")
     p_lc.add_argument("category", nargs="?")

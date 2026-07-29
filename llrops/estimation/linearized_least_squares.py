@@ -5,12 +5,13 @@ The public programs have different responsibilities:
 * ``LlrAdjustment`` controls nonlinear Gauss--Newton iteration, outlier
   handling, convergence and update absorption.
 * ``LlrNormalEquations`` writes fixed-linearization normal-equation files.
-* ``NormalsCombineSolve`` loads, adds and solves previously written files.
+* ``NormalsAccumulate`` and ``NormalsSolve`` add and solve persisted systems.
 
 The streaming path accumulates rows directly into ``N, W, lPl``.  The dense
 path materializes the design matrix once when repeated reweighting makes that
 time-memory tradeoff worthwhile.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -126,7 +127,11 @@ def build_normal_equations_streaming(
     meta
         Metadata stored in the resulting :class:`NormalEquations` object.
     """
-    names = list(parameter_names if parameter_names is not None else parametrization.parameter_names())
+    names = list(
+        parameter_names
+        if parameter_names is not None
+        else parametrization.parameter_names()
+    )
     normals = NormalEquations.zeros(names, **meta)
     for eq in equations:
         entries = parametrization.design_entries(eq)
@@ -134,7 +139,9 @@ def build_normal_equations_streaming(
         if weight_for is None:
             normals.accumulate_sparse_row(entries, reduced, eq.sigma_m)
         else:
-            normals.accumulate_sparse_row(entries, reduced, weight=float(weight_for(eq)))
+            normals.accumulate_sparse_row(
+                entries, reduced, weight=float(weight_for(eq))
+            )
     return normals
 
 

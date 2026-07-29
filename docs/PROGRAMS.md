@@ -1,53 +1,50 @@
 # Programs
 
-Run one or more registered tasks from a YAML file:
+LLROPS executes typed program chains from YAML:
 
 ```bash
+python -m llrops list-programs
+python -m llrops describe-program LlrResiduals
+python -m llrops validate config.yml
 python -m llrops run config.yml
 python -m llrops run config.yml --mpi
-python -m llrops run config.yml --set dataDir=/data/llr
 ```
 
-## Program reference
+`--set name=value` overrides entries in `variables`. `validate` checks the
+schema, graph, paths, and artifact types without evaluating the LLR model.
 
-| Program | Required input | Main output |
-|---|---|---|
-| `CrdToMini` | `inputCrd`, `outputDir` | MINI files |
-| `NormalPointsToLlrops` | `inputNormalPoints`, `outputFile` | versioned LLROPS JSONL |
-| `LlrResiduals` | `inputNormalPoints` | standard/full O-C CSV or JSON |
-| `LlrAdjustment` | `inputNormalPoints`, `parametrization` | adjustment JSON and optional normals |
-| `LlrNormalEquations` | `inputNormalPoints`, `outputNormals` | fixed-linearization normals |
-| `NormalsCombineSolve` | `inputNormals` | combined normals and optional solution JSON |
-
-All programs share `variables`, `globals`, and the run context. Supported input
-paths may be individual files or directories containing MINI, CRD/FRD, or
-canonical LLROPS files.
-
-## Residual run
+## Typical residual chain
 
 ```yaml
 programs:
+  - program: NormalPointsConvert
+    inputFilesNormalPoints: [data/polac/TOTALOBS6924.DAT]
+    outputFileNormalPoints: output/normalPoints.txt.gz
+    outputFileImportReport: output/normalPointImportReport.txt.gz
+
   - program: LlrResiduals
-    inputNormalPoints: [data/polac/TOTALOBS6924.DAT]
+    inputFilesNormalPoints: [output/normalPoints.txt.gz]
     outputLevel: standard
-    outputCsv: output/oc.csv
-    mpi:
-      chunksize: 32
+    outputFileObservationResults: output/oc.txt.gz
 ```
 
-`standard` is the compact O-C table; `full` adds model and correction
-diagnostics. Input uncertainty is always record-owned.
+Only the converter reads external MINI or CRD. All model programs consume the
+native `NormalPointFile`.
 
-## Adjustment run
+## Linear solution chain
 
-Use `configs/llrops_reflector_bias_adjustment_detailed.yml` as the complete
-reference. The essential sections are `globals`, `parametrization`,
-`adjustment`, `initialization`, `robustEstimation`, `vce`, `mpi`, and output
-paths. `LlrReflectorFit` and the old local `parallel` block are removed.
+`LlrNormalEquations` is the fused high-performance route.
+`LlrObservationEquations` persists the fixed design rows for inspection and
+`ObservationEquationsToNormals` consumes them. `NormalsAccumulate` aligns
+structured parameter names across systems. `NormalsSolve` writes a typed
+solution, covariance group, and solve report.
 
-## Normal-equation workflow
+## Nonlinear adjustment
 
-Use `LlrNormalEquations` to create one fixed-linearization file per data arc,
-then `NormalsCombineSolve` to align parameter names, add the systems, and solve
-once. Use `LlrAdjustment` when parameter updates must be absorbed and the
-observation model relinearized.
+`LlrAdjustment` re-evaluates the observation model as parameter state changes.
+It requires separate report, restart-state, solution, covariance, and final
+normal-equation outputs. See
+`configs/llrops_reflector_bias_adjustment_detailed.yml`.
+
+The complete generated contract for any program is available through
+`describe-program`; the registry is authoritative for accepted keys.

@@ -1,4 +1,5 @@
 """Build and store LLR normal equations at one linearization point."""
+
 from __future__ import annotations
 
 from llrops.config.context import RunContext
@@ -7,11 +8,21 @@ from llrops.llr_workflow import (
     build_parametrization,
     build_processor,
     load_datasets,
+    model_compatibility_fingerprint,
 )
-from llrops.programs.registry import program
+from llrops.programs.registry import ArtifactSlot, ProgramSpec, program
+from llrops.programs.specs import PARAMETRIZED_OBSERVATION_KEYS
 
 
-@program("LlrNormalEquations")
+@program(
+    ProgramSpec(
+        name="LlrNormalEquations",
+        summary="Build normal equations at one fixed LLR linearization.",
+        inputs=(ArtifactSlot("inputFilesNormalPoints", "NormalPointFile", many=True),),
+        outputs=(ArtifactSlot("outputFileNormalEquations", "NormalEquationFile"),),
+        optional_keys=PARAMETRIZED_OBSERVATION_KEYS,
+    )
+)
 def llr_normal_equations(config: dict, context: RunContext):
     from llrops.estimation.linearized_least_squares import (
         build_normal_equations_streaming,
@@ -31,9 +42,10 @@ def llr_normal_equations(config: dict, context: RunContext):
         parameter_names=names,
         sources=sorted(datasets),
         ephemeris=processor.ephemeris_file,
+        compatibility=model_compatibility_fingerprint(config, context),
     )
 
-    out = context.resolve_path(config["outputNormals"])
+    out = context.resolve_path(config["outputFileNormalEquations"])
     normals.save(out)
     print(
         f"[LlrNormalEquations] {normals.obs_count} obs, "

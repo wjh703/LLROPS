@@ -10,7 +10,7 @@
 # Notes:
 # - The serial ProcessPoolExecutor/local parallel path has been removed.
 # - For MPI, only mpi.chunksize is used.
-# - Change dataDir / inputNormalPoints / output paths before running.
+# - Change dataDir / inputFilesNormalPoints / output paths before running.
 # - Time/Earth-rotation transforms now use ERFA + explicit IERS C04 EOP; Astropy is not required.
 
 variables:
@@ -58,14 +58,17 @@ globals:
   reflectorCatalog: builtin
 
 programs:
-  - program: LlrResiduals
-
-    # MINI, CRD/FRD, or LLROPS .llnpt/.llrops.jsonl files and directories.
-    # Directories are expanded by llrops input handling.
-    inputNormalPoints:
+  # External formats are accepted only at this explicit conversion boundary.
+  - program: NormalPointsConvert
+    inputFilesNormalPoints:
       - "{dataDir}/polac/TOTALOBS6924.DAT"
+    outputFileNormalPoints: "{outputDir}/normal_points.txt"
+    outputFileImportReport: "{outputDir}/normal_point_import_report.txt"
+    datasetName: totalobs6924
 
-    miniIoLog: "{outputDir}/mini_io_log.txt"
+  - program: LlrResiduals
+    inputFilesNormalPoints:
+      - "{outputDir}/normal_points.txt"
 
     combineInputs: false
     startTime: null
@@ -86,5 +89,4 @@ programs:
     mpi:
       chunksize: 32
 
-    outputCsv: "{outputDir}/oc_residuals_w_libration_correction_iers_w_ot.csv"
-    outputJson: null
+    outputFileObservationResults: "{outputDir}/oc_residuals_w_libration_correction_iers_w_ot_new.txt.gz"
