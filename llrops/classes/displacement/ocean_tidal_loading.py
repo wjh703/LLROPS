@@ -20,7 +20,10 @@ from .terrestrial_geometry import enu2itrf, itrf2geodetic
 BLQ_TIDE_NAMES = ("M2", "S2", "N2", "K2", "K1", "O1", "P1", "Q1", "MF", "MM", "SSA")
 BLQ_COMPONENT_NAMES = ("up", "west", "south")
 HARDISP_MIN_UTC = (1700, 1, 1, 0, 0, 0)
-HARDISP_MAX_UTC = (2017, 1, 1, 0, 0, 0)
+# ETUTC's final table entry remains valid while UTC-TAI stays at -37 s. IERS
+# Bulletin C 72 confirms no leap second through the end of December 2026;
+# the next possible UTC step is therefore at the end of June 2027.
+HARDISP_VALID_UNTIL_UTC_EXCLUSIVE = (2027, 7, 1, 0, 0, 0)
 _MODEL_LINE = re.compile(r"^\s*\$+\s*([A-Za-z][A-Za-z0-9_.-]*)\s*:\s*M2\b", re.IGNORECASE)
 _CMC_LINE = re.compile(r"\bCMC\s*:\s*(YES|NO)\b", re.IGNORECASE)
 _COLUMN_ORDER_LINE = re.compile(r"\bCOLUMN\s+ORDER\s*:\s*(.*)$", re.IGNORECASE)
@@ -334,10 +337,10 @@ class Iers2010OceanTidalLoading:
                 "23:59:60 from the following midnight."
             )
         calendar = (year, month, day, hour, minute, second)
-        if calendar < HARDISP_MIN_UTC or calendar > HARDISP_MAX_UTC:
+        if calendar < HARDISP_MIN_UTC or calendar >= HARDISP_VALID_UNTIL_UTC_EXCLUSIVE:
             raise ValueError(
                 "Iers2010OceanTidalLoading supports UTC epochs only from "
-                "1700-01-01T00:00:00 through 2017-01-01T00:00:00; "
+                "1700-01-01T00:00:00 through 2027-06-30T23:59:59; "
                 f"got {year:04d}-{month:02d}-{day:02d}T{hour:02d}:{minute:02d}:{second:02d}."
             )
         # The native N-series interface is valid only on a fixed UTC-sampled

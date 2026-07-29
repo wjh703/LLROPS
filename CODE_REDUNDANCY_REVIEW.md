@@ -231,22 +231,7 @@ MPI worker 应保存创建 processor 时使用的 context，并在 worker 退出
 
 如果保留 registry，应传入一个字段明确、带类型的最小 dependency object。更简单的方案是让 observation factory 中的构造函数直接接收所需依赖，不再通过通用 context 查找。
 
-## 8. 串行和 MPI 返回不同结果类型
-
-严重程度：低
-
-[`llr_residuals()`](llrops/programs/llr_residuals.py#L37) 中：
-
-- MPI 路径返回 row dict
-- 串行路径返回 `ObservationEquation`
-
-因此 [`observation_result_writer._rows()`](llrops/fileio/observation_result_writer.py#L12) 被迫接受 `ObservationEquation | Mapping`，并在运行时判断类型。
-
-### 建议
-
-`LlrResiduals` 在两种 backend 下都应返回 row；adjustment 在两种 backend 下都应返回 equation。执行 backend 不应改变业务返回类型。
-
-## 9. 可立即清理的明显冗余
+## 8. 可立即清理的明显冗余
 
 以下修改风险较低，可先完成：
 

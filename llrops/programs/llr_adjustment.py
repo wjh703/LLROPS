@@ -1,26 +1,8 @@
-"""Generalized, parametrization-driven LLR adjustment program.
+"""Generalized robust LLR adjustment with typed products and restart state."""
 
-Example configuration::
-
-    - program: LlrAdjustment
-      inputNormalPoints: [...]
-      parametrization:
-        - {type: reflectorPosition, reflectors: [apollo15]}
-        - {type: stationRangeBias}
-        # future: {type: stationPosition}, {type: eop, temporal: ...},
-        #         {type: lunarLoveNumbers}, {type: lunarOrbitState}
-      adjustment:
-        maximumLinearizations: 20
-        parameterUpdateFactor: 1.0
-        updateToleranceM: 1.0e-3
-        prefitGrossThresholdM: 20.0
-        prefitGrossThresholdByStationM: {APOLLO: 10.0, GRASSE: 30.0}
-      outputJson: adjustment.json
-      outputNormals: normals/llr
-"""
 from __future__ import annotations
 
-import json
+from typing import Mapping
 
 from llrops.config.context import RunContext
 from llrops.llr_workflow import (
@@ -28,22 +10,147 @@ from llrops.llr_workflow import (
     build_parametrization,
     build_processor,
     load_datasets,
+    model_compatibility_fingerprint,
 )
-from llrops.programs.registry import program
+from llrops.programs.registry import ArtifactSlot, ProgramSpec, program
+from llrops.programs.specs import PARAMETRIZED_OBSERVATION_KEYS
+
+_ADJUSTMENT_OUTPUT_KEYS = (
+    "outputFileAdjustmentReport",
+    "outputFileAdjustmentState",
+    "outputFileSolution",
+    "outputFileCovariance",
+    "outputFileNormalEquations",
+)
 
 
+def _scientific_fingerprint(config: Mapping[str, object], context: RunContext) -> str:
+    """Hash resolved scientific settings and the contents of referenced files."""
+    from llrops.fileio.fingerprints import scientific_fingerprint
 
-@program("LlrAdjustment")
+    excluded = {
+        *_ADJUSTMENT_OUTPUT_KEYS,
+        "inputFileAdjustmentState",
+        "showProgress",
+        "mpi",
+    }
+    return scientific_fingerprint(config, context, excluded_keys=excluded)
+
+
+def _restore_state(state: Mapping[str, object], parametrization, processor) -> None:
+    positions = state.get("reflectorPositions") or {}
+    if not isinstance(positions, Mapping):
+        raise ValueError("Adjustment state reflectorPositions must be a mapping.")
+    processor.model_state.apply_reflector_positions(positions)
+    parameter_state = state.get("parametrization") or {}
+    if not isinstance(parameter_state, Mapping):
+        raise ValueError("Adjustment state parametrization must be a mapping.")
+    for block in parametrization.blocks:
+        saved = parameter_state.get(block.block_id)
+        if not isinstance(saved, Mapping):
+            continue
+        values = saved.get("values")
+        if values is not None:
+            if not isinstance(values, Mapping) or not hasattr(block, "values"):
+                raise ValueError(f"Invalid restart values for {block.block_id}.")
+            block.values.update(
+                {str(key): float(value) for key, value in values.items()}
+            )
+
+
+def _estimated_values(names, parametrization, processor):
+    values_by_name = {}
+    for block in parametrization.blocks:
+        block_names = block.parameter_names()
+        if block.block_id == "reflectorPosition":
+            for name in block_names:
+                axis = {"position.x": 0, "position.y": 1, "position.z": 2}[name.type]
+                values_by_name[name] = float(
+                    processor.model_state.reflector_catalog[
+                        name.object
+                    ].moon_fixed_xyz_m[axis]
+                )
+        elif block.block_id == "stationRangeBias":
+            keys = list(getattr(block, "keys", ()))
+            for name, key in zip(block_names, keys):
+                values_by_name[name] = float(block.values[key])
+        elif block_names:
+            raise ValueError(
+                f"Adjustment output does not define absolute-state semantics for {block.block_id!r}."
+            )
+    return [values_by_name[name] for name in names]
+
+
+@program(
+    ProgramSpec(
+        name="LlrAdjustment",
+        summary="Run staged nonlinear LLR adjustment with robust weighting and VCE.",
+        inputs=(
+            ArtifactSlot("inputFilesNormalPoints", "NormalPointFile", many=True),
+            ArtifactSlot(
+                "inputFileAdjustmentState",
+                "AdjustmentStateFile",
+                required=False,
+            ),
+        ),
+        outputs=(
+            ArtifactSlot("outputFileAdjustmentReport", "AdjustmentReportFile"),
+            ArtifactSlot("outputFileAdjustmentState", "AdjustmentStateFile"),
+            ArtifactSlot("outputFileSolution", "ParameterVectorFile"),
+            ArtifactSlot("outputFileCovariance", "CovarianceMatrixFile"),
+            ArtifactSlot("outputFileNormalEquations", "NormalEquationFile"),
+        ),
+        optional_keys=(
+            *PARAMETRIZED_OBSERVATION_KEYS,
+            "adjustment",
+            "initialization",
+            "robustEstimation",
+            "vce",
+        ),
+    )
+)
 def llr_adjustment(config: dict, context: RunContext):
-    """Run nonlinear LLR adjustment with robust weights and VCE."""
+    import numpy as np
+
     from llrops.estimation.adjustment_config import parse_adjustment_plan
     from llrops.estimation.adjustment_solver import LlrAdjustmentSolver
+    from llrops.fileio.adjustment import (
+        read_adjustment_state,
+        write_adjustment_report,
+        write_adjustment_state,
+    )
+    from llrops.fileio.parameters import (
+        CovarianceMatrix,
+        ParameterVector,
+        write_covariance,
+        write_parameter_vector,
+    )
 
     plan = parse_adjustment_plan(config)
-    options = plan.options
     datasets = load_datasets(config, context)
     parametrization = build_parametrization(config, context)
     processor = build_processor(config, context)
+    fingerprint = _scientific_fingerprint(config, context)
+
+    previous_scales: dict[str, float] = {}
+    previous_factors: dict[int, float] = {}
+    if config.get("inputFileAdjustmentState"):
+        state = read_adjustment_state(
+            context.resolve_path(config["inputFileAdjustmentState"])
+        )
+        if state["fingerprint"] != fingerprint:
+            raise ValueError(
+                "Adjustment-state fingerprint does not match the current inputs and model configuration."
+            )
+        _restore_state(state, parametrization, processor)
+        previous_scales = {
+            str(key): float(value) for key, value in (state.get("scales") or {}).items()
+        }
+        previous_factors = {
+            int(key): float(value)
+            for key, value in (state.get("robustFactors") or {}).items()
+        }
+
     active_stage = {"name": "joint"}
 
     def report_iteration(item):
@@ -52,11 +159,6 @@ def llr_adjustment(config: dict, context: RunContext):
             f"stage={active_stage['name']} "
             f"linearization={item.linearization_iteration} "
             f"stochastic={item.stochastic_iteration} "
-            f"elapsed={item.elapsed_seconds:.3f}s "
-            f"scaleLogTarget={item.maximum_scale_log_target_change:.3e} "
-            f"factorTargetQ={item.robust_factor_target_change_quantile:.3e} "
-            f"activeSetChange={item.active_set_change_fraction:.3e} "
-            f"targetRejected={item.target_rejected_observation_count} "
             f"active={item.active_observation_count} "
             f"rejected={item.rejected_observation_count} "
             f"converged={item.stochastic_converged}",
@@ -64,54 +166,35 @@ def llr_adjustment(config: dict, context: RunContext):
         )
 
     stage_results = []
-    warm_start_stochastic = plan.warm_start_stochastic_model_across_stages
-    previous_scales = {}
-    previous_factors = {}
     equation_source = build_equation_source(config, context, datasets, processor)
-    for stage in plan.stages:
-        stage_name = stage.name
-        active_stage["name"] = stage_name
+    result = None
+    for stage_index, stage in enumerate(plan.stages):
+        active_stage["name"] = stage.name
         stage_parametrization = (
             parametrization
             if not stage.parametrizations
             else parametrization.select_blocks(stage.parametrizations)
         )
-        stage_options = stage.apply(options)
+        warm = stage_index == 0 and bool(config.get("inputFileAdjustmentState"))
+        warm = warm or plan.warm_start_stochastic_model_across_stages
         result = LlrAdjustmentSolver(
             equation_source=equation_source,
             parametrization=stage_parametrization,
-            options=stage_options,
+            options=stage.apply(plan.options),
             model_state=processor.model_state,
-            initial_scales=(previous_scales if warm_start_stochastic else None),
-            initial_factors=(previous_factors if warm_start_stochastic else None),
+            initial_scales=(previous_scales if warm else None),
+            initial_factors=(previous_factors if warm else None),
             iteration_callback=(
                 report_iteration if bool(config.get("showProgress", True)) else None
             ),
         ).run()
         previous_scales = dict(result.scales)
-        previous_factors = dict(result.robust_factors)
-        performance = result.summary["performance_seconds"]
-        print(
-            "[LlrAdjustment:Performance] "
-            f"stage={stage_name} "
-            f"cache={performance['cache_build']:.3f}s "
-            f"solve={performance['normal_solve']:.3f}s "
-            f"leverage={performance['leverage']:.3f}s "
-            f"vce={performance['vce']:.3f}s "
-            f"warmScales={result.settings['warm_started_scale_count']} "
-            f"warmFactors={result.settings['warm_started_factor_count']}",
-            flush=True,
-        )
-        print(
-            "[LlrAdjustment:UncertaintyQC] "
-            f"stage={stage_name} action=floor "
-            f"floored={result.summary['uncertainty_sigma_floored_count']} "
-            f"retainedFloored={result.summary['retained_uncertainty_sigma_floored_count']}",
-            flush=True,
-        )
+        previous_factors = {
+            int(key): float(value) for key, value in result.robust_factors.items()
+        }
         stage_results.append(
             {
-                "name": stage_name,
+                "name": stage.name,
                 "parametrizations": [
                     block.block_id for block in stage_parametrization.blocks
                 ],
@@ -119,19 +202,57 @@ def llr_adjustment(config: dict, context: RunContext):
                 "state": result.state,
             }
         )
+    if result is None or result.normals is None:
+        raise RuntimeError("Adjustment produced no final normal equations.")
+    result.normals.meta["compatibility"] = model_compatibility_fingerprint(
+        config, context
+    )
 
-    if config.get("outputJson"):
-        path = context.resolve_path(config["outputJson"])
-        path.parent.mkdir(parents=True, exist_ok=True)
-        payload = result.to_dict()
-        payload["processing_steps"] = stage_results
-        path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
-    if config.get("outputNormals") and result.normals is not None:
-        result.normals.save(context.resolve_path(config["outputNormals"]))
+    correction, cofactor, sigma0 = result.normals.solve()
+    names = tuple(result.normals.parameter_names)
+    units = tuple(result.normals.parameter_units)
+    estimates = np.asarray(_estimated_values(names, parametrization, processor))
+    cofactor_sigma = np.sqrt(np.maximum(np.diag(cofactor), 0.0))
+    sigmas = cofactor_sigma if sigma0 is None else sigma0 * cofactor_sigma
+    covariance_values = cofactor if sigma0 is None else sigma0 * sigma0 * cofactor
+    covariance_kind = "cofactor" if sigma0 is None else "posteriorCovariance"
+    solution = ParameterVector(names, estimates, units, sigmas, "estimate")
+    covariance = CovarianceMatrix(names, covariance_values, units, covariance_kind)
+
+    report_payload = result.to_dict()
+    report_payload.update(
+        {
+            "fingerprint": fingerprint,
+            "processingSteps": stage_results,
+            "finalRemainingCorrection": {
+                str(name): float(value) for name, value in zip(names, correction)
+            },
+        }
+    )
+    state_payload = {
+        "fingerprint": fingerprint,
+        "lastStage": active_stage["name"],
+        "converged": result.converged,
+        "parametrization": parametrization.state(),
+        "reflectorPositions": processor.model_state.reflector_positions(),
+        "scales": result.scales,
+        "robustFactors": {
+            str(key): float(value) for key, value in result.robust_factors.items()
+        },
+    }
+    write_adjustment_report(
+        context.resolve_path(config["outputFileAdjustmentReport"]), report_payload
+    )
+    write_adjustment_state(
+        context.resolve_path(config["outputFileAdjustmentState"]), state_payload
+    )
+    write_parameter_vector(solution, context.resolve_path(config["outputFileSolution"]))
+    write_covariance(covariance, context.resolve_path(config["outputFileCovariance"]))
+    result.normals.save(context.resolve_path(config["outputFileNormalEquations"]))
     print(
         f"[LlrAdjustment] converged={result.converged} "
         f"linearizations={len(result.linearizations)} "
-        f"stochasticIterations={len(result.iterations)} components={len(result.scales)}"
+        f"stochasticIterations={len(result.iterations)}"
     )
     return result
 

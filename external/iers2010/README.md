@@ -137,7 +137,7 @@ HARDISP_WRAP
 | `SPLINE.F` / `SPLINE` | 为非等间隔三次样条插值计算二阶导数数组。 |
 | `EVAL.F` / `EVAL` | 使用 `SPLINE` 生成的数组求取样条插值值。 |
 | `SHELLS.F` / `SHELLS` | 使用 Shell sort 对频率数组排序并保留索引映射。 |
-| `ETUTC.F` / `ETUTC` | 计算 Ephemeris Time 与 UTC 的差，用于潮汐相位；该固定版本声明的有效范围止于 2017.0。 |
+| `ETUTC.F` / `ETUTC` | 计算 Ephemeris Time 与 UTC 的差，用于潮汐相位；其最后一个闰秒表项在 UTC-TAI 保持 -37 秒期间继续有效。IERS Bulletin C 72 已确认 2026 年 12 月末不增加闰秒，应用层据此接受 2027 年 7 月前的历元。 |
 | `JULDAT.F` / `JULDAT` | 将公历年月日转换为整数儒略日。 |
 | `LEAP.F` / `LEAP` | 判断公历年份是否为闰年。 |
 | `MDAY.F` / `MDAY` | 返回指定月份开始前已经过去的年内日数，供 `HARDISP_WRAP` 构造年积日。 |

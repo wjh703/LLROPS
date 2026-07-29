@@ -1,4 +1,5 @@
 """Shared application workflow for LLR programs."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,17 +14,16 @@ def load_datasets(config: dict, context: RunContext):
     )
     from llrops.fileio.normal_points import combine_npt_datasets
 
-    inputs = config.get("inputNormalPoints")
+    inputs = config.get("inputFilesNormalPoints")
     if not inputs:
-        raise ValueError("inputNormalPoints is required")
-    input_values = inputs if isinstance(inputs, list) else [inputs]
+        raise ValueError("inputFilesNormalPoints is required")
+    if isinstance(inputs, (str, bytes)):
+        raise TypeError(
+            "inputFilesNormalPoints must be a list of native normal-point files."
+        )
+    input_values = list(inputs)
     input_files = resolve_normal_point_inputs(
         [context.resolve_path(item) for item in input_values]
-    )
-    mini_io_log = (
-        context.resolve_path(config["miniIoLog"])
-        if config.get("miniIoLog")
-        else None
     )
     if not input_files:
         raise FileNotFoundError(
@@ -32,7 +32,7 @@ def load_datasets(config: dict, context: RunContext):
 
     datasets = {}
     for path in input_files:
-        dataset = read_normal_points(path, mini_io_log_path=mini_io_log)
+        dataset = read_normal_points(path)
         start, end = config.get("startTime"), config.get("endTime")
         if start or end:
             dataset = dataset.filter_time(start, end)
@@ -97,6 +97,34 @@ def build_parametrization(config: dict, context: RunContext):
     return ParametrizationList(blocks)
 
 
+def model_compatibility_fingerprint(config: dict, context: RunContext) -> str:
+    """Fingerprint model conventions while allowing independent data arcs."""
+    from llrops.fileio.fingerprints import scientific_fingerprint
+
+    operational_keys = {
+        "inputFileNormalPoints",
+        "inputFilesNormalPoints",
+        "inputFileAdjustmentState",
+        "combineInputs",
+        "combinedName",
+        "startTime",
+        "endTime",
+        "stationName",
+        "reflectorName",
+        "minElevationDeg",
+        "showProgress",
+        "mpi",
+        "outputLevel",
+        "includeReflectorDesign",
+    }
+    output_keys = {key for key in config if key.startswith("outputFile")}
+    return scientific_fingerprint(
+        config,
+        context,
+        excluded_keys=operational_keys | output_keys,
+    )
+
+
 def build_equation_source(config, context, datasets, processor):
     """Return a closure that relinearizes all observations per iteration."""
     options = make_processing_options(config, include_design=True)
@@ -150,5 +178,6 @@ __all__ = [
     "build_processor",
     "load_datasets",
     "make_processing_options",
+    "model_compatibility_fingerprint",
     "output_level",
 ]

@@ -4,7 +4,7 @@ from llrops.classes.observation_factory import validate_observation_config
 
 
 def test_observation_config_needs_no_uncertainty_selector():
-    validate_observation_config({"inputNormalPoints": ["input.crd"]})
+    validate_observation_config({"inputFilesNormalPoints": ["input.txt.gz"]})
 
 
 @pytest.mark.parametrize("key", ["uncertainty", "uncertaintyModel"])

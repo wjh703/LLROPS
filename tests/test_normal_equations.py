@@ -1,6 +1,6 @@
 import numpy as np
-
 import pytest
+
 from llrops.base.parameter_name import ParameterName
 from llrops.fileio.normal_equations import NormalEquations
 
@@ -31,6 +31,8 @@ def test_normal_equations_use_W_and_np_solve_convention(tmp_path):
     loaded = NormalEquations.load(stem)
     assert np.allclose(loaded.N, expected_N)
     assert np.allclose(loaded.W, expected_W)
+    assert (stem / "info.txt").read_text().startswith("llrops normalEquationInfo")
+    assert not list(tmp_path.glob("*.npz"))
 
 
 def test_exactly_determined_system_has_no_posterior_variance_factor():
@@ -64,3 +66,10 @@ def test_normal_equation_parameter_names_must_be_unique():
     name = ParameterName("test", "x")
     with pytest.raises(ValueError, match="must be unique"):
         NormalEquations.zeros([name, name])
+
+
+def test_normal_equation_groups_require_extensionless_directories(tmp_path):
+    normals = NormalEquations.zeros([ParameterName("test", "x")])
+
+    with pytest.raises(ValueError, match="extensionless directory"):
+        normals.save(tmp_path / "normals.npz")

@@ -7,7 +7,7 @@ complete processing task.
 ```text
 config/       registry, YAML loader, run context and shared object cache
 base/         Epoch, constants, parameter names and validation helpers
-fileio/       MINI/CRD/LLROPS readers, catalogs, normal equations and writers
+fileio/       external importers and typed native artifact readers/writers
 classes/      ephemerides, frames, delays, displacement, observation and
               parametrization implementations
 estimation/   nonlinear adjustment, robust weights, VCE and least squares
@@ -18,7 +18,7 @@ parallel/     MPI transport and worker lifecycle
 ## Runtime flow
 
 ```text
-input file
+typed normal-point file
   -> NptRecord
   -> ObservationResolver
   -> LightTimeSolver
@@ -29,13 +29,14 @@ input file
 
 `ObservationEquation` is the estimation contract. It contains the one-way
 residual, input-derived sigma, identity keys, epoch, and named partial blocks.
-CSV/JSON diagnostics are created at the output boundary; estimators do not
-reconstruct equations from output dictionaries.
+Typed observation-result and report artifacts are created at the output
+boundary; estimators do not reconstruct equations from output dictionaries.
 
 `Parametrization` blocks declare named columns, provide design entries, and
 absorb solved updates into model state. `LlrAdjustment` relinearizes after
 updates. `LlrNormalEquations` writes one fixed-linearization system, while
-`NormalsCombineSolve` aligns, combines, and solves such systems once.
+`NormalsAccumulate` aligns and combines such systems by parameter name;
+`NormalsSolve` publishes the solution and covariance.
 
 ## Extension points
 

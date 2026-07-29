@@ -1,8 +1,9 @@
 """Canonical source-independent LLR normal-point records."""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
 import math
+from dataclasses import dataclass
 from typing import Iterator, List, Optional, Sequence
 
 from llrops.base.constants import C
@@ -28,8 +29,8 @@ class NptRecord:
         if not isinstance(self.transmit_epoch, Epoch):
             raise TypeError("transmit_epoch must be an Epoch.")
         self.transmit_epoch.require_scale(TimeScale.UTC, name="transmit_epoch")
-        self.station_name = str(self.station_name).strip()
-        self.reflector_name = str(self.reflector_name).strip()
+        self.station_name = _compact_identity(self.station_name)
+        self.reflector_name = _compact_identity(self.reflector_name)
         if not self.station_name or not self.reflector_name:
             raise ValueError("station_name and reflector_name must not be empty.")
         positive_fields = (
@@ -48,6 +49,12 @@ class NptRecord:
         if not math.isfinite(humidity) or not 0.0 <= humidity <= 100.0:
             raise ValueError("humidity_percent must be finite and in [0, 100].")
         self.humidity_percent = humidity
+        if (
+            isinstance(self.index, bool)
+            or not isinstance(self.index, int)
+            or self.index < 0
+        ):
+            raise ValueError("Normal-point index must be a non-negative integer.")
         self.index = int(self.index)
         self.station_code = _optional_text(self.station_code)
         self.reflector_code = _optional_text(self.reflector_code)
@@ -78,7 +85,13 @@ class NptRecord:
 
 
 class NptDataset:
-    __slots__ = ("records", "name", "n_input_records", "n_invalid_records")
+    __slots__ = (
+        "records",
+        "name",
+        "n_input_records",
+        "n_invalid_records",
+        "import_issues",
+    )
 
     def __init__(
         self,
@@ -86,11 +99,34 @@ class NptDataset:
         name: Optional[str] = None,
         n_input_records: int = 0,
         n_invalid_records: int = 0,
+        import_issues: Optional[List[dict[str, object]]] = None,
     ) -> None:
+        if not isinstance(records, list) or not all(
+            isinstance(record, NptRecord) for record in records
+        ):
+            raise TypeError("NptDataset.records must be a list of NptRecord objects.")
+        input_count = int(n_input_records)
+        invalid_count = int(n_invalid_records)
+        if input_count != n_input_records or invalid_count != n_invalid_records:
+            raise TypeError("Normal-point record counts must be integers.")
+        if input_count == 0 and records and invalid_count == 0:
+            input_count = len(records)
+        if invalid_count < 0 or input_count < len(records) + invalid_count:
+            raise ValueError(
+                "Normal-point input count must cover valid and invalid records."
+            )
         self.records = records
         self.name = name
-        self.n_input_records = n_input_records
-        self.n_invalid_records = n_invalid_records
+        self.n_input_records = input_count
+        self.n_invalid_records = invalid_count
+        issues = list(import_issues or [])
+        if not all(isinstance(issue, dict) for issue in issues):
+            raise TypeError("Normal-point import issues must be mappings.")
+        if len(issues) > invalid_count:
+            raise ValueError(
+                "Normal-point import issues cannot exceed the invalid-record count."
+            )
+        self.import_issues = issues
 
     def __repr__(self) -> str:
         return (
@@ -135,6 +171,10 @@ def _optional_text(value) -> Optional[str]:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _compact_identity(value: object) -> str:
+    return "".join(str(value).split())
 
 
 def parse_time_filter(value):
@@ -183,9 +223,11 @@ def combine_npt_datasets(
     merged: List[NptRecord] = []
     n_input_records = 0
     n_invalid_records = 0
+    import_issues: List[dict[str, object]] = []
     for dataset in datasets:
         n_input_records += int(dataset.n_input_records)
         n_invalid_records += int(dataset.n_invalid_records)
+        import_issues.extend(dataset.import_issues)
         for record in dataset.records:
             record.index = len(merged)
             merged.append(record)
@@ -194,6 +236,7 @@ def combine_npt_datasets(
         name=name,
         n_input_records=n_input_records,
         n_invalid_records=n_invalid_records,
+        import_issues=import_issues,
     )
 
 

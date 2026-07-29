@@ -12,12 +12,15 @@ estimation.
 | Prepare MINI, CRD, or canonical LLROPS inputs | [INPUTS.md](INPUTS.md) |
 | Configure reflector and station-bias adjustment | [ADJUSTMENT.md](ADJUSTMENT.md) |
 | Understand module boundaries and extension points | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| Review the GROOPS-aligned file and program contract | [GROOPS_FILE_PROGRAM_DESIGN.md](GROOPS_FILE_PROGRAM_DESIGN.md) |
 | Build and validate the IERS native extension | [DEVELOPMENT.md](DEVELOPMENT.md) |
 
 ## Minimal command line
 
 ```bash
 python -m llrops list-programs
+python -m llrops describe-program LlrResiduals
+python -m llrops validate configs/llrops_oc_residuals.yml
 python -m llrops list-classes
 python -m llrops run configs/llrops_oc_residuals.yml
 python -m llrops run configs/llrops_oc_residuals.yml --mpi
@@ -26,11 +29,12 @@ python -m llrops run configs/llrops_oc_residuals.yml --mpi
 `--set name=value` overrides a value in the config `variables` section. Paths
 are resolved relative to the config working directory unless they are absolute.
 
-## Supported programs
+## Program and file model
 
-`CrdToMini`, `NormalPointsToLlrops`, `LlrResiduals`, `LlrAdjustment`,
-`LlrNormalEquations`, and `NormalsCombineSolve` are registered program tasks.
-Each task is selected by a `program` entry in a YAML run configuration.
+External MINI/CRD data enters through `NormalPointsConvert`. Model and
+estimation programs consume typed text artifacts; dense matrix payloads use
+typed binary files. Each task declares its input/output slots and accepted
+configuration keys in the program registry.
 
 ## Current conventions
 

@@ -1,24 +1,5 @@
-"""Compute LLR residuals from normal-point inputs.
+"""Compute typed LLR observation-result tables from canonical normal points."""
 
-``LlrResiduals`` replaces ``run_llr_np_oc.py``.  Config keys::
-
-    - program: LlrResiduals
-      inputNormalPoints: [dir_or_file, ...]     # MINI, CRD, and/or LLROPS JSONL
-      combineInputs: false                      # merge all inputs into one dataset
-      startTime: null / "2020-01-01T00:00:00"
-      endTime:   null
-      stationName: null                         # catalog override
-      reflectorName: null
-      outputLevel: standard | full             # compact O-C table | diagnostics
-      includeReflectorDesign: false
-      minElevationDeg: 0.0
-      showProgress: true
-      outputCsv: oc.csv                         # grouped over inputs
-      outputJson: null
-      # model classes: ephemerides / earthRotation / troposphere / relativity /
-      # stationDisplacement / reflectorDisplacement / rangeBias - from globals
-      # unless overridden here.
-"""
 from __future__ import annotations
 
 from typing import Dict
@@ -30,12 +11,27 @@ from llrops.llr_workflow import (
     make_processing_options,
     output_level,
 )
-from llrops.programs.registry import program
+from llrops.programs.registry import ArtifactSlot, ProgramSpec, program
+from llrops.programs.specs import OBSERVATION_PROGRAM_KEYS
 
 
-@program("LlrResiduals")
+@program(
+    ProgramSpec(
+        name="LlrResiduals",
+        summary="Evaluate LLR O-C residuals and diagnostics.",
+        inputs=(ArtifactSlot("inputFilesNormalPoints", "NormalPointFile", many=True),),
+        outputs=(
+            ArtifactSlot("outputFileObservationResults", "ObservationResultFile"),
+        ),
+        optional_keys=(
+            *OBSERVATION_PROGRAM_KEYS,
+            "outputLevel",
+            "includeReflectorDesign",
+        ),
+    )
+)
 def llr_residuals(config: dict, context: RunContext):
-    from llrops.fileio import observation_result_writer
+    from llrops.fileio.observation_results import write_observation_results
 
     datasets = load_datasets(config, context)
     options = make_processing_options(config)
@@ -43,8 +39,6 @@ def llr_residuals(config: dict, context: RunContext):
 
     runtime = context.runtime
     if runtime is not None and runtime.has_workers:
-        # MPI master-worker (v24 run_llr_np_oc_mpi.py): rank 0 loads/writes,
-        # workers hold their own processor and compute NptRecord chunks.
         from llrops.parallel.mpi import make_observation_spec, mpi_observation_rows
 
         spec = make_observation_spec(config, context)
@@ -58,31 +52,19 @@ def llr_residuals(config: dict, context: RunContext):
             progress_desc="O-C normal points",
             quiet=not bool(config.get("showProgress", True)),
         )
-        total = sum(len(rows) for rows in results_by_file.values())
     else:
         processor = build_processor(config, context)
-        results_by_file: Dict[str, list] = {}
-        total = 0
-        for source_name, dataset in datasets.items():
-            results = processor.rows(
-                dataset,
-                options=options,
-                level=table_level,
-            )
-            results_by_file[source_name] = results
-            total += len(results)
+        results_by_file: Dict[str, list] = {
+            source_name: processor.rows(dataset, options=options, level=table_level)
+            for source_name, dataset in datasets.items()
+        }
 
-    if config.get("outputCsv"):
-        observation_result_writer.write_csv_grouped(
-            results_by_file,
-            context.resolve_path(config["outputCsv"]),
-        )
-    if config.get("outputJson"):
-        observation_result_writer.write_json_grouped(
-            results_by_file,
-            context.resolve_path(config["outputJson"]),
-        )
-    print(f"[LlrResiduals] {total} normal points over {len(results_by_file)} source file(s)")
+    output = context.resolve_path(config["outputFileObservationResults"])
+    write_observation_results(results_by_file, output)
+    total = sum(len(rows) for rows in results_by_file.values())
+    print(
+        f"[LlrResiduals] {total} normal point(s) over {len(results_by_file)} source(s) -> {output}"
+    )
     return results_by_file
 
 
