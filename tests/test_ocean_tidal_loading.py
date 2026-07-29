@@ -278,6 +278,11 @@ def test_ocean_tidal_loading_preserves_utc_leap_second_calendar_fields(tmp_path)
             (2017, 1, 1, 0, 0, 0),
             (0.00473177339881659, -0.00054353591986001, -0.00125983613543212),
         ),
+        (
+            "2024-01-01T00:00:00",
+            (2024, 1, 1, 0, 0, 0),
+            (0.00426903693005443, -0.00022759537387174, -0.00164407049305737),
+        ),
     )
     for text, expected_calendar, expected_up_south_west_m in inputs:
         data = StationDisplacementInput(
@@ -300,24 +305,16 @@ def test_ocean_tidal_loading_preserves_utc_leap_second_calendar_fields(tmp_path)
             assert np.all(np.isfinite(result.displacement_itrf_m))
 
 
-@pytest.mark.parametrize(
-    "epoch_text",
-    (
-        "2017-01-01T00:00:01",
-        "2020-01-01T00:00:00",
-    ),
-)
 def test_ocean_tidal_loading_rejects_dates_outside_etutc_validity_range(
     tmp_path,
     monkeypatch,
-    epoch_text,
 ):
     coefficient_file = tmp_path / "fes2022b.txt"
     coefficient_file.write_text(_blq_text(), encoding="utf-8")
     model = Iers2010OceanTidalLoading(OceanTidalLoadingCatalog(coefficient_file))
     data = StationDisplacementInput(
         station_itrf_m=(6_378_137.0, 0.0, 0.0),
-        epoch_utc=Epoch.from_isot(epoch_text, scale=TimeScale.UTC),
+        epoch_utc=Epoch.from_isot("2027-07-01T00:00:00", scale=TimeScale.UTC),
         station_id="APOLLO",
     )
 
