@@ -2,16 +2,16 @@ import erfa
 import numpy as np
 import pytest
 
-from llrops.base.epoch import Epoch, TimeScale, utc2tt
-from llrops.classes.frames import C04EarthOrientation, EarthOrientationSample
-from llrops.classes.frames.earth_orientation import read_iers_c04
-from llrops.classes.frames.high_frequency_eop import (
+from lunarops.base.epoch import Epoch, TimeScale, utc2tt
+from lunarops.classes.frames import C04EarthOrientation, EarthOrientationSample
+from lunarops.classes.frames.earth_orientation import read_iers_c04
+from lunarops.classes.frames.high_frequency_eop import (
     HighFrequencyEopCorrection,
     high_frequency_eop_correction,
     libration_correction,
     ocean_tide_correction,
 )
-from llrops.classes.frames.terrestrial import TerrestrialFrameTransform
+from lunarops.classes.frames.terrestrial import TerrestrialFrameTransform
 
 
 _ARCSEC_TO_RAD = np.deg2rad(1.0 / 3600.0)
@@ -113,7 +113,7 @@ def test_ut1_interpolation_removes_leap_second_discontinuity():
 
 
 def test_terrestrial_matrix_applies_celestial_pole_offsets(monkeypatch):
-    import llrops.classes.frames.terrestrial as terrestrial_module
+    import lunarops.classes.frames.terrestrial as terrestrial_module
 
     epoch = Epoch.from_calendar(2020, 1, 1, 6, scale=TimeScale.UTC)
     eop = C04EarthOrientation(

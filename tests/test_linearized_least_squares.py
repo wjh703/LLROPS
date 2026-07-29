@@ -1,12 +1,12 @@
 import numpy as np
 import pytest
 
-from llrops.base.parameter_name import ParameterName
-from llrops.estimation.linearized_least_squares import (
+from lunarops.base.parameter_name import ParameterName
+from lunarops.estimation.linearized_least_squares import (
     NormalEquationSingularError,
     solve_normal_equations,
 )
-from llrops.fileio.normal_equations import NormalEquations
+from lunarops.fileio.normal_equations import NormalEquations
 
 
 def test_singular_normal_equations_raise_diagnostic_error():

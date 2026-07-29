@@ -2,8 +2,8 @@ import pickle
 
 import numpy as np
 
-from llrops.base.epoch import Epoch, TimeScale
-from llrops.classes.observation.equations import (
+from lunarops.base.epoch import Epoch, TimeScale
+from lunarops.classes.observation.equations import (
     ObservationEquation,
     ObservationOutputLevel,
     STANDARD_OUTPUT_FIELDS,

@@ -1,13 +1,13 @@
 # Programs
 
-LLROPS executes typed program chains from YAML:
+LunarOps executes typed program chains from YAML:
 
 ```bash
-python -m llrops list-programs
-python -m llrops describe-program LlrResiduals
-python -m llrops validate config.yml
-python -m llrops run config.yml
-python -m llrops run config.yml --mpi
+python -m lunarops list-programs
+python -m lunarops describe-program LlrResiduals
+python -m lunarops validate config.yml
+python -m lunarops run config.yml
+python -m lunarops run config.yml --mpi
 ```
 
 `--set name=value` overrides entries in `variables`. `validate` checks the
@@ -44,7 +44,7 @@ solution, covariance group, and solve report.
 `LlrAdjustment` re-evaluates the observation model as parameter state changes.
 It requires separate report, restart-state, solution, covariance, and final
 normal-equation outputs. See
-`configs/llrops_reflector_bias_adjustment_detailed.yml`.
+`configs/lunarops_reflector_bias_adjustment_detailed.yml`.
 
 The complete generated contract for any program is available through
 `describe-program`; the registry is authoritative for accepted keys.

@@ -34,17 +34,17 @@ def _check_wheel(path: Path) -> None:
     with zipfile.ZipFile(path) as archive:
         names = set(archive.namelist())
     required = {
-        "llrops/_external/iers2010/LICENSE",
-        *(f"llrops/_external/iers2010/src/{name}" for name in SOURCE_NAMES),
+        "lunarops/_external/iers2010/LICENSE",
+        *(f"lunarops/_external/iers2010/src/{name}" for name in SOURCE_NAMES),
     }
     missing = sorted(required - names)
     extensions = sorted(
-        name for name in names if name.startswith("llrops/_iers2010") and name.endswith(".so")
+        name for name in names if name.startswith("lunarops/_iers2010") and name.endswith(".so")
     )
     if missing:
         raise SystemExit(f"{path}: missing {', '.join(missing)}")
     if not extensions:
-        raise SystemExit(f"{path}: missing compiled llrops/_iers2010 extension")
+        raise SystemExit(f"{path}: missing compiled lunarops/_iers2010 extension")
 
 
 def main() -> None:

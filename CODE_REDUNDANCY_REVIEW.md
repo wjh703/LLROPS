@@ -1,4 +1,4 @@
-# LLROPS 代码冗余与复杂度 Review
+# LunarOps 代码冗余与复杂度 Review
 
 ## Review 范围
 
@@ -30,7 +30,7 @@
 
 严重程度：高
 
-[`LlrAdjustmentSolver.run()`](llrops/estimation/adjustment_solver.py#L508) 长 549 行，同时负责：
+[`LlrAdjustmentSolver.run()`](lunarops/estimation/adjustment_solver.py#L508) 长 549 行，同时负责：
 
 - 初始方程计算与粗差剔除
 - 不确定度预处理
@@ -44,10 +44,10 @@
 
 dense/streaming 分支又分别出现在：
 
-- [`_solve_linearized()`](llrops/estimation/adjustment_solver.py#L197)
-- [`_standardized_residuals()`](llrops/estimation/adjustment_solver.py#L288)
-- [`_update_scales()`](llrops/estimation/adjustment_solver.py#L384)
-- [`HelmertVceEstimator.estimate()` 和 `estimate_dense()`](llrops/estimation/helmert_vce.py#L132)
+- [`_solve_linearized()`](lunarops/estimation/adjustment_solver.py#L197)
+- [`_standardized_residuals()`](lunarops/estimation/adjustment_solver.py#L288)
+- [`_update_scales()`](lunarops/estimation/adjustment_solver.py#L384)
+- [`HelmertVceEstimator.estimate()` 和 `estimate_dense()`](lunarops/estimation/helmert_vce.py#L132)
 
 当前 streaming backend 仍然先持有全部 `ObservationEquation`，只是避免物化完整设计矩阵，并非端到端流式处理。
 
@@ -63,7 +63,7 @@ dense/streaming 分支又分别出现在：
 
 严重程度：高
 
-[`build_observation_equation()`](llrops/classes/observation/equations.py#L185) 一次性构造 66 个 metadata 字段。`ObservationEquation` 同时负责：
+[`build_observation_equation()`](lunarops/classes/observation/equations.py#L185) 一次性构造 66 个 metadata 字段。`ObservationEquation` 同时负责：
 
 - 估计所需的观测方程
 - 输入校验和数组复制
@@ -113,17 +113,17 @@ Orekit 值得借鉴的是“一个 measurement contract，加可选 modifier”�
 
 同一组选项分别维护在：
 
-- [`adjustment_config.py` 的配置键集合和解析器](llrops/estimation/adjustment_config.py#L122)
-- [`LlrAdjustmentOptions` 字段](llrops/estimation/adjustment_options.py#L15)
-- [`LlrAdjustmentOptions.__post_init__()` 校验](llrops/estimation/adjustment_options.py#L47)
-- [`LlrAdjustmentSolver` 的 settings 搬运](llrops/estimation/adjustment_solver.py#L849)
+- [`adjustment_config.py` 的配置键集合和解析器](lunarops/estimation/adjustment_config.py#L122)
+- [`LlrAdjustmentOptions` 字段](lunarops/estimation/adjustment_options.py#L15)
+- [`LlrAdjustmentOptions.__post_init__()` 校验](lunarops/estimation/adjustment_options.py#L47)
+- [`LlrAdjustmentSolver` 的 settings 搬运](lunarops/estimation/adjustment_solver.py#L849)
 
 这已经导致默认值漂移：
 
 - `LlrAdjustmentOptions.maximum_stochastic_iterations` 默认值为 `20`
 - 配置解析器中 `vce.maximumIterations` 默认值为 `8`
 
-另外，[`stage.apply(options)`](llrops/estimation/adjustment_config.py#L391) 的返回值被直接丢弃，仅仅通过 `replace()` 构造临时 options 来触发校验。这种隐式校验方式不直观。
+另外，[`stage.apply(options)`](lunarops/estimation/adjustment_config.py#L391) 的返回值被直接丢弃，仅仅通过 `replace()` 构造临时 options 来触发校验。这种隐式校验方式不直观。
 
 ### 建议
 
@@ -149,7 +149,7 @@ Orekit 值得借鉴的是“一个 measurement contract，加可选 modifier”�
 - 带索引名称：`0:ReflectorPositionParametrization`
 - 参数类型：`position.x`、`position.y`、`position.z`
 
-[`ParametrizationList.select_blocks()`](llrops/classes/parametrization/base.py#L116) 使用具体 Python 类名进行 stage 选择，因此重命名类会直接破坏用户配置。
+[`ParametrizationList.select_blocks()`](lunarops/classes/parametrization/base.py#L116) 使用具体 Python 类名进行 stage 选择，因此重命名类会直接破坏用户配置。
 
 `apply_update()`、`state()` 和 solver 又分别生成不同形式的 block label，当前测试甚至显式依赖 candidate/applied update 使用不同 key 的行为。
 
@@ -171,13 +171,13 @@ Orekit 值得借鉴的是“一个 measurement contract，加可选 modifier”�
 
 虽然 solver 接收通用 `ParametrizationList`，但核心流程仍通过字符串识别 range bias：
 
-- [`_bias_indices()`](llrops/estimation/adjustment_preprocessing.py#L113) 判断 `name.type == "rangeBias"`
-- [`observation_records()`](llrops/estimation/adjustment_results.py#L240) 再次判断 `name.type == "rangeBias"`
-- [`build_observation_equation()`](llrops/classes/observation/equations.py#L284) 无条件创建 `station_range_bias=[1.0]` partial
+- [`_bias_indices()`](lunarops/estimation/adjustment_preprocessing.py#L113) 判断 `name.type == "rangeBias"`
+- [`observation_records()`](lunarops/estimation/adjustment_results.py#L240) 再次判断 `name.type == "rangeBias"`
+- [`build_observation_equation()`](lunarops/classes/observation/equations.py#L284) 无条件创建 `station_range_bias=[1.0]` partial
 
-但 [`StationRangeBiasParametrization.design_entries()`](llrops/classes/parametrization/station_range_bias.py#L265) 已经在 partial 缺失时默认使用 `1.0`，因此每个 observation 上保存这个数组是完全冗余的。
+但 [`StationRangeBiasParametrization.design_entries()`](lunarops/classes/parametrization/station_range_bias.py#L265) 已经在 partial 缺失时默认使用 `1.0`，因此每个 observation 上保存这个数组是完全冗余的。
 
-[`KNOWN_PARAMETER_TYPES`](llrops/base/parameter_name.py#L22) 还预先注册了多种尚未实现的参数类型。新增参数块时仍需要修改 base 层白名单，削弱了 parametrization 的扩展性。
+[`KNOWN_PARAMETER_TYPES`](lunarops/base/parameter_name.py#L22) 还预先注册了多种尚未实现的参数类型。新增参数块时仍需要修改 base 层白名单，削弱了 parametrization 的扩展性。
 
 ### 建议
 
@@ -192,11 +192,11 @@ Orekit 值得借鉴的是“一个 measurement contract，加可选 modifier”�
 
 资源关闭当前同时存在于：
 
-- [`RunContext.close()`](llrops/config/context.py#L94)
-- [`ReferenceFrameSystem.owns_ephemeris`](llrops/classes/frames/reference_frame_system.py#L18)
-- [`LlrObservationModel.close()`](llrops/classes/observation/model.py#L55)
-- [`LlrObservationProcessor.close()`](llrops/classes/observation/processor.py#L85)
-- [`close_cached_objects()`](llrops/parallel/worker_cache.py#L10) 的递归 cache 遍历
+- [`RunContext.close()`](lunarops/config/context.py#L94)
+- [`ReferenceFrameSystem.owns_ephemeris`](lunarops/classes/frames/reference_frame_system.py#L18)
+- [`LlrObservationModel.close()`](lunarops/classes/observation/model.py#L55)
+- [`LlrObservationProcessor.close()`](lunarops/classes/observation/processor.py#L85)
+- [`close_cached_objects()`](lunarops/parallel/worker_cache.py#L10) 的递归 cache 遍历
 
 生产 factory 始终为 `ReferenceFrameSystem` 传入 `owns_ephemeris=False`，所以程序中调用的 `processor.close()` 实际基本是空操作。
 
@@ -216,7 +216,7 @@ MPI worker 应保存创建 processor 时使用的 context，并在 worker 退出
 
 严重程度：中低
 
-[`_ObservationFactoryContext`](llrops/classes/observation_factory.py#L53) 包装 `RunContext`，同时动态挂载：
+[`_ObservationFactoryContext`](lunarops/classes/observation_factory.py#L53) 包装 `RunContext`，同时动态挂载：
 
 - ephemeris
 - earth orientation
@@ -235,11 +235,11 @@ MPI worker 应保存创建 processor 时使用的 context，并在 worker 退出
 
 以下修改风险较低，可先完成：
 
-1. [`parameter_records()`](llrops/estimation/adjustment_results.py#L180) 会重新求解已经求解过的最终法方程。应直接传入已有的 covariance、delta 和 sigma0。
-2. [`LlrObservationModel.predict()`](llrops/classes/observation/model.py#L58) 先计算一次 station position，随后 latitude 和 height 又各自重新计算 position 及大地坐标。应一次计算 `GeodeticPosition` 后复用。
+1. [`parameter_records()`](lunarops/estimation/adjustment_results.py#L180) 会重新求解已经求解过的最终法方程。应直接传入已有的 covariance、delta 和 sigma0。
+2. [`LlrObservationModel.predict()`](lunarops/classes/observation/model.py#L58) 先计算一次 station position，随后 latitude 和 height 又各自重新计算 position 及大地坐标。应一次计算 `GeodeticPosition` 后复用。
 3. uncertainty QC 已经单独保存在 solver 中，又在 preprocessing 和每次 relinearization 时复制进 equation metadata。运行时没有消费者，应删除 metadata 副本。
 4. 删除每个 observation 上恒为 `[1.0]` 的 `station_range_bias` partial。
-5. [`adjustment_solver.py`](llrops/estimation/adjustment_solver.py#L437) 中有多个只转发到 `adjustment_results` 的私有包装方法，可直接调用目标函数。
+5. [`adjustment_solver.py`](lunarops/estimation/adjustment_solver.py#L437) 中有多个只转发到 `adjustment_results` 的私有包装方法，可直接调用目标函数。
 6. `ParametrizationList.apply_update()` 与 `state()` 重复实现 block label 生成，应统一为一个实现。
 7. `ObservationModelState.from_catalogs()` 只是单行构造转发，没有提供额外语义，可以直接调用构造函数。
 8. `NptDataset.n_valid_records` 与 `len(dataset)` 完全等价且无生产调用，可以删除。

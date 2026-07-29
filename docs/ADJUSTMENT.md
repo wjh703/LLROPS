@@ -2,7 +2,7 @@
 
 `LlrAdjustment` is the nonlinear estimator for reflector coordinates and other
 registered parameter blocks. The supplied example is
-`configs/llrops_reflector_bias_adjustment_detailed.yml`.
+`configs/lunarops_reflector_bias_adjustment_detailed.yml`.
 
 ## Model
 
@@ -81,7 +81,9 @@ known oscillating joint solution. Parameter convergence is evaluated per block.
 stochastic diagnostics, parameter precision/correlation, and observation
 summaries. `outputFileAdjustmentState` is the fingerprinted restart product.
 `outputFileSolution`, `outputFileCovariance`, and
-`outputFileNormalEquations` publish the numerical products independently.
+`outputFileNormalEquations` publish the numerical products independently. The
+solution and report publish parameter uncertainty at 3 sigma; the covariance
+artifact remains the posterior 1-sigma-squared covariance.
 
 At minimum, inspect parameter updates, Bias uncertainty, group redundancy and
 scale, residual distributions, robust-factor counts, rank/condition diagnostics,

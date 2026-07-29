@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from llrops.base.parameter_name import ParameterName
-from llrops.fileio.normal_equations import NormalEquations
+from lunarops.base.parameter_name import ParameterName
+from lunarops.fileio.normal_equations import NormalEquations
 
 
 def test_normal_equations_use_W_and_np_solve_convention(tmp_path):
@@ -31,7 +31,7 @@ def test_normal_equations_use_W_and_np_solve_convention(tmp_path):
     loaded = NormalEquations.load(stem)
     assert np.allclose(loaded.N, expected_N)
     assert np.allclose(loaded.W, expected_W)
-    assert (stem / "info.txt").read_text().startswith("llrops normalEquationInfo")
+    assert (stem / "info.txt").read_text().startswith("lunarops normalEquationInfo")
     assert not list(tmp_path.glob("*.npz"))
 
 

@@ -2,9 +2,9 @@ from types import SimpleNamespace
 
 import pytest
 
-import llrops.cli as cli
-import llrops.config.loader as config_loader
-import llrops.parallel.mpi as mpi_module
+import lunarops.cli as cli
+import lunarops.config.loader as config_loader
+import lunarops.parallel.mpi as mpi_module
 
 
 def test_mpi_runtime_shutdown_on_config_parse_error(monkeypatch):

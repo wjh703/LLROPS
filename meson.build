@@ -1,5 +1,5 @@
 project(
-  'llrops',
+  'lunarops',
   'c',
   version: '0.1.0',
   meson_version: '>=1.2.3',
@@ -76,7 +76,7 @@ py.extension_module(
   '_iers2010',
   [iers_fortran_sources, iers_bindings, f2py_support],
   dependencies: [py_dep, numpy_dep],
-  subdir: 'llrops',
+  subdir: 'lunarops',
   install: true,
 )
 
@@ -84,7 +84,7 @@ python_sources = run_command(
   py,
   [
     '-c',
-    'import pathlib, sys; root = pathlib.Path(sys.argv[1]); print("\\n".join(str(path.relative_to(root)) for path in sorted(root.joinpath("llrops").rglob("*.py"))))',
+    'import pathlib, sys; root = pathlib.Path(sys.argv[1]); print("\\n".join(str(path.relative_to(root)) for path in sorted(root.joinpath("lunarops").rglob("*.py"))))',
     meson.project_source_root(),
   ],
   check: true,
@@ -95,7 +95,7 @@ install_data(
   iers_fortran_sources,
   install_dir: join_paths(
     py.get_install_dir(),
-    'llrops',
+    'lunarops',
     '_external',
     'iers2010',
     'src',
@@ -105,7 +105,7 @@ install_data(
   'external/iers2010/LICENSE',
   install_dir: join_paths(
     py.get_install_dir(),
-    'llrops',
+    'lunarops',
     '_external',
     'iers2010',
   ),

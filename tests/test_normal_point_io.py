@@ -3,18 +3,18 @@ from pathlib import Path
 
 import pytest
 
-from llrops.base.constants import C
-from llrops.config.context import RunContext
-from llrops.fileio.normal_point_file import (
+from lunarops.base.constants import C
+from lunarops.config.context import RunContext
+from lunarops.fileio.normal_point_file import (
     read_normal_point_file,
     write_normal_point_file,
 )
-from llrops.fileio.normal_point_inputs import (
+from lunarops.fileio.normal_point_inputs import (
     read_normal_point_source,
     read_normal_points,
 )
-from llrops.fileio.structured_text import read_structured_text
-from llrops.programs.normal_point_programs import normal_points_convert
+from lunarops.fileio.structured_text import read_structured_text
+from lunarops.programs.normal_point_programs import normal_points_convert
 
 
 def _write_crd(path: Path) -> None:

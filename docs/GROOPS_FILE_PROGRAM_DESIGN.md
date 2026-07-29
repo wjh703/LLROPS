@@ -2,10 +2,10 @@
 
 ## Status and scope
 
-This document is the implemented LLROPS data and program contract. It is not a
+This document is the implemented LunarOps data and program contract. It is not a
 migration plan. The refactor intentionally has no compatibility layer: old
 program names, old configuration keys, and the former JSON Lines, CSV, JSON,
-NPZ, and sidecar writers/readers are not part of LLROPS.
+NPZ, and sidecar writers/readers are not part of LunarOps.
 
 YAML remains the configuration language. YAML scenario files select programs,
 classes, variables, and paths; they are not scientific data artifacts.
@@ -25,7 +25,7 @@ native typed artifacts.
 5. The first non-comment line of every text artifact is:
 
    ```text
-   llrops <artifactType> version=20260728
+   lunarops <artifactType> version=20260728
    ```
 
 6. Floating-point values use 17 significant decimal digits and readers reject
@@ -97,14 +97,19 @@ The file header fixes the frame (`ITRF` or `MOON_PA`).
 
 ### ParameterVectorFile
 
-Each row contains structured parameter name, unit, value, and optional sigma.
-`vectorKind` is either `correction` or `estimate`; consumers must respect that
-semantic when applying values.
+Each row contains structured parameter name, unit, value, and optional
+uncertainty. `hasUncertainty` declares whether the fourth column is populated,
+and `uncertaintySigmaMultiplier` declares its sigma multiplier. Solutions
+produced by `NormalsSolve` and `LlrAdjustment` publish parameter uncertainty at
+3 sigma. `vectorKind` is either `correction` or `estimate`; consumers must
+respect that semantic when applying values. Covariance artifacts retain their
+standard cofactor or posterior 1-sigma-squared meaning and are not multiplied
+by nine.
 
 ### Structured reports and state
 
 Reports, statistics, and restart state use a constrained YAML scalar/container
-grammar after their LLROPS type header. This keeps nested diagnostics readable
+grammar after their LunarOps type header. This keeps nested diagnostics readable
 while retaining a declared outer artifact type. Non-finite scalars and opaque
 Python objects are rejected.
 
@@ -192,9 +197,9 @@ outputs produced earlier in a scenario, so a complete not-yet-run graph can be
 validated.
 
 ```bash
-python -m llrops list-programs
-python -m llrops describe-program LlrNormalEquations
-python -m llrops validate config.yml
+python -m lunarops list-programs
+python -m lunarops describe-program LlrNormalEquations
+python -m lunarops validate config.yml
 ```
 
 ## Program graph
@@ -281,8 +286,8 @@ published independently.
 
 ## Explicit exclusions
 
-LLROPS does not reproduce the full GROOPS format catalog. Satellite orbit,
+LunarOps does not reproduce the full GROOPS format catalog. Satellite orbit,
 gravity-field, GNSS receiver/transmitter, and generic platform formats should
-be added only when an LLROPS scientific program owns their semantics. External
+be added only when an LunarOps scientific program owns their semantics. External
 presentation export belongs in a separately named adapter, not in a canonical
 producer.

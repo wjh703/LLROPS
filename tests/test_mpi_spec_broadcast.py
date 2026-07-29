@@ -1,12 +1,12 @@
-from llrops.classes.observation_factory import resolve_observation_assembly
-from llrops.config.context import RunContext
-from llrops.fileio.catalogs import (
+from lunarops.classes.observation_factory import resolve_observation_assembly
+from lunarops.config.context import RunContext
+from lunarops.fileio.catalogs import (
     ReflectorRecord,
     StationRecord,
     write_reflector_catalog,
     write_station_catalog,
 )
-from llrops.parallel.mpi import (
+from lunarops.parallel.mpi import (
     TAG_BROADCAST_SPEC,
     TAG_INITIALIZE_SPEC,
     TAG_READY,
@@ -14,7 +14,7 @@ from llrops.parallel.mpi import (
     MpiRuntime,
     _processor_for_task,
 )
-from llrops.parallel.observation_spec import make_observation_spec
+from lunarops.parallel.observation_spec import make_observation_spec
 
 
 class _FakeStatus:
@@ -141,7 +141,7 @@ def test_single_rank_spec_uses_serial_cache(monkeypatch):
     processor = object()
 
     monkeypatch.setattr(
-        "llrops.parallel.mpi._processor_for_task",
+        "lunarops.parallel.mpi._processor_for_task",
         lambda cache, prepared_spec: cache.setdefault(
             ("processor", prepared_spec["specId"]), processor
         ),
@@ -212,7 +212,7 @@ def test_worker_processors_share_only_the_immutable_class_cache(monkeypatch):
         class_caches.append(shared_class_cache)
         return object(), object()
 
-    monkeypatch.setattr("llrops.parallel.mpi.build_worker_processor", build)
+    monkeypatch.setattr("lunarops.parallel.mpi.build_worker_processor", build)
     first = _processor_for_task(cache, {"specId": "first"})
     second = _processor_for_task(cache, {"specId": "second"})
     assert first is not second
@@ -268,7 +268,7 @@ def test_worker_constructs_processor_before_ready(monkeypatch):
         cache[("processor", prepared_spec["specId"])] = processor
         return processor
 
-    monkeypatch.setattr("llrops.parallel.mpi._processor_for_task", build)
+    monkeypatch.setattr("lunarops.parallel.mpi._processor_for_task", build)
 
     runtime.worker_loop()
 
@@ -299,13 +299,13 @@ class _FakeProgressComm:
         return self._size
 
     def send(self, value, *, dest, tag):
-        from llrops.parallel.mpi import TAG_TASK
+        from lunarops.parallel.mpi import TAG_TASK
 
         assert tag == TAG_TASK
         self.sent.append((dest, tag, value))
 
     def recv(self, *, source, tag, status):
-        from llrops.parallel.mpi import TAG_RESULT
+        from lunarops.parallel.mpi import TAG_RESULT
 
         assert source == _FakeMPI.ANY_SOURCE
         assert tag == TAG_RESULT
@@ -316,7 +316,7 @@ class _FakeProgressComm:
 
 
 def test_progress_rate_clock_starts_after_initial_task_dispatch(monkeypatch, capsys):
-    import llrops.parallel.mpi as mpi_module
+    import lunarops.parallel.mpi as mpi_module
 
     comm = _FakeProgressComm()
     runtime = _runtime(comm)

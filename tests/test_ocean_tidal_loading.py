@@ -3,14 +3,14 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from llrops.base.epoch import Epoch, TimeScale
-from llrops.classes.displacement import (
+from lunarops.base.epoch import Epoch, TimeScale
+from lunarops.classes.displacement import (
     Iers2010OceanTidalLoading,
     OceanTidalLoadingCatalog,
     StationDisplacementInput,
 )
-from llrops.classes.observation_factory import ensure_registered
-from llrops.config.context import RunContext
+from lunarops.classes.observation_factory import ensure_registered
+from lunarops.config.context import RunContext
 
 
 _AMPLITUDES = np.array(
@@ -191,7 +191,7 @@ def test_ocean_tidal_loading_passes_blq_unchanged_and_converts_usw_to_itrf(tmp_p
         received["phases"] = np.array(phases, copy=True)
         return np.array([0.003]), np.array([0.002]), np.array([-0.001])
 
-    import llrops.classes.displacement.ocean_tidal_loading as ocean_tidal_loading
+    import lunarops.classes.displacement.ocean_tidal_loading as ocean_tidal_loading
 
     monkeypatch.setattr(ocean_tidal_loading._iers2010, "hardisp", hardisp)
     result = model.evaluate(_station_input())
@@ -321,7 +321,7 @@ def test_ocean_tidal_loading_rejects_dates_outside_etutc_validity_range(
     def fail_if_called(*args, **kwargs):
         raise AssertionError("HARDISP must not receive an out-of-range date")
 
-    import llrops.classes.displacement.ocean_tidal_loading as ocean_tidal_loading
+    import lunarops.classes.displacement.ocean_tidal_loading as ocean_tidal_loading
 
     monkeypatch.setattr(ocean_tidal_loading._iers2010, "hardisp", fail_if_called)
     with pytest.raises(ValueError, match="supports UTC epochs only"):

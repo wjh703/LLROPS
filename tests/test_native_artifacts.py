@@ -1,25 +1,25 @@
 import numpy as np
 import pytest
 
-import llrops.cli as cli
-from llrops.base.epoch import Epoch, TimeScale
-from llrops.base.parameter_name import ParameterName
-from llrops.config.context import RunContext
-from llrops.fileio.adjustment import read_adjustment_state, write_adjustment_state
-from llrops.fileio.archive import decode_token, encode_token
-from llrops.fileio.catalogs import (
+import lunarops.cli as cli
+from lunarops.base.epoch import Epoch, TimeScale
+from lunarops.base.parameter_name import ParameterName
+from lunarops.config.context import RunContext
+from lunarops.fileio.adjustment import read_adjustment_state, write_adjustment_state
+from lunarops.fileio.archive import decode_token, encode_token
+from lunarops.fileio.catalogs import (
     ReflectorRecord,
     read_reflector_catalog,
     write_reflector_catalog,
 )
-from llrops.fileio.matrix import matrix_kind, read_matrix, write_matrix
-from llrops.fileio.normal_equations import NormalEquations
-from llrops.fileio.observation_equation_file import (
+from lunarops.fileio.matrix import matrix_kind, read_matrix, write_matrix
+from lunarops.fileio.normal_equations import NormalEquations
+from lunarops.fileio.observation_equation_file import (
     FrozenObservationEquations,
     read_observation_equations,
     write_observation_equations,
 )
-from llrops.fileio.parameters import (
+from lunarops.fileio.parameters import (
     CovarianceMatrix,
     ParameterVector,
     read_covariance,
@@ -27,8 +27,8 @@ from llrops.fileio.parameters import (
     write_covariance,
     write_parameter_vector,
 )
-from llrops.fileio.structured_text import read_structured_text, write_structured_text
-from llrops.programs.registry import run_program
+from lunarops.fileio.structured_text import read_structured_text, write_structured_text
+from lunarops.programs.registry import run_program
 
 
 @pytest.mark.parametrize("suffix", [".txt", ".txt.gz", ".dat", ".dat.gz"])
@@ -80,12 +80,17 @@ def test_structured_text_rejects_opaque_python_objects(tmp_path):
 def test_parameter_vector_and_covariance_round_trip_with_names_and_units(tmp_path):
     names = (ParameterName("A", "position.x"), ParameterName("A", "position.y"))
     vector = ParameterVector(
-        names, np.array([1.25, -2.5]), ("m", "m"), np.array([0.1, 0.2]), "estimate"
+        parameter_names=names,
+        values=np.array([1.25, -2.5]),
+        units=("m", "m"),
+        uncertainties=np.array([0.3, 0.6]),
+        kind="estimate",
+        uncertainty_sigma_multiplier=3.0,
     )
     covariance = CovarianceMatrix(
         names, np.array([[1.0, 0.25], [0.25, 4.0]]), ("m", "m"), "posteriorCovariance"
     )
-    vector_path = tmp_path / "solution.txt.gz"
+    vector_path = tmp_path / "solution.txt"
     covariance_path = tmp_path / "covariance"
 
     write_parameter_vector(vector, vector_path)
@@ -96,7 +101,12 @@ def test_parameter_vector_and_covariance_round_trip_with_names_and_units(tmp_pat
     assert recovered_vector.parameter_names == names
     assert recovered_vector.kind == "estimate"
     assert np.allclose(recovered_vector.values, vector.values)
-    assert np.allclose(recovered_vector.sigmas, vector.sigmas)
+    assert np.allclose(recovered_vector.uncertainties, vector.uncertainties)
+    assert recovered_vector.uncertainty_sigma_multiplier == pytest.approx(3.0)
+    vector_text = vector_path.read_text()
+    assert "hasUncertainty 1" in vector_text
+    assert "uncertaintySigmaMultiplier 3" in vector_text
+    assert "hasSigma" not in vector_text
     assert recovered_covariance.parameter_names == names
     assert recovered_covariance.kind == "posteriorCovariance"
     assert np.allclose(recovered_covariance.matrix, covariance.matrix)
@@ -224,14 +234,19 @@ def test_normals_solve_program_publishes_all_typed_products(tmp_path):
     )
 
     assert solution.kind == "correction"
-    assert read_parameter_vector(tmp_path / "solution.txt.gz").parameter_names == tuple(
-        names
+    persisted_solution = read_parameter_vector(tmp_path / "solution.txt.gz")
+    persisted_covariance = read_covariance(tmp_path / "covariance")
+    assert persisted_solution.parameter_names == tuple(names)
+    assert persisted_solution.uncertainty_sigma_multiplier == pytest.approx(3.0)
+    assert np.allclose(
+        persisted_solution.uncertainties,
+        3.0 * np.sqrt(np.diag(persisted_covariance.matrix)),
     )
-    assert read_covariance(tmp_path / "covariance").parameter_names == tuple(names)
+    assert persisted_covariance.parameter_names == tuple(names)
     assert (
         (tmp_path / "solveReport.txt")
         .read_text()
-        .startswith("llrops normalEquationSolutionReport")
+        .startswith("lunarops normalEquationSolutionReport")
     )
 
 

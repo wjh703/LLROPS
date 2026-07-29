@@ -37,4 +37,4 @@ catalogs. File headers fix ITRF and Moon PA frames, respectively.
 
 Run configuration remains YAML (`.yml` or `.yaml`). It is distinct from native
 scientific artifacts, even where structured report payloads use YAML scalar
-syntax after an LLROPS type header.
+syntax after an LunarOps type header.

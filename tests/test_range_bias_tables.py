@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from llrops.base.epoch import Epoch, TimeScale
-from llrops.classes.range_bias.table import (
+from lunarops.base.epoch import Epoch, TimeScale
+from lunarops.classes.range_bias.table import (
     BUILTIN_RANGE_BIAS_TABLES,
     INPOP21_RANGE_BIAS_TABLE,
     RangeBiasTable,

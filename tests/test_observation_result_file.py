@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from llrops.fileio.observation_results import (
+from lunarops.fileio.observation_results import (
     read_observation_results,
     write_observation_results,
 )

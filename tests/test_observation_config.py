@@ -1,6 +1,6 @@
 import pytest
 
-from llrops.classes.observation_factory import validate_observation_config
+from lunarops.classes.observation_factory import validate_observation_config
 
 
 def test_observation_config_needs_no_uncertainty_selector():
