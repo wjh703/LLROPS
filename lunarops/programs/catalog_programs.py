@@ -70,31 +70,33 @@ def llr_apply_solution(config: dict, context: RunContext):
     for name, unit, value in zip(
         solution.parameter_names, solution.units, solution.values
     ):
-        if name.type.startswith("position."):
+        if name.parameter_type.startswith("position."):
             if unit != "m":
                 raise ValueError(
                     f"Position parameter {name} must use metres, found {unit!r}."
                 )
-            if name.object not in catalog:
+            if name.object_name not in catalog:
                 raise KeyError(
-                    f"Solution references unknown reflector {name.object!r}."
+                    f"Solution references unknown reflector {name.object_name!r}."
                 )
-            axis = {"position.x": 0, "position.y": 1, "position.z": 2}.get(name.type)
+            axis = {"position.x": 0, "position.y": 1, "position.z": 2}.get(
+                name.parameter_type
+            )
             if axis is None:
                 raise ValueError(f"Unsupported reflector-position parameter {name}.")
             if solution.kind == "estimate":
                 position_values.setdefault(
-                    name.object,
+                    name.object_name,
                     np.asarray(
-                        catalog[name.object].moon_fixed_xyz_m, dtype=float
+                        catalog[name.object_name].moon_fixed_xyz_m, dtype=float
                     ).copy(),
                 )[axis] = float(value)
             elif solution.kind == "correction":
-                position_values.setdefault(name.object, np.zeros(3))[axis] += float(
-                    value
+                position_values.setdefault(name.object_name, np.zeros(3))[axis] += (
+                    float(value)
                 )
-            position_axes.setdefault(name.object, set()).add(axis)
-        elif name.type.casefold() == "rangebias":
+            position_axes.setdefault(name.object_name, set()).add(axis)
+        elif name.parameter_type.casefold() == "rangebias":
             if unit != "m":
                 raise ValueError(
                     f"Range-bias parameter {name} must use metres, found {unit!r}."
@@ -102,7 +104,8 @@ def llr_apply_solution(config: dict, context: RunContext):
             range_biases[str(name)] = range_biases.get(str(name), 0.0) + float(value)
         else:
             raise ValueError(
-                f"LlrApplySolution does not support parameter type {name.type!r}."
+                "LlrApplySolution does not support parameter type "
+                f"{name.parameter_type!r}."
             )
 
     for key, values in position_values.items():

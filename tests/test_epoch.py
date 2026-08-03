@@ -28,7 +28,7 @@ def test_epoch_keeps_two_part_jd_scale_and_supports_precise_shifts():
     epoch = Epoch(2451545.0, 0.25, TimeScale.TDB)
     shifted = epoch.shifted(2.5)
 
-    assert epoch.to_tuple() == (2451545.0, 0.25)
+    assert (epoch.jd1, epoch.jd2) == (2451545.0, 0.25)
     assert shifted.scale is TimeScale.TDB
     assert epoch.seconds_until(shifted) == pytest.approx(2.5, abs=1.0e-10)
     assert Epoch(2458849.5, 0.0, TimeScale.UTC).date_iso() == "2020-01-01"
@@ -60,15 +60,8 @@ def test_epoch_rejects_implicit_scale_mixing():
     with pytest.raises(ValueError, match="comparisons require matching time scales"):
         _ = utc == tdb
 
-
-
-
-def test_epoch_mapping_round_trip_preserves_parts_and_scale():
-    epoch = Epoch.from_jd(2451545.0, 0.125, scale=TimeScale.TDB)
-    assert Epoch.from_dict(epoch.to_dict()) == epoch
-
 def test_tdb_civil_construction_and_direct_foreign_time_export_are_forbidden():
-    tdb = Epoch.from_jd(2451545.0, scale=TimeScale.TDB)
+    tdb = Epoch(2451545.0, 0.0, TimeScale.TDB)
 
     with pytest.raises(ValueError, match="no direct civil/ISOT constructor"):
         Epoch.from_isot("2000-01-01T12:00:00", scale=TimeScale.TDB)

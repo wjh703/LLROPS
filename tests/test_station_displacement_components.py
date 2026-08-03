@@ -44,7 +44,7 @@ def test_displacement_inputs_are_frozen_slotted_and_read_only():
     station = _station_input()
     reflector = ReflectorDisplacementInput(
         reflector_lcrs_m=[1_737_400.0, 0.0, 0.0],
-        epoch_tdb=Epoch.from_jd(2451544.5, scale=TimeScale.TDB),
+        epoch_tdb=Epoch(2451544.5, 0.0, TimeScale.TDB),
     )
 
     assert not hasattr(station, "__dict__")
@@ -66,7 +66,7 @@ def test_zero_displacement_models_return_three_component_vectors():
     )
     reflector_data = ReflectorDisplacementInput(
         reflector_lcrs_m=[1.0, 0.0, 0.0],
-        epoch_tdb=Epoch.from_jd(2451544.5, scale=TimeScale.TDB),
+        epoch_tdb=Epoch(2451544.5, 0.0, TimeScale.TDB),
     )
     assert np.allclose(
         ZeroReflectorDisplacement().displacement_lcrs_m(reflector_data),
@@ -276,7 +276,7 @@ def test_ocean_pole_tide_matches_official_test_vectors(
     result = model.evaluate(
         StationDisplacementInput(
             station_itrf_m=station_itrf_m,
-            epoch_utc=Epoch.from_mjd(mjd, scale=TimeScale.UTC),
+            epoch_utc=Epoch(2_400_000.5, mjd, TimeScale.UTC),
         )
     )
 
@@ -297,7 +297,7 @@ def test_lunar_solid_tide_requires_no_runtime_backend_injection():
     model = LunarSolidTide(ephemeris=_FakeEphemeris())
     data = ReflectorDisplacementInput(
         reflector_lcrs_m=[1_737_400.0, 0.0, 0.0],
-        epoch_tdb=Epoch.from_jd(2451544.5, scale=TimeScale.TDB),
+        epoch_tdb=Epoch(2451544.5, 0.0, TimeScale.TDB),
     )
     displacement = model.displacement_lcrs_m(data)
     assert displacement.shape == (3,)

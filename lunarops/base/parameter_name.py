@@ -21,23 +21,28 @@ from typing import List, Sequence
 
 @dataclass(frozen=True, order=True, slots=True)
 class ParameterName:
-    object: str = ""
-    type: str = ""
+    object_name: str = ""
+    parameter_type: str = ""
     temporal: str = ""
     interval: str = ""
 
     def __post_init__(self) -> None:
-        for field_name in ("object", "type", "temporal", "interval"):
+        fields = ("object_name", "parameter_type", "temporal", "interval")
+        for field_name in fields:
             value = getattr(self, field_name)
             text = str(value or "").strip()
             if ":" in text:
-                raise ValueError(f"ParameterName.{field_name} must not contain ':' characters.")
+                raise ValueError(
+                    f"ParameterName.{field_name} must not contain ':' characters."
+                )
             object.__setattr__(self, field_name, text)
-        if not self.type:
-            raise ValueError("ParameterName.type must not be empty.")
+        if not self.parameter_type:
+            raise ValueError("ParameterName.parameter_type must not be empty.")
 
     def __str__(self) -> str:
-        return f"{self.object}:{self.type}:{self.temporal}:{self.interval}"
+        return (
+            f"{self.object_name}:{self.parameter_type}:{self.temporal}:{self.interval}"
+        )
 
     @classmethod
     def parse(cls, text: str) -> "ParameterName":

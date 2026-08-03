@@ -93,7 +93,7 @@ def test_epoch_and_body_state_are_frozen_and_validated():
     epoch = _tdb(0.25)
     state = BodyState([1.0, 2.0, 3.0], [4.0, 5.0, 6.0])
 
-    assert epoch.to_tuple() == (2451545.0, 0.25)
+    assert (epoch.jd1, epoch.jd2) == (2451545.0, 0.25)
     assert epoch.scale is TimeScale.TDB
     assert not state.position_m.flags.writeable
     assert not state.velocity_mps.flags.writeable

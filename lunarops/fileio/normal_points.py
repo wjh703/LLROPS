@@ -64,14 +64,6 @@ class NptRecord:
         return float(self.round_trip_time_s)
 
     @property
-    def observed_range_m(self) -> float:
-        return 0.5 * C * self.observed_round_trip_time_s
-
-    @property
-    def uncertainty_two_way_ps(self) -> float:
-        return float(self.uncertainty_two_way_s) * 1.0e12
-
-    @property
     def range_uncertainty_one_way_m(self) -> float:
         return 0.5 * C * float(self.uncertainty_two_way_s)
 

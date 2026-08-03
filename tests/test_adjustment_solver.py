@@ -20,8 +20,10 @@ from lunarops.estimation.adjustment_solver import (
     LlrAdjustmentSolver,
 )
 from lunarops.estimation.robust_weights import (
+    DirectRejectionWeightModel,
     Igg3WeightModel,
     active_set_change_fraction,
+    direct_rejection_factors,
     igg3_factors,
     maximum_robust_factor_change,
     robust_factor_change_quantile,
@@ -214,6 +216,15 @@ def test_igg3_boundaries():
     assert factors[4] == 0.0
 
 
+def test_direct_rejection_boundaries():
+    factors = direct_rejection_factors(
+        np.array([-3.0001, -3.0, 0.0, 3.0, 3.0001]),
+        k0=3.0,
+    )
+
+    assert factors == pytest.approx([0.0, 1.0, 1.0, 1.0, 0.0])
+
+
 @pytest.mark.parametrize(
     ("old_factor", "new_factor", "expected"),
     [
@@ -301,6 +312,19 @@ def test_igg3_targets_are_applied_without_damping():
     assert update.applied_factors["full"] == 1.0
     assert 0.0 < update.applied_factors["downweighted"] < 1.0
     assert update.applied_factors["rejected"] == 0.0
+
+
+def test_direct_rejection_targets_are_binary_and_applied_without_damping():
+    model = DirectRejectionWeightModel(k0=3.0)
+    update = model.update(
+        {"full": 3.0, "rejected": -3.001},
+        {"full": 0.2, "rejected": 1.0},
+        {"full": 1.0, "rejected": 1.0},
+        ["full", "rejected"],
+    )
+
+    assert update.applied_factors == update.target_factors
+    assert update.applied_factors == {"full": 1.0, "rejected": 0.0}
 
 
 def test_factor_change_ignores_insignificant_boundary_crossings():
@@ -546,6 +570,55 @@ def test_llr_adjustment_runs_joint_helmert_vce_cycle():
     assert "active_set_change_fraction" in payload["iterations"][0]
     assert "target_rejected_observation_count" in payload["iterations"][0]
     assert not any("damping" in key for key in payload["settings"])
+
+
+def test_direct_rejection_uses_existing_vce_path_with_binary_factors():
+    equations = [
+        _equation(index, -0.2 if index % 2 else 0.2, "STA_A")
+        for index in range(20)
+    ]
+    equations.append(_equation("outlier", 20.0, "STA_A"))
+    components = (
+        VarianceComponentDefinition.from_config(
+            {
+                "id": "A",
+                "station": "STA_A",
+                "start": "2010-01-01",
+                "endExclusive": None,
+            }
+        ),
+    )
+
+    result = LlrAdjustmentSolver(
+        equation_source=lambda iteration: equations,
+        parametrization=ParametrizationList([OffsetParametrization()]),
+        options=LlrAdjustmentOptions(
+            components=components,
+            prefit_gross_threshold_m=None,
+            maximum_linearizations=1,
+            maximum_stochastic_iterations=2,
+            required_consecutive_converged_linearizations=99,
+            robust_model="directRejection",
+            k0=3.0,
+            minimum_mad_count=2,
+            minimum_effective_redundancy=1.0,
+            scale_log_tolerance=10.0,
+        ),
+    ).run()
+
+    assert result.settings["robust_model"] == "directRejection"
+    assert set(result.robust_factors.values()) <= {0.0, 1.0}
+    assert result.robust_factors["outlier"] == 0.0
+    assert all(result.robust_factors[index] == 1.0 for index in range(20))
+    iteration = result.iterations[-1]
+    assert iteration.rejected_observation_count == 1
+    assert iteration.robust_factor_summary["downweighted_count"] == 0
+    assert iteration.variance_components["A"]["active_count"] == 20.0
+    outlier = next(
+        item for item in result.observations if item["observation_id"] == "outlier"
+    )
+    assert outlier["applied_robust_factor"] == 0.0
+    assert outlier["applied_robust_status"] == "REJECTED"
 
 
 def test_adjustment_reports_prefit_uncertainty_floor():
@@ -951,8 +1024,9 @@ def test_final_report_matches_the_applied_damped_state():
     first = result.observations[0]
     assert first["current_state_residual_m"] == pytest.approx(0.0)
     assert first["linearized_postfit_residual_m"] == pytest.approx(-1.0)
-    assert first["applied_igg3_factor"] == pytest.approx(1.0)
-    assert first["final_state_proposed_igg3_factor"] == pytest.approx(1.0)
-    assert not first["proposed_igg3_factor_applied"]
+    assert first["applied_robust_factor"] == pytest.approx(1.0)
+    assert first["final_state_proposed_robust_factor"] == pytest.approx(1.0)
+    assert not first["proposed_robust_factor_applied"]
+    assert "applied_igg3_factor" not in first
     assert not result.variance_components[0]["proposed_scale_applied"]
     assert result.equation_evaluations[-1]["purpose"] == "final-state-report"

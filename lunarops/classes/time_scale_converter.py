@@ -132,26 +132,4 @@ class TimeScaleConverter:
             )
         raise AssertionError("Unhandled time-scale conversion.")
 
-    def isot(
-        self,
-        epoch: Epoch,
-        *,
-        scale: TimeScale | str = TimeScale.UTC,
-        precision: int = 9,
-        station_gcrs_m: Sequence[float] | None = None,
-    ) -> str:
-        target = TimeScale.parse(scale)
-        if target is TimeScale.TDB:
-            raise ValueError(
-                "ISOT output is limited to UTC or TT. TDB epochs are serialized "
-                "as two-part Julian dates."
-            )
-        converted = self.convert(
-            epoch,
-            target,
-            station_gcrs_m=station_gcrs_m,
-        )
-        return converted.isot(scale=target, precision=precision)
-
-
 __all__ = ["TimeScaleConverter"]
