@@ -11,7 +11,7 @@ import numpy as np
 
 from lunarops import _iers2010
 from lunarops.base.epoch import Epoch, TimeScale
-from lunarops.base.station_identity import canonical_station_id, station_token
+from lunarops.base.station_identity import canonical_station_id, normalize_station_key
 
 from .base import StationDisplacementInput
 from .terrestrial_geometry import enu2itrf, itrf2geodetic
@@ -262,7 +262,7 @@ class OceanTidalLoadingCatalog:
 
                 if current_name is not None:
                     finish_current()
-                if not station_token(text):
+                if not normalize_station_key(text):
                     raise ValueError(f"{path}:{line_number}: invalid BLQ station name {text!r}.")
                 current_name = text
                 current_line_number = line_number
