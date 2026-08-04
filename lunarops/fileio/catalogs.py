@@ -92,13 +92,13 @@ class StationRecord:
 
     @property
     def height_m(self) -> float:
-        return self.geodetic.height_m
+        return self.geodetic.ellipsoidal_height_m
 
     def latitude_rad_at(self, obstime_utc: Epoch) -> float:
         return self.geodetic_at(obstime_utc).latitude_rad
 
     def height_m_at(self, obstime_utc: Epoch) -> float:
-        return self.geodetic_at(obstime_utc).height_m
+        return self.geodetic_at(obstime_utc).ellipsoidal_height_m
 
 
 @dataclass(eq=False, repr=False)

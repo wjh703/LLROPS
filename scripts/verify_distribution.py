@@ -10,7 +10,7 @@ from pathlib import Path
 
 SOURCE_NAMES = {
     path.name
-    for path in Path(__file__).parents[1].joinpath("external", "iers2010", "src").glob("*.F")
+    for path in Path(__file__).parents[1].joinpath("lunarops", "_external", "iers2010", "src").glob("*.F")
 }
 
 
@@ -22,8 +22,8 @@ def _check_sdist(path: Path) -> None:
         raise SystemExit(f"{path}: expected one sdist root, found {sorted(roots)}")
     root = next(iter(roots))
     required = {
-        f"{root}/external/iers2010/LICENSE",
-        *(f"{root}/external/iers2010/src/{name}" for name in SOURCE_NAMES),
+        f"{root}/lunarops/_external/iers2010/LICENSE",
+        *(f"{root}/lunarops/_external/iers2010/src/{name}" for name in SOURCE_NAMES),
     }
     missing = sorted(required - names)
     if missing:

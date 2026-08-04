@@ -4,14 +4,14 @@
 
 The project uses `meson-python`, NumPy f2py, and one private extension named
 `lunarops._iers2010`. Official IERS Conventions v1.3.0 Fortran sources are kept
-unchanged under `external/iers2010/src`; project-specific signatures and
-wrappers live under `external/iers2010/bindings`.
+unchanged under `lunarops/_external/iers2010/src`; project-specific signatures and
+wrappers live under `lunarops/_external/iers2010/bindings`.
 
 The pinned archive is `iersconventions_v1_3_0.tar.gz`, retrieved from the IERS
 Conventions Center. Its size is 63,646,900 bytes and its SHA-256 is
 `5f6215b74d22cf53c5f8c40804db091f5ea2cafdaa5e131b8a9ca87c0fb43ea1`.
 Do not mix live chapter files with this packaged source set. The vendored
-source inventory and call graph are documented in `external/iers2010/README.md`.
+source inventory and call graph are documented in `lunarops/_external/iers2010/README.md`.
 
 ```bash
 uv sync --extra build --extra test --extra mpi

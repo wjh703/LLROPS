@@ -10,13 +10,11 @@ the configured ephemeris.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from enum import StrEnum
 import math
 import re
 import warnings
-from typing import Mapping
-
 import erfa
 import numpy as np
 
@@ -53,11 +51,6 @@ def _normalized_jd_pair(jd1: float, jd2: float) -> tuple[float, float]:
         raise ValueError("Epoch Julian-date parts must be finite.")
     carry = math.floor(second + 0.5)
     return first + carry, second - carry
-
-
-def _split_jd(jd: float) -> tuple[float, float]:
-    base = math.floor(float(jd) + 0.5) - 0.5
-    return _normalized_jd_pair(base, float(jd) - base)
 
 
 def _erfa_call(name: str, *args):
@@ -165,30 +158,6 @@ class Epoch:
         object.__setattr__(self, "scale", TimeScale.parse(self.scale))
 
     @classmethod
-    def from_jd(
-        cls,
-        jd1: float,
-        jd2: float = 0.0,
-        *,
-        scale: TimeScale | str,
-    ) -> "Epoch":
-        first, second = _split_jd(float(jd1) + float(jd2))
-        return cls(first, second, TimeScale.parse(scale))
-
-    @classmethod
-    def from_mjd(cls, mjd: float, *, scale: TimeScale | str) -> "Epoch":
-        return cls(2_400_000.5, float(mjd), TimeScale.parse(scale))
-
-    @classmethod
-    def from_dict(cls, data: Mapping[str, object]) -> "Epoch":
-        if not isinstance(data, Mapping):
-            raise TypeError("Epoch.from_dict() requires a mapping.")
-        missing = {"jd1", "jd2", "scale"}.difference(data)
-        if missing:
-            raise ValueError(f"Epoch mapping is missing fields: {sorted(missing)!r}.")
-        return cls(float(data["jd1"]), float(data["jd2"]), TimeScale.parse(data["scale"]))
-
-    @classmethod
     def from_isot(
         cls,
         value: str,
@@ -199,7 +168,7 @@ class Epoch:
         if parsed_scale is TimeScale.TDB:
             raise ValueError(
                 "TDB has no direct civil/ISOT constructor in LunarOps. "
-                "Use Epoch.from_jd(..., scale='tdb') or convert from TT with "
+                "Use Epoch(jd1, jd2, scale='tdb') or convert from TT with "
                 "TimeScaleConverter."
             )
         year, month, day, hour, minute, second = _parse_isot(value)
@@ -215,24 +184,6 @@ class Epoch:
             second,
         )
         return cls(jd1, jd2, parsed_scale)
-
-    @classmethod
-    def from_datetime(
-        cls,
-        value: datetime,
-        *,
-        scale: TimeScale | str = TimeScale.UTC,
-    ) -> "Epoch":
-        if not isinstance(value, datetime):
-            raise TypeError("Epoch.from_datetime() requires a datetime object.")
-        parsed_scale = TimeScale.parse(scale)
-        if parsed_scale is TimeScale.TDB:
-            raise ValueError("TDB has no direct civil datetime constructor in LunarOps.")
-        dt = value
-        if dt.tzinfo is not None:
-            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
-        second = dt.second + dt.microsecond / 1.0e6
-        return cls.from_calendar(dt.year, dt.month, dt.day, dt.hour, dt.minute, second, scale=parsed_scale)
 
     @classmethod
     def from_calendar(
@@ -320,12 +271,6 @@ class Epoch:
             )
         return self
 
-    def to_tuple(self) -> tuple[float, float]:
-        return self.jd1, self.jd2
-
-    def to_dict(self) -> dict[str, float | str]:
-        return {"jd1": self.jd1, "jd2": self.jd2, "scale": self.scale.value}
-
     @property
     def jd(self) -> float:
         return self.jd1 + self.jd2
@@ -358,9 +303,6 @@ class Epoch:
                 * SECONDS_PER_DAY
             )
         return float(((other.jd1 - self.jd1) + (other.jd2 - self.jd2)) * SECONDS_PER_DAY)
-
-    def seconds_since(self, other: "Epoch") -> float:
-        return other.seconds_until(self)
 
     def date_iso(self) -> str:
         self.require_scale(TimeScale.UTC, name="epoch")

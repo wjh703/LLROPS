@@ -4,7 +4,11 @@ from __future__ import annotations
 import numpy as np
 
 from lunarops.classes.relativistic.constants import GM_EARTH, GM_MOON, GM_SUN
-from lunarops.classes.displacement.constants import LUNAR_H2, LUNAR_L2, R_MOON
+from lunarops.classes.displacement.constants import (
+    LUNAR_H2,
+    LUNAR_L2,
+    MOON_REFERENCE_RADIUS_M,
+)
 from lunarops.classes.ephemerides import Ephemeris, require_tdb_epoch
 from lunarops.classes.frames.relativistic import RelativisticFrameTransform
 
@@ -19,29 +23,51 @@ class LunarSolidTide:
         ephemeris: Ephemeris,
         h2: float = LUNAR_H2,
         l2: float = LUNAR_L2,
-        moon_radius_m: float = R_MOON,
+        moon_radius_m: float = MOON_REFERENCE_RADIUS_M,
         moon_gm_m3_s2: float = GM_MOON,
         earth_gm_m3_s2: float = GM_EARTH,
         sun_gm_m3_s2: float = GM_SUN,
     ) -> None:
         if not isinstance(ephemeris, Ephemeris):
             raise TypeError("ephemeris must implement Ephemeris.")
-        if moon_radius_m <= 0.0 or moon_gm_m3_s2 <= 0.0:
-            raise ValueError("moon_radius_m and moon_gm_m3_s2 must be positive.")
+        scalar_values = {
+            "h2": h2,
+            "l2": l2,
+            "moon_radius_m": moon_radius_m,
+            "moon_gm_m3_s2": moon_gm_m3_s2,
+            "earth_gm_m3_s2": earth_gm_m3_s2,
+            "sun_gm_m3_s2": sun_gm_m3_s2,
+        }
+        normalized: dict[str, float] = {}
+        for name, value in scalar_values.items():
+            try:
+                normalized[name] = float(value)
+            except (TypeError, ValueError) as exc:
+                raise TypeError(f"{name} must be a real scalar.") from exc
+            if not np.isfinite(normalized[name]):
+                raise ValueError(f"{name} must be finite.")
+        for name in (
+            "moon_radius_m",
+            "moon_gm_m3_s2",
+            "earth_gm_m3_s2",
+            "sun_gm_m3_s2",
+        ):
+            if normalized[name] <= 0.0:
+                raise ValueError(f"{name} must be positive.")
         self.ephemeris = ephemeris
-        self.h2 = h2
-        self.l2 = l2
-        self.moon_radius_m = moon_radius_m
-        self.moon_gm_m3_s2 = moon_gm_m3_s2
-        self.earth_gm_m3_s2 = earth_gm_m3_s2
-        self.sun_gm_m3_s2 = sun_gm_m3_s2
+        self.h2 = normalized["h2"]
+        self.l2 = normalized["l2"]
+        self.moon_radius_m = normalized["moon_radius_m"]
+        self.moon_gm_m3_s2 = normalized["moon_gm_m3_s2"]
+        self.earth_gm_m3_s2 = normalized["earth_gm_m3_s2"]
+        self.sun_gm_m3_s2 = normalized["sun_gm_m3_s2"]
 
     def displacement_lcrs_m(self, data: ReflectorDisplacementInput) -> np.ndarray:
         epoch = require_tdb_epoch(data.epoch_tdb, name="data.epoch_tdb")
-        reflector = data.reflector_lcrs_m
+        reflector = data.reference_position_lcrs_m
         reflector_norm = float(np.linalg.norm(reflector))
         if reflector_norm <= 0.0:
-            raise ValueError("reflector_lcrs_m must have a positive norm.")
+            raise ValueError("reference_position_lcrs_m must have a positive norm.")
         reflector_direction = reflector / reflector_norm
 
         transform = RelativisticFrameTransform(self.ephemeris)

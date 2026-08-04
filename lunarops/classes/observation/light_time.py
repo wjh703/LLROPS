@@ -230,7 +230,7 @@ class LightTimeSolver:
         return np.asarray(
             self.station_displacement.displacement_itrf_m(
                 StationDisplacementInput(
-                    station_itrf_m=station_itrf_m,
+                    reference_position_itrf_m=station_itrf_m,
                     epoch_utc=epoch_utc,
                     station_id=station_id,
                 )
@@ -247,7 +247,7 @@ class LightTimeSolver:
         displacement_lcrs = np.asarray(
             self.reflector_displacement.displacement_lcrs_m(
                 ReflectorDisplacementInput(
-                    reflector_lcrs_m=reflector_lcrs,
+                    reference_position_lcrs_m=reflector_lcrs,
                     epoch_tdb=epoch_tdb,
                 )
             ),
@@ -320,12 +320,11 @@ class LightTimeSolver:
         return float(np.arcsin(np.clip(sine_elevation, -1.0, 1.0)))
 
     def _troposphere_evaluation_elevation(self, elevation_rad: float) -> tuple[float, bool]:
-        min_deg = getattr(self.troposphere_delay, "min_elevation_deg", None)
-        if min_deg is None:
+        floor_rad = self.troposphere_delay.elevation_floor_rad
+        if floor_rad is None:
             return float(elevation_rad), False
-        min_rad = float(np.deg2rad(float(min_deg)))
-        if float(elevation_rad) < min_rad:
-            return min_rad, True
+        if float(elevation_rad) < floor_rad:
+            return floor_rad, True
         return float(elevation_rad), False
 
     @staticmethod

@@ -10,15 +10,16 @@ from typing import TextIO
 import numpy as np
 
 from lunarops import _iers2010
+from lunarops.base.array_validation import readonly_vector3
 from lunarops.base.epoch import Epoch, TimeScale
-from lunarops.base.station_identity import canonical_station_id, station_token
+from lunarops.base.station_identity import canonical_station_id, normalize_station_key
 
 from .base import StationDisplacementInput
 from .terrestrial_geometry import enu2itrf, itrf2geodetic
 
 
 BLQ_TIDE_NAMES = ("M2", "S2", "N2", "K2", "K1", "O1", "P1", "Q1", "MF", "MM", "SSA")
-BLQ_COMPONENT_NAMES = ("up", "west", "south")
+BLQ_NATIVE_COMPONENT_NAMES = ("up", "west", "south")
 HARDISP_MIN_UTC = (1700, 1, 1, 0, 0, 0)
 # ETUTC's final table entry remains valid while UTC-TAI stays at -37 s. IERS
 # Bulletin C 72 confirms no leap second through the end of December 2026;
@@ -31,23 +32,12 @@ _COLUMN_ORDER_LINE = re.compile(r"\bCOLUMN\s+ORDER\s*:\s*(.*)$", re.IGNORECASE)
 
 def _readonly_matrix(value, *, name: str) -> np.ndarray:
     array = np.asarray(value, dtype=float)
-    expected_shape = (len(BLQ_COMPONENT_NAMES), len(BLQ_TIDE_NAMES))
+    expected_shape = (len(BLQ_NATIVE_COMPONENT_NAMES), len(BLQ_TIDE_NAMES))
     if array.shape != expected_shape:
         raise ValueError(f"{name} must have shape {expected_shape}, got {array.shape}.")
     if not np.all(np.isfinite(array)):
         raise ValueError(f"{name} must contain only finite values.")
     result = np.array(array, dtype=float, copy=True)
-    result.setflags(write=False)
-    return result
-
-
-def _readonly_vector(value, *, name: str) -> np.ndarray:
-    array = np.asarray(value, dtype=float)
-    if array.size != 3:
-        raise ValueError(f"{name} must contain three values.")
-    result = np.array(array, dtype=float, copy=True).reshape(3)
-    if not np.all(np.isfinite(result)):
-        raise ValueError(f"{name} must contain only finite values.")
     result.setflags(write=False)
     return result
 
@@ -103,17 +93,17 @@ class OceanTidalLoadingResult:
         object.__setattr__(
             self,
             "displacement_itrf_m",
-            _readonly_vector(self.displacement_itrf_m, name="displacement_itrf_m"),
+            readonly_vector3(self.displacement_itrf_m, name="displacement_itrf_m"),
         )
         object.__setattr__(
             self,
             "displacement_enu_m",
-            _readonly_vector(self.displacement_enu_m, name="displacement_enu_m"),
+            readonly_vector3(self.displacement_enu_m, name="displacement_enu_m"),
         )
         object.__setattr__(
             self,
             "displacement_up_south_west_m",
-            _readonly_vector(
+            readonly_vector3(
                 self.displacement_up_south_west_m,
                 name="displacement_up_south_west_m",
             ),
@@ -184,7 +174,7 @@ class OceanTidalLoadingCatalog:
             nonlocal current_name, current_line_number, current_rows
             if current_name is None:
                 return
-            if len(current_rows) != 2 * len(BLQ_COMPONENT_NAMES):
+            if len(current_rows) != 2 * len(BLQ_NATIVE_COMPONENT_NAMES):
                 raise ValueError(
                     f"{path}:{current_line_number}: station {current_name!r} has "
                     f"{len(current_rows)} BLQ numeric rows; expected 6."
@@ -198,8 +188,8 @@ class OceanTidalLoadingCatalog:
             coefficients[station_id] = OceanTidalLoadingCoefficients(
                 station_id=station_id,
                 source_station_name=current_name,
-                amplitudes_m=values[: len(BLQ_COMPONENT_NAMES)],
-                phases_deg=values[len(BLQ_COMPONENT_NAMES) :],
+                amplitudes_m=values[: len(BLQ_NATIVE_COMPONENT_NAMES)],
+                phases_deg=values[len(BLQ_NATIVE_COMPONENT_NAMES) :],
             )
             current_name = None
             current_line_number = None
@@ -253,7 +243,7 @@ class OceanTidalLoadingCatalog:
                         raise ValueError(
                             f"{path}:{line_number}: BLQ numeric row has no preceding station name."
                         )
-                    if len(current_rows) >= 2 * len(BLQ_COMPONENT_NAMES):
+                    if len(current_rows) >= 2 * len(BLQ_NATIVE_COMPONENT_NAMES):
                         raise ValueError(
                             f"{path}:{line_number}: station {current_name!r} has more than six BLQ rows."
                         )
@@ -262,7 +252,7 @@ class OceanTidalLoadingCatalog:
 
                 if current_name is not None:
                     finish_current()
-                if not station_token(text):
+                if not normalize_station_key(text):
                     raise ValueError(f"{path}:{line_number}: invalid BLQ station name {text!r}.")
                 current_name = text
                 current_line_number = line_number
@@ -357,7 +347,7 @@ class Iers2010OceanTidalLoading:
             coefficients.amplitudes_m,
             coefficients.phases_deg,
         )
-        return _readonly_vector((up[0], south[0], west[0]), name="HARDISP result")
+        return readonly_vector3((up[0], south[0], west[0]), name="HARDISP result")
 
     def evaluate(self, data: StationDisplacementInput) -> OceanTidalLoadingResult:
         if data.station_id is None:
@@ -371,7 +361,7 @@ class Iers2010OceanTidalLoading:
             [-up_south_west_m[2], -up_south_west_m[1], up_south_west_m[0]],
             dtype=float,
         )
-        site = itrf2geodetic(data.station_itrf_m)
+        site = itrf2geodetic(data.reference_position_itrf_m)
         itrf_m = enu2itrf(
             enu_m,
             latitude_rad=site.latitude_rad,
@@ -389,7 +379,7 @@ class Iers2010OceanTidalLoading:
 
 
 __all__ = [
-    "BLQ_COMPONENT_NAMES",
+    "BLQ_NATIVE_COMPONENT_NAMES",
     "BLQ_TIDE_NAMES",
     "Iers2010OceanTidalLoading",
     "OceanTidalLoadingCatalog",

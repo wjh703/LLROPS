@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import numpy as np
 import pytest
 
@@ -9,18 +7,14 @@ from lunarops.classes.ephemerides import BodyState, Ephemeris
 
 
 class _ConstantOffsetEphemeris(Ephemeris):
-    @property
-    def source_file(self):
-        return Path("constant.eph")
-
-    def body_state_bcrs(self, body: str, epoch: Epoch) -> BodyState:
+    def body_state_bcrs(self, body_name: str, epoch_tdb: Epoch) -> BodyState:
         return BodyState(np.zeros(3), np.zeros(3))
 
-    def pa2lcrs_matrix(self, epoch: Epoch) -> np.ndarray:
+    def pa2lcrs_matrix(self, epoch_tdb: Epoch) -> np.ndarray:
         return np.eye(3)
 
-    def tdb_minus_tt_sec(self, epoch: Epoch) -> float:
-        epoch.require_scale(TimeScale.TDB)
+    def geocentric_tdb_minus_tt_s(self, epoch_tdb: Epoch) -> float:
+        epoch_tdb.require_scale(TimeScale.TDB)
         return 0.0015
 
 
@@ -28,14 +22,15 @@ def test_epoch_keeps_two_part_jd_scale_and_supports_precise_shifts():
     epoch = Epoch(2451545.0, 0.25, TimeScale.TDB)
     shifted = epoch.shifted(2.5)
 
-    assert epoch.to_tuple() == (2451545.0, 0.25)
+    assert (epoch.jd1, epoch.jd2) == (2451545.0, 0.25)
     assert shifted.scale is TimeScale.TDB
     assert epoch.seconds_until(shifted) == pytest.approx(2.5, abs=1.0e-10)
     assert Epoch(2458849.5, 0.0, TimeScale.UTC).date_iso() == "2020-01-01"
 
 
 def test_tt_tdb_conversion_uses_ephemeris_table_and_round_trips():
-    converter = TimeScaleConverter(_ConstantOffsetEphemeris())
+    ephemeris = _ConstantOffsetEphemeris()
+    converter = TimeScaleConverter(ephemeris)
     tt = Epoch(2451545.0, 0.0, TimeScale.TT)
 
     tdb = converter.tt2tdb(tt)
@@ -45,6 +40,7 @@ def test_tt_tdb_conversion_uses_ephemeris_table_and_round_trips():
         0.0015, abs=1.0e-10
     )
     assert tt.seconds_until(recovered) == pytest.approx(0.0, abs=1.0e-10)
+    assert ephemeris.source_file is None
 
 
 def test_epoch_rejects_implicit_scale_mixing():
@@ -60,15 +56,8 @@ def test_epoch_rejects_implicit_scale_mixing():
     with pytest.raises(ValueError, match="comparisons require matching time scales"):
         _ = utc == tdb
 
-
-
-
-def test_epoch_mapping_round_trip_preserves_parts_and_scale():
-    epoch = Epoch.from_jd(2451545.0, 0.125, scale=TimeScale.TDB)
-    assert Epoch.from_dict(epoch.to_dict()) == epoch
-
 def test_tdb_civil_construction_and_direct_foreign_time_export_are_forbidden():
-    tdb = Epoch.from_jd(2451545.0, scale=TimeScale.TDB)
+    tdb = Epoch(2451545.0, 0.0, TimeScale.TDB)
 
     with pytest.raises(ValueError, match="no direct civil/ISOT constructor"):
         Epoch.from_isot("2000-01-01T12:00:00", scale=TimeScale.TDB)

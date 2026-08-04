@@ -259,7 +259,7 @@ programs:
       warmStartStochasticModelAcrossStages: true
 
       # Nonlinear outer-loop limit. Each outer loop computes O-C/design once,
-      # performs a bounded IGGIII/VCE block, then always applies the parameter
+      # performs a bounded robust-weight/VCE block, then always applies the parameter
       # correction before the next linearization.
       maximumLinearizations: 10
       # Default tolerance for parameter blocks without an explicit override.
@@ -295,7 +295,7 @@ programs:
           maximumLinearizations: 10
           updateToleranceM: 2.0e-3
 
-      # Applied once before Bias initialization, MAD, VCE, or IGGIII.
+      # Applied once before Bias initialization, MAD, VCE, or robust weighting.
       # These observations never re-enter the solution.
       prefitGrossThresholdM: 2
       prefitGrossThresholdByStationM:
@@ -315,12 +315,16 @@ programs:
       minimumInitialScale: 1.0
 
     robustEstimation:
-      k0: 1.5
-      k1: 6.0
+      # igg3 uses k0 and k1. directRejection uses k0 only.
+      # model: igg3
+      # k0: 1.5
+      # k1: 6.0
+      model: directRejection
+      k0: 3.0
       # Studentized residual correction for observations with high adjustment leverage.
       minimumOneMinusLeverage: 1.0e-8
       activeFactorThreshold: 1.0e-12
-      # Zero IGGIII targets are rejected immediately. Changes wholly below this
+      # Zero robust-model targets are rejected immediately. Changes wholly below this
       # floor are ignored for convergence; near-full factors snap to 1.
       convergenceFactorFloor: 1.0e-3
       changeQuantile: 0.999
@@ -339,7 +343,7 @@ programs:
       targetFactorChangeTolerance: 2.0e-2
       targetActiveSetChangeTolerance: 1.0e-3
 
-      # IGGIII factors and bounded Helmert variance targets are applied directly.
+      # Robust factors and bounded Helmert variance targets are applied directly.
       # Protect a single VCE update from an extreme raw component variance.
       minimumVarianceRatioPerIteration: 0.25
       maximumVarianceRatioPerIteration: 4.0
@@ -370,8 +374,8 @@ programs:
     # - fixed-linearization stochastic iterations;
     # - parameter precision/correlation diagnostics;
     # - global and component residual/factor distributions.
-    outputFileAdjustmentReport: "{outputDir}/reflector_bias_adjustment_report.txt"
-    outputFileAdjustmentState: "{outputDir}/reflector_bias_adjustment_state.txt"
-    outputFileSolution: "{outputDir}/reflector_bias_adjustment_solution.txt"
-    outputFileCovariance: "{outputDir}/reflector_bias_adjustment_covariance"
-    outputFileNormalEquations: "{outputDir}/reflector_bias_adjustment_normals"
+    outputFileAdjustmentReport: "{outputDir}/reflector_bias_adjustment_report_directRejection.txt"
+    outputFileAdjustmentState: "{outputDir}/reflector_bias_adjustment_state_directRejection.txt"
+    outputFileSolution: "{outputDir}/reflector_bias_adjustment_solution_directRejection.txt"
+    outputFileCovariance: "{outputDir}/reflector_bias_adjustment_covariance_directRejection"
+    outputFileNormalEquations: "{outputDir}/reflector_bias_adjustment_normals_directRejection"

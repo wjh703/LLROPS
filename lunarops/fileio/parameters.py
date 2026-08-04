@@ -32,7 +32,7 @@ PARAMETER_UNCERTAINTY_SIGMA_MULTIPLIER = 3.0
 
 
 def parameter_unit(name: ParameterName) -> str:
-    kind = name.type.casefold()
+    kind = name.parameter_type.casefold()
     if kind.startswith("position.") or "rangebias" in kind or kind.endswith("offset"):
         return "m"
     if "time" in kind or kind.endswith("clock"):

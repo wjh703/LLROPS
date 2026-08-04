@@ -14,7 +14,7 @@ from lunarops.classes.frames.constants import WGS84_A_M, WGS84_E2, WGS84_F
 class GeodeticPosition:
     latitude_rad: float
     longitude_rad: float
-    height_m: float
+    ellipsoidal_height_m: float
 
     @property
     def latitude_deg(self) -> float:
@@ -35,6 +35,12 @@ def enu2itrf(
     east_m, north_m, up_m = vector3(enu_m, name="enu_m")
     lat = float(latitude_rad)
     lon = float(longitude_rad)
+    if not np.isfinite(lat):
+        raise ValueError("latitude_rad must be finite.")
+    if not np.isfinite(lon):
+        raise ValueError("longitude_rad must be finite.")
+    if not -0.5 * np.pi <= lat <= 0.5 * np.pi:
+        raise ValueError("latitude_rad must be in [-pi/2, pi/2].")
 
     sin_lon, cos_lon = np.sin(lon), np.cos(lon)
     sin_lat, cos_lat = np.sin(lat), np.cos(lat)
@@ -73,7 +79,11 @@ def itrf2geodetic(station_itrf_m: Sequence[float]) -> GeodeticPosition:
             lat = updated
             break
         lat = updated
-    return GeodeticPosition(latitude_rad=float(lat), longitude_rad=lon, height_m=float(height))
+    return GeodeticPosition(
+        latitude_rad=float(lat),
+        longitude_rad=lon,
+        ellipsoidal_height_m=float(height),
+    )
 
 
 def itrf2geocentric(station_itrf_m: Sequence[float]) -> tuple[float, float]:

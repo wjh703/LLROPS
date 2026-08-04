@@ -18,7 +18,7 @@ _ARCSEC_TO_RAD = np.deg2rad(1.0 / 3600.0)
 
 
 def test_ocean_tide_correction_matches_iers_ortho_eop_reference():
-    correction = ocean_tide_correction(Epoch.from_mjd(47_100.0, scale=TimeScale.UTC))
+    correction = ocean_tide_correction(Epoch(2_400_000.5, 47_100.0, TimeScale.UTC))
 
     np.testing.assert_allclose(
         correction.xp_arcsec * 1.0e6,
@@ -41,7 +41,7 @@ def test_ocean_tide_correction_matches_iers_ortho_eop_reference():
 
 
 def test_libration_corrections_match_iers_reference_values():
-    polar_motion = libration_correction(Epoch.from_mjd(54_335.0, scale=TimeScale.TT))
+    polar_motion = libration_correction(Epoch(2_400_000.5, 54_335.0, TimeScale.TT))
     np.testing.assert_allclose(
         [polar_motion.xp_arcsec * 1.0e6, polar_motion.yp_arcsec * 1.0e6],
         [24.83144238273364834, -14.09240692041837661],
@@ -50,13 +50,13 @@ def test_libration_corrections_match_iers_reference_values():
     )
 
     np.testing.assert_allclose(
-        libration_correction(Epoch.from_mjd(44_239.1, scale=TimeScale.TT)).ut1_sec * 1.0e6,
+        libration_correction(Epoch(2_400_000.5, 44_239.1, TimeScale.TT)).ut1_sec * 1.0e6,
         2.441143834386761746,
         rtol=0.0,
         atol=2.0e-8,
     )
     np.testing.assert_allclose(
-        libration_correction(Epoch.from_mjd(55_227.4, scale=TimeScale.TT)).ut1_sec * 1.0e6,
+        libration_correction(Epoch(2_400_000.5, 55_227.4, TimeScale.TT)).ut1_sec * 1.0e6,
         -2.655705844335680244,
         rtol=0.0,
         atol=2.0e-8,
@@ -64,7 +64,7 @@ def test_libration_corrections_match_iers_reference_values():
 
 
 def test_high_frequency_result_retains_named_components_and_lod():
-    epoch = Epoch.from_mjd(55_227.4, scale=TimeScale.UTC)
+    epoch = Epoch(2_400_000.5, 55_227.4, TimeScale.UTC)
     result = high_frequency_eop_correction(epoch)
     ocean = ocean_tide_correction(epoch)
     libration = libration_correction(utc2tt(epoch))
@@ -82,9 +82,9 @@ def test_high_frequency_requires_explicit_utc_epoch():
     with pytest.raises(TypeError, match="requires an Epoch"):
         ocean_tide_correction(47_100.0)
     with pytest.raises(ValueError, match="epoch_utc must use the UTC scale"):
-        ocean_tide_correction(Epoch.from_mjd(47_100.0, scale=TimeScale.TT))
+        ocean_tide_correction(Epoch(2_400_000.5, 47_100.0, TimeScale.TT))
     with pytest.raises(ValueError, match="requires a TT or TDB Epoch"):
-        libration_correction(Epoch.from_mjd(47_100.0, scale=TimeScale.UTC))
+        libration_correction(Epoch(2_400_000.5, 47_100.0, TimeScale.UTC))
 
 
 def test_c04_parser_retains_dx_dy_for_supported_layouts(tmp_path):

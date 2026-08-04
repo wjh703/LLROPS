@@ -19,15 +19,18 @@ def _epoch(value: Epoch, *, scale: TimeScale, name: str) -> Epoch:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class StationDisplacementInput:
-    station_itrf_m: np.ndarray
+    reference_position_itrf_m: np.ndarray
     epoch_utc: Epoch
     station_id: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
             self,
-            "station_itrf_m",
-            readonly_vector3(self.station_itrf_m, name="station_itrf_m"),
+            "reference_position_itrf_m",
+            readonly_vector3(
+                self.reference_position_itrf_m,
+                name="reference_position_itrf_m",
+            ),
         )
         object.__setattr__(
             self,
@@ -43,16 +46,16 @@ class StationDisplacementInput:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class ReflectorDisplacementInput:
-    reflector_lcrs_m: np.ndarray
+    reference_position_lcrs_m: np.ndarray
     epoch_tdb: Epoch
 
     def __post_init__(self) -> None:
         object.__setattr__(
             self,
-            "reflector_lcrs_m",
+            "reference_position_lcrs_m",
             readonly_vector3(
-                self.reflector_lcrs_m,
-                name="reflector_lcrs_m",
+                self.reference_position_lcrs_m,
+                name="reference_position_lcrs_m",
             ),
         )
         object.__setattr__(

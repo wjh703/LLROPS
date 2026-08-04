@@ -9,6 +9,11 @@ from typing import Mapping, Optional
 import numpy as np
 
 from lunarops.estimation.variance_components import VarianceComponentDefinition
+from lunarops.estimation.robust_weights import (
+    DIRECT_REJECTION_MODEL,
+    IGG3_MODEL,
+    ROBUST_WEIGHT_MODELS,
+)
 
 
 @dataclass(frozen=True)
@@ -26,8 +31,9 @@ class LlrAdjustmentOptions:
     update_tolerance_by_block_m: Optional[Mapping[str, float]] = None
     required_consecutive_converged_linearizations: int = 2
     maximum_stochastic_iterations: int = 8
+    robust_model: str = IGG3_MODEL
     k0: float = 1.5
-    k1: float = 6.0
+    k1: Optional[float] = None
     minimum_one_minus_leverage: float = 1.0e-8
     minimum_nonzero_robust_factor: float = 1.0e-12
     minimum_robust_factor_for_convergence: float = 1.0e-3
@@ -44,6 +50,15 @@ class LlrAdjustmentOptions:
     maximum_variance_ratio_per_iteration: float = 4.0
 
     def __post_init__(self) -> None:
+        if not isinstance(self.robust_model, str):
+            raise TypeError("robust_model must be a string.")
+        if self.robust_model not in ROBUST_WEIGHT_MODELS:
+            raise ValueError(
+                "robust_model must be one of "
+                f"{sorted(ROBUST_WEIGHT_MODELS)}, got {self.robust_model!r}."
+            )
+        if self.robust_model == IGG3_MODEL and self.k1 is None:
+            object.__setattr__(self, "k1", 6.0)
         integer_fields = {
             "maximum_linearizations": self.maximum_linearizations,
             "maximum_stochastic_iterations": self.maximum_stochastic_iterations,
@@ -71,7 +86,6 @@ class LlrAdjustmentOptions:
             ),
             "update_tolerance_m": self.update_tolerance_m,
             "k0": self.k0,
-            "k1": self.k1,
             "minimum_one_minus_leverage": self.minimum_one_minus_leverage,
             "minimum_nonzero_robust_factor": self.minimum_nonzero_robust_factor,
             "minimum_robust_factor_for_convergence": (
@@ -93,6 +107,8 @@ class LlrAdjustmentOptions:
                 self.maximum_variance_ratio_per_iteration
             ),
         }
+        if self.k1 is not None:
+            numeric_fields["k1"] = self.k1
         invalid_numeric_type = next(
             (
                 name
@@ -115,8 +131,13 @@ class LlrAdjustmentOptions:
         )
         if nonfinite is not None:
             raise ValueError(f"{nonfinite} must be finite.")
-        if not 0.0 < self.k0 < self.k1:
-            raise ValueError("IGGIII thresholds must satisfy 0 < k0 < k1.")
+        if self.robust_model == IGG3_MODEL:
+            if self.k1 is None or not 0.0 < self.k0 < self.k1:
+                raise ValueError("IGGIII thresholds must satisfy 0 < k0 < k1.")
+        elif self.k1 is not None:
+            raise ValueError("directRejection uses k0 only; omit k1.")
+        elif self.k0 <= 0.0:
+            raise ValueError("Direct-rejection threshold k0 must be positive.")
         if not 0.0 < self.parameter_update_factor <= 1.0:
             raise ValueError("Parameter update factor must be in (0, 1].")
         if not self.components:

@@ -211,7 +211,7 @@ def parameter_records(
         records.append(
             {
                 "name": str(name),
-                "type": name.type,
+                "type": name.parameter_type,
                 "remaining_linearized_correction_m": float(delta[index]),
                 "cofactor_uncertainty_m": float(
                     PARAMETER_UNCERTAINTY_SIGMA_MULTIPLIER
@@ -424,9 +424,9 @@ def observation_records(
                     - residual_sigmas[equation.identity] ** 2 / base_variance
                 ),
                 "standardized_residual": float(standardized[equation.identity]),
-                "applied_igg3_factor": factor,
-                "final_state_proposed_igg3_factor": proposed_factor,
-                "proposed_igg3_factor_applied": False,
+                "applied_robust_factor": factor,
+                "final_state_proposed_robust_factor": proposed_factor,
+                "proposed_robust_factor_applied": False,
                 "equivalent_weight_per_m2": float(factor / base_variance),
                 "applied_robust_status": status,
                 "final_state_proposed_robust_status": proposed_status,

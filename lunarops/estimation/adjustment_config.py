@@ -8,6 +8,7 @@ import math
 
 from lunarops.base.station_identity import canonical_station_id
 from lunarops.estimation.adjustment_options import LlrAdjustmentOptions
+from lunarops.estimation.robust_weights import DIRECT_REJECTION_MODEL
 from lunarops.estimation.variance_components import VarianceComponentDefinition
 
 
@@ -150,6 +151,7 @@ _ROBUST_KEYS = {
     "convergenceFactorFloor",
     "k0",
     "k1",
+    "model",
     "minimumOneMinusLeverage",
 }
 _VCE_KEYS = {
@@ -291,6 +293,15 @@ def parse_adjustment_plan(config: Mapping[str, object]) -> LlrAdjustmentPlan:
     prefit_threshold = adjustment.get(
         "prefitGrossThresholdM", defaults.prefit_gross_threshold_m
     )
+    robust_model = _string(
+        robust.get("model", defaults.robust_model),
+        "robustEstimation.model",
+    )
+    robust_k1 = (
+        None
+        if robust_model == DIRECT_REJECTION_MODEL and "k1" not in robust
+        else _number(robust.get("k1", defaults.k1), "robustEstimation.k1")
+    )
 
     options = LlrAdjustmentOptions(
         components=components,
@@ -337,8 +348,9 @@ def parse_adjustment_plan(config: Mapping[str, object]) -> LlrAdjustmentPlan:
             vce.get("maximumIterations", defaults.maximum_stochastic_iterations),
             "vce.maximumIterations",
         ),
+        robust_model=robust_model,
         k0=_number(robust.get("k0", defaults.k0), "robustEstimation.k0"),
-        k1=_number(robust.get("k1", defaults.k1), "robustEstimation.k1"),
+        k1=robust_k1,
         minimum_one_minus_leverage=_number(
             robust.get(
                 "minimumOneMinusLeverage", defaults.minimum_one_minus_leverage

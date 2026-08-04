@@ -31,8 +31,8 @@ References:
     http://www.geoazur.fr/astrogeo/observations/donnees/lune/mini-format.html
 
 Everything the parser produces is either (a) one of the raw MINI fields above,
-or (b) a derived convenience quantity computed from them (SI scaling, the
-unified UTC Epoch, station / reflector display names).  No CRD-style flags
+or (b) a derived quantity computed from them (SI scaling, the unified UTC
+Epoch, station / reflector identifiers).  No CRD-style flags
 (troposphere applied, center-of-mass applied, ...) exist in this module:
 MINI data never carries such corrections, so they are never represented.
 
@@ -60,7 +60,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from lunarops.base.epoch import Epoch, TimeScale
-from lunarops.base.station_identity import canonical_station_id, station_display_name
+from lunarops.base.station_identity import canonical_station_id
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -72,11 +72,6 @@ SECONDS_PER_DAY = 86400.0
 
 MINI_LINE_MIN_LENGTH = 78  # duration field ends at col 78
 MINI_LINE_FULL_LENGTH = 89  # source-format field ends at col 89
-
-LASER_COLORS = {
-    1: "green",
-    2: "red",
-}
 
 REFLECTOR_NAMES = {
     0: "Apollo 11",
@@ -199,29 +194,14 @@ class MiniRecord:
         return float(self.light_time_raw) * TIME_UNIT_S
 
     @property
-    def observed_range_m(self) -> float:
-        """One-way range equivalent, 0.5 * c * round-trip time."""
-        return 0.5 * C_LIGHT_M_PER_S * self.observed_round_trip_time_s
-
-    @property
     def uncertainty_two_way_s(self) -> float:
         """Original MINI uncertainty as two-way round-trip light-time sigma [s]."""
         return float(self.uncertainty_raw) * TIME_UNIT_S
 
     @property
-    def uncertainty_two_way_ps(self) -> float:
-        return float(self.uncertainty_raw) * 0.1
-
-    @property
     def range_uncertainty_one_way_m(self) -> float:
         """Original MINI one-way range sigma [m], retained for diagnostics."""
         return 0.5 * C_LIGHT_M_PER_S * self.uncertainty_two_way_s
-
-    @property
-    def signal_noise_ratio(self) -> Optional[float]:
-        if self.signal_noise_ratio_raw is None:
-            return None
-        return float(self.signal_noise_ratio_raw) / 10.0
 
     @property
     def pressure_hpa(self) -> float:
@@ -245,18 +225,8 @@ class MiniRecord:
         return self.wavelength_nm / 1000.0
 
     @property
-    def laser_color(self) -> Optional[str]:
-        if self.laser_color_code is None:
-            return None
-        return LASER_COLORS.get(self.laser_color_code)
-
-    @property
     def reflector_name(self) -> str:
         return REFLECTOR_NAMES.get(self.reflector_id, str(self.reflector_id))
-
-    @property
-    def station_full_name(self) -> str:
-        return station_display_name(self.station_id)
 
     @property
     def station_name(self) -> str:

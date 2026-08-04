@@ -27,16 +27,20 @@ group rather than producing an unconstrained fine-scale component.
 ```text
 linearize geometry
   -> initialize Bias and MAD group scales
-  -> fixed-geometry IGGIII + Helmert VCE block
+  -> fixed-geometry robust weighting + Helmert VCE block
   -> apply parameter correction
   -> relinearize
 ```
 
-IGGIII uses `k0 = 1.5` and `k1 = 6.0`. Zero-weight observations are excluded
-from the current effective redundancy. The stochastic block is bounded by the
-configured maximum iterations and variance-ratio limits. The final stochastic
-model is frozen, final residuals/flags are computed, and the state is solved
-once more for the reported result.
+`robustEstimation.model` defaults to `igg3`, which uses `k0 = 1.5` and
+`k1 = 6.0`. `directRejection` uses `k0` only: standardized residuals with
+`|r| <= k0` retain full weight and those with `|r| > k0` receive zero weight.
+For example, `model: directRejection` with `k0: 3.0` applies a three-sigma
+observation-group residual rejection rule. Zero-weight observations are
+excluded from the current effective redundancy. The stochastic block is bounded
+by the configured maximum iterations and variance-ratio limits. The final
+stochastic model is frozen, final residuals/flags are computed, and the state
+is solved once more for the reported result.
 
 ## Parametrizations
 

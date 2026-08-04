@@ -64,10 +64,12 @@ def _estimated_values(names, parametrization, processor):
         block_names = block.parameter_names()
         if block.block_id == "reflectorPosition":
             for name in block_names:
-                axis = {"position.x": 0, "position.y": 1, "position.z": 2}[name.type]
+                axis = {"position.x": 0, "position.y": 1, "position.z": 2}[
+                    name.parameter_type
+                ]
                 values_by_name[name] = float(
                     processor.model_state.reflector_catalog[
-                        name.object
+                        name.object_name
                     ].moon_fixed_xyz_m[axis]
                 )
         elif block.block_id == "stationRangeBias":

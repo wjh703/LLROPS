@@ -34,7 +34,7 @@ from lunarops.estimation.linearized_least_squares import (
 )
 from lunarops.fileio.normal_equations import NormalEquations
 from lunarops.estimation.robust_weights import (
-    Igg3WeightModel,
+    create_robust_weight_model,
     maximum_robust_factor_change,
 )
 from lunarops.estimation.helmert_vce import HelmertVceEstimator
@@ -79,7 +79,8 @@ class LlrAdjustmentSolver:
             default_tolerance_m=self.options.update_tolerance_m,
             tolerance_by_block_m=self.options.update_tolerance_by_block_m or {},
         )
-        self.robust_weight_model = Igg3WeightModel(
+        self.robust_weight_model = create_robust_weight_model(
+            model=self.options.robust_model,
             k0=self.options.k0,
             k1=self.options.k1,
             active_threshold=self.options.minimum_nonzero_robust_factor,

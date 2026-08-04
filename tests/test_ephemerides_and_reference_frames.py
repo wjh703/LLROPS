@@ -6,7 +6,14 @@ import pytest
 
 from lunarops.base.epoch import Epoch, TimeScale
 from lunarops.classes.time_scale_converter import TimeScaleConverter
-from lunarops.classes.ephemerides import BodyState, Ephemeris
+from lunarops.classes.ephemerides import (
+    BodyState,
+    Ephemeris,
+    LongitudeLibrationCorrectionModel,
+    LongitudeLibrationCorrectionType,
+    make_longitude_libration_correction_model,
+    normalize_longitude_libration_correction_type,
+)
 from lunarops.classes.frames import (
     C04EarthOrientation,
     EarthOrientation,
@@ -27,11 +34,11 @@ class _FakeEphemeris(Ephemeris):
         return Path("fake.eph")
 
     @property
-    def lb_minus_ll(self) -> float:
+    def l_b_minus_l_l(self) -> float:
         return 0.0
 
-    def body_state_bcrs(self, body: str, epoch: Epoch) -> BodyState:
-        epoch.require_scale(TimeScale.TDB)
+    def body_state_bcrs(self, body_name: str, epoch_tdb: Epoch) -> BodyState:
+        epoch_tdb.require_scale(TimeScale.TDB)
         index = {
             "SSB": 0,
             "SUN": 1,
@@ -44,7 +51,7 @@ class _FakeEphemeris(Ephemeris):
             "SATURN BARYCENTER": 8,
             "URANUS BARYCENTER": 9,
             "NEPTUNE BARYCENTER": 10,
-        }[body.upper()]
+        }[body_name.upper()]
         velocity = (
             np.array([12_000.0, -18_000.0, 3_000.0])
             if index == 3
@@ -55,15 +62,15 @@ class _FakeEphemeris(Ephemeris):
             velocity_mps=velocity,
         )
 
-    def pa2lcrs_matrix(self, epoch: Epoch) -> np.ndarray:
-        epoch.require_scale(TimeScale.TDB)
+    def pa2lcrs_matrix(self, epoch_tdb: Epoch) -> np.ndarray:
+        epoch_tdb.require_scale(TimeScale.TDB)
         return np.array(
             [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]],
             dtype=float,
         )
 
-    def tdb_minus_tt_sec(self, epoch: Epoch) -> float:
-        epoch.require_scale(TimeScale.TDB)
+    def geocentric_tdb_minus_tt_s(self, epoch_tdb: Epoch) -> float:
+        epoch_tdb.require_scale(TimeScale.TDB)
         return 0.001
 
     def close(self) -> None:
@@ -93,7 +100,7 @@ def test_epoch_and_body_state_are_frozen_and_validated():
     epoch = _tdb(0.25)
     state = BodyState([1.0, 2.0, 3.0], [4.0, 5.0, 6.0])
 
-    assert epoch.to_tuple() == (2451545.0, 0.25)
+    assert (epoch.jd1, epoch.jd2) == (2451545.0, 0.25)
     assert epoch.scale is TimeScale.TDB
     assert not state.position_m.flags.writeable
     assert not state.velocity_mps.flags.writeable
@@ -151,11 +158,11 @@ def test_reference_frame_system_owns_one_time_converter():
 
 def test_zero_libration_factory_and_shapiro_use_epoch():
     from lunarops.classes.delays import Iers2010ShapiroDelay
-    from lunarops.classes.ephemerides import make_longitude_libration_correction
 
     epoch = _tdb()
-    correction = make_longitude_libration_correction("none")
-    assert correction.correction_rad(epoch, j2000_tdb=epoch) == 0.0
+    correction = make_longitude_libration_correction_model("none")
+    assert isinstance(correction, LongitudeLibrationCorrectionModel)
+    assert correction.correction_rad(epoch, j2000_epoch_tdb=epoch) == 0.0
 
     model = Iers2010ShapiroDelay(ephemeris=_FakeEphemeris(), bodies=("SUN",))
     delay = model.path_delay_m(
@@ -165,6 +172,51 @@ def test_zero_libration_factory_and_shapiro_use_epoch():
     )
     assert np.isfinite(delay)
     assert delay >= 0.0
+
+
+def test_longitude_libration_correction_type_normalization_is_explicit():
+    assert (
+        normalize_longitude_libration_correction_type(None)
+        is LongitudeLibrationCorrectionType.NONE
+    )
+    assert (
+        normalize_longitude_libration_correction_type(" INPOP21A ")
+        is LongitudeLibrationCorrectionType.INPOP21A
+    )
+    assert (
+        normalize_longitude_libration_correction_type(False)
+        is LongitudeLibrationCorrectionType.NONE
+    )
+    with pytest.raises(ValueError, match="True is ambiguous"):
+        normalize_longitude_libration_correction_type(True)
+    with pytest.raises(TypeError, match="must be a string"):
+        normalize_longitude_libration_correction_type(0)
+
+
+def test_ephemeris_exposes_libration_selection_as_enum():
+    ephemeris = _FakeEphemeris()
+    assert (
+        ephemeris.longitude_libration_correction_type
+        is LongitudeLibrationCorrectionType.NONE
+    )
+
+
+def test_shapiro_normalizes_body_inputs_and_validates_positions():
+    from lunarops.classes.delays import Iers2010ShapiroDelay
+
+    model = Iers2010ShapiroDelay(
+        ephemeris=_FakeEphemeris(),
+        bodies="SUN",
+    )
+    assert model.bodies == ("SUN",)
+
+    deduplicated = Iers2010ShapiroDelay(
+        ephemeris=_FakeEphemeris(),
+        bodies=("SUN", "SUN", "EARTH"),
+    )
+    assert deduplicated.bodies == ("SUN", "EARTH")
+    with pytest.raises(ValueError, match="transmitter_bcrs_m"):
+        model.path_delay_m([1.0, 2.0], [3.0, 4.0, 5.0], _tdb())
 
 
 def test_c04_duplicate_mjd_policy_is_explicit():

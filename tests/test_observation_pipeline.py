@@ -44,16 +44,16 @@ class _Ephemeris(Ephemeris):
     def source_file(self) -> Path:
         return Path("test.eph")
 
-    def body_state_bcrs(self, body: str, epoch: Epoch) -> BodyState:
-        epoch.require_scale(TimeScale.TDB)
-        return BodyState(self._POSITIONS[body.upper()], np.zeros(3))
+    def body_state_bcrs(self, body_name: str, epoch_tdb: Epoch) -> BodyState:
+        epoch_tdb.require_scale(TimeScale.TDB)
+        return BodyState(self._POSITIONS[body_name.upper()], np.zeros(3))
 
-    def pa2lcrs_matrix(self, epoch: Epoch) -> np.ndarray:
-        epoch.require_scale(TimeScale.TDB)
+    def pa2lcrs_matrix(self, epoch_tdb: Epoch) -> np.ndarray:
+        epoch_tdb.require_scale(TimeScale.TDB)
         return np.eye(3)
 
-    def tdb_minus_tt_sec(self, epoch: Epoch) -> float:
-        epoch.require_scale(TimeScale.TDB)
+    def geocentric_tdb_minus_tt_s(self, epoch_tdb: Epoch) -> float:
+        epoch_tdb.require_scale(TimeScale.TDB)
         return 0.0
 
 

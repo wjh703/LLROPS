@@ -1,66 +1,98 @@
 """Optional longitude-libration corrections applied to lunar orientation."""
 from __future__ import annotations
 
-from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
 import numpy as np
 
-from lunarops.base.epoch import Epoch, TimeScale
+from lunarops.base.epoch import Epoch
 from lunarops import _iers2010
 
-from .base import require_tdb_epoch
+from .base import LongitudeLibrationCorrectionType, require_tdb_epoch
 
 _MAS2RAD = np.deg2rad(1.0 / 3_600_000.0)
 _JULIAN_CENTURY_DAYS = 36525.0
 
 
-class LongitudeLibrationModel(StrEnum):
-    NONE = "none"
-    INPOP21A = "inpop21a"
-
-
-def normalize_longitude_libration_model(value) -> LongitudeLibrationModel:
-    if isinstance(value, LongitudeLibrationModel):
+def normalize_longitude_libration_correction_type(
+    value: LongitudeLibrationCorrectionType | str | bool | None,
+) -> LongitudeLibrationCorrectionType:
+    if isinstance(value, LongitudeLibrationCorrectionType):
         return value
-    if value is None:
-        return LongitudeLibrationModel.NONE
-    text = str(value).strip().lower()
-    if text in {"", "no", "off", "false", "0"}:
-        return LongitudeLibrationModel.NONE
-    try:
-        return LongitudeLibrationModel(text)
-    except ValueError:
-        allowed = ", ".join(model.value for model in LongitudeLibrationModel)
+    if value is None or value is False:
+        return LongitudeLibrationCorrectionType.NONE
+    if value is True:
         raise ValueError(
-            f"Unsupported longitude-libration model {value!r}; expected one of: {allowed}."
+            "longitude-libration correction must name a correction type; "
+            "True is ambiguous."
+        )
+    if not isinstance(value, str):
+        raise TypeError(
+            "longitude-libration correction type must be a string, bool, "
+            "LongitudeLibrationCorrectionType, or None."
+        )
+    text = value.strip().lower()
+    if text in {"", "no", "off", "false", "0"}:
+        return LongitudeLibrationCorrectionType.NONE
+    try:
+        return LongitudeLibrationCorrectionType(text)
+    except ValueError:
+        allowed = ", ".join(
+            correction_type.value
+            for correction_type in LongitudeLibrationCorrectionType
+        )
+        raise ValueError(
+            "Unsupported longitude-libration correction type "
+            f"{value!r}; expected one of: {allowed}."
         ) from None
 
 
 @runtime_checkable
-class LongitudeLibrationCorrection(Protocol):
-    def correction_rad(self, epoch: Epoch, *, j2000_tdb: Epoch) -> float:
+class LongitudeLibrationCorrectionModel(Protocol):
+    def correction_rad(
+        self,
+        epoch_tdb: Epoch,
+        *,
+        j2000_epoch_tdb: Epoch,
+    ) -> float:
         ...
 
 
-class ZeroLongitudeLibration:
-    def correction_rad(self, epoch: Epoch, *, j2000_tdb: Epoch) -> float:
-        require_tdb_epoch(epoch)
-        require_tdb_epoch(j2000_tdb, name="j2000_tdb")
+class ZeroLongitudeLibrationCorrection:
+    def correction_rad(
+        self,
+        epoch_tdb: Epoch,
+        *,
+        j2000_epoch_tdb: Epoch,
+    ) -> float:
+        require_tdb_epoch(epoch_tdb, name="epoch_tdb")
+        require_tdb_epoch(j2000_epoch_tdb, name="j2000_epoch_tdb")
         return 0.0
 
 
-class Inpop21aLongitudeLibration:
+class Inpop21aLongitudeLibrationCorrection:
     """INPOP21a Table 6 correction to lunar longitude libration."""
 
-    def correction_rad(self, epoch: Epoch, *, j2000_tdb: Epoch) -> float:
-        epoch = require_tdb_epoch(epoch)
-        j2000_tdb = require_tdb_epoch(j2000_tdb, name="j2000_tdb")
-        centuries = (
-            (epoch.jd1 - j2000_tdb.jd1) + (epoch.jd2 - j2000_tdb.jd2)
+    def correction_rad(
+        self,
+        epoch_tdb: Epoch,
+        *,
+        j2000_epoch_tdb: Epoch,
+    ) -> float:
+        epoch_tdb = require_tdb_epoch(epoch_tdb, name="epoch_tdb")
+        j2000_epoch_tdb = require_tdb_epoch(
+            j2000_epoch_tdb,
+            name="j2000_epoch_tdb",
+        )
+        julian_centuries_since_j2000 = (
+            (epoch_tdb.jd1 - j2000_epoch_tdb.jd1)
+            + (epoch_tdb.jd2 - j2000_epoch_tdb.jd2)
         ) / _JULIAN_CENTURY_DAYS
         lunar_anomaly, solar_anomaly, argument_latitude, elongation, _ = (
-            float(value) for value in _iers2010.fundarg(float(centuries))
+            float(argument)
+            for argument in _iers2010.fundarg(
+                float(julian_centuries_since_j2000)
+            )
         )
         correction_mas = (
             4.5 * np.cos(solar_anomaly)
@@ -70,20 +102,23 @@ class Inpop21aLongitudeLibration:
         return float(correction_mas * _MAS2RAD)
 
 
-def make_longitude_libration_correction(value) -> LongitudeLibrationCorrection:
-    model = normalize_longitude_libration_model(value)
-    if model is LongitudeLibrationModel.NONE:
-        return ZeroLongitudeLibration()
-    if model is LongitudeLibrationModel.INPOP21A:
-        return Inpop21aLongitudeLibration()
-    raise AssertionError(f"Unhandled longitude-libration model: {model!r}")
+def make_longitude_libration_correction_model(
+    correction_type: LongitudeLibrationCorrectionType | str | bool | None,
+) -> LongitudeLibrationCorrectionModel:
+    normalized_type = normalize_longitude_libration_correction_type(correction_type)
+    if normalized_type is LongitudeLibrationCorrectionType.NONE:
+        return ZeroLongitudeLibrationCorrection()
+    if normalized_type is LongitudeLibrationCorrectionType.INPOP21A:
+        return Inpop21aLongitudeLibrationCorrection()
+    raise AssertionError(
+        f"Unhandled longitude-libration correction type: {normalized_type!r}"
+    )
 
 
 __all__ = [
-    "Inpop21aLongitudeLibration",
-    "LongitudeLibrationCorrection",
-    "LongitudeLibrationModel",
-    "ZeroLongitudeLibration",
-    "make_longitude_libration_correction",
-    "normalize_longitude_libration_model",
+    "Inpop21aLongitudeLibrationCorrection",
+    "LongitudeLibrationCorrectionModel",
+    "ZeroLongitudeLibrationCorrection",
+    "make_longitude_libration_correction_model",
+    "normalize_longitude_libration_correction_type",
 ]

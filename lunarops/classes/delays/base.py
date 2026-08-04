@@ -71,6 +71,11 @@ class TroposphereInput:
 class TroposphereDelay(ABC):
     """Interface for a one-way tropospheric slant-delay model."""
 
+    @property
+    def elevation_floor_rad(self) -> float | None:
+        """Lowest elevation used by the model, or ``None`` if unclamped."""
+        return None
+
     @abstractmethod
     def slant_delay_m(self, data: TroposphereInput) -> float:
         """Return the one-way tropospheric slant delay in meters."""

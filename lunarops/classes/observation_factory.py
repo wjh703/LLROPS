@@ -123,7 +123,7 @@ def _register_all() -> None:
         CompositeStationDisplacement,
         Iers2010OceanPoleTide,
         Iers2010OceanTidalLoading,
-        Iers2010PoleTide,
+        Iers2010SolidEarthPoleTide,
         Iers2010SolidEarthTide,
         LunarSolidTide,
         OceanPoleTideGrid,
@@ -148,7 +148,10 @@ def _register_all() -> None:
             raise ValueError("ephemerides/calceph requires 'file'.")
         return load_calceph_ephemeris(
             _resolve_optional_path(ctx, cfg["file"]),
-            longitude_libration=cfg.get("longitudeLibrationCorrection", "none"),
+            longitude_libration_correction_type=cfg.get(
+                "longitudeLibrationCorrection",
+                "none",
+            ),
         )
 
     def _iers_c04(cfg: dict, ctx):
@@ -237,7 +240,7 @@ def _register_all() -> None:
     register_factory(
         "stationDisplacement",
         "iers2010poletide",
-        lambda cfg, ctx: Iers2010PoleTide(
+        lambda cfg, ctx: Iers2010SolidEarthPoleTide(
             earth_orientation=_required_earth_orientation(ctx)
         ),
     )

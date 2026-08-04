@@ -46,7 +46,7 @@ class TimeScaleConverter:
         epoch.require_scale(TimeScale.TT)
         return _tt2utc(epoch)
 
-    def tdb_minus_tt_sec(
+    def tdb_minus_tt_s(
         self,
         epoch_tdb: Epoch,
         *,
@@ -54,7 +54,7 @@ class TimeScaleConverter:
     ) -> float:
         epoch_tdb.require_scale(TimeScale.TDB, name="epoch_tdb")
         ephemeris = self._require_ephemeris()
-        geocentric = ephemeris.tdb_minus_tt_sec(epoch_tdb)
+        geocentric = ephemeris.geocentric_tdb_minus_tt_s(epoch_tdb)
         if geocentric is None:
             raise RuntimeError(
                 "The configured ephemeris does not provide a TDB-TT table."
@@ -76,7 +76,7 @@ class TimeScaleConverter:
         station_gcrs_m: Sequence[float] | None = None,
     ) -> Epoch:
         epoch_tdb.require_scale(TimeScale.TDB, name="epoch_tdb")
-        delta_s = self.tdb_minus_tt_sec(
+        delta_s = self.tdb_minus_tt_s(
             epoch_tdb,
             station_gcrs_m=station_gcrs_m,
         )
@@ -92,7 +92,7 @@ class TimeScaleConverter:
         epoch_tt.require_scale(TimeScale.TT, name="epoch_tt")
         current = Epoch(epoch_tt.jd1, epoch_tt.jd2, TimeScale.TDB)
         for _ in range(self.max_iterations):
-            delta_s = self.tdb_minus_tt_sec(
+            delta_s = self.tdb_minus_tt_s(
                 current,
                 station_gcrs_m=station_gcrs_m,
             )
@@ -131,27 +131,5 @@ class TimeScaleConverter:
                 self.tdb2tt(epoch, station_gcrs_m=station_gcrs_m)
             )
         raise AssertionError("Unhandled time-scale conversion.")
-
-    def isot(
-        self,
-        epoch: Epoch,
-        *,
-        scale: TimeScale | str = TimeScale.UTC,
-        precision: int = 9,
-        station_gcrs_m: Sequence[float] | None = None,
-    ) -> str:
-        target = TimeScale.parse(scale)
-        if target is TimeScale.TDB:
-            raise ValueError(
-                "ISOT output is limited to UTC or TT. TDB epochs are serialized "
-                "as two-part Julian dates."
-            )
-        converted = self.convert(
-            epoch,
-            target,
-            station_gcrs_m=station_gcrs_m,
-        )
-        return converted.isot(scale=target, precision=precision)
-
 
 __all__ = ["TimeScaleConverter"]

@@ -3,8 +3,12 @@ import pytest
 
 from lunarops.base.station_identity import (
     canonical_station_id,
+    normalize_station_key,
+    registered_station_id,
+    station_aliases,
     station_display_name,
     station_ilrs_code,
+    station_names,
 )
 from lunarops.fileio.catalogs import (
     ReflectorRecord,
@@ -63,6 +67,24 @@ def test_builtin_station_identity_has_one_canonical_catalog_key():
     assert station_ilrs_code("APOL") == "70610"
     assert station_display_name("APOLLO") == "Apache Point Observatory"
     assert resolve_catalog_key("APOL", stations, "Station") == "APOLLO"
+
+
+def test_station_identity_separates_normalization_and_registered_resolution():
+    assert normalize_station_key("Apache Point Observatory") == "APACHEPOINTOBSERVATORY"
+    assert registered_station_id("Apache Point Observatory") == "APOLLO"
+    assert canonical_station_id("custom-station") == "CUSTOMSTATION"
+    with pytest.raises(ValueError, match="Unknown registered station"):
+        registered_station_id("custom-station")
+
+
+def test_station_names_includes_every_registered_spelling():
+    names = station_names("APOL")
+
+    assert names[0] == "APOLLO"
+    assert "70610" in names
+    assert "Apache Point Observatory" in names
+    assert "APOL" in names
+    assert station_aliases("APOLLO") == ("70610", "APOL", "APACHE", "APACHEPOINT", "7045")
 
 
 def test_typed_catalog_files_round_trip(tmp_path):

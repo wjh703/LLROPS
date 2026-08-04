@@ -5,6 +5,7 @@ from typing import Iterable, Sequence
 import numpy as np
 
 from lunarops.base.constants import C2
+from lunarops.base.array_validation import vector3
 from lunarops.classes.relativistic.constants import GM_BY_BODY
 from lunarops.base.epoch import Epoch
 from lunarops.classes.ephemerides import Ephemeris, require_tdb_epoch
@@ -33,7 +34,11 @@ class Iers2010ShapiroDelay(GravitationalDelay):
     ) -> None:
         if not isinstance(ephemeris, Ephemeris):
             raise TypeError("ephemeris must implement Ephemeris.")
-        normalized_bodies = tuple(str(body).strip().upper() for body in bodies)
+        if isinstance(bodies, str):
+            bodies = (bodies,)
+        normalized_bodies = tuple(
+            dict.fromkeys(str(body).strip().upper() for body in bodies)
+        )
         if not normalized_bodies:
             raise ValueError("Iers2010ShapiroDelay requires at least one gravitating body.")
         unknown = [body for body in normalized_bodies if body not in GM_BY_BODY]
@@ -43,9 +48,9 @@ class Iers2010ShapiroDelay(GravitationalDelay):
         self.bodies = normalized_bodies
 
     def _body_position_bcrs(self, body: str, epoch: Epoch) -> np.ndarray:
-        return np.asarray(
+        return vector3(
             self.ephemeris.body_position_bcrs(body, epoch),
-            dtype=float,
+            name=f"{body} BCRS position",
         )
 
     def path_delay_m(
@@ -55,8 +60,8 @@ class Iers2010ShapiroDelay(GravitationalDelay):
         epoch_tdb: Epoch,
     ) -> float:
         epoch = require_tdb_epoch(epoch_tdb, name="epoch_tdb")
-        x1 = np.asarray(transmitter_bcrs_m, dtype=float)
-        x2 = np.asarray(receiver_bcrs_m, dtype=float)
+        x1 = vector3(transmitter_bcrs_m, name="transmitter_bcrs_m")
+        x2 = vector3(receiver_bcrs_m, name="receiver_bcrs_m")
         rho = float(np.linalg.norm(x2 - x1))
 
         total = 0.0
