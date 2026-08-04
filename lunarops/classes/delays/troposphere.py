@@ -24,11 +24,15 @@ class Iers2010MendesPavlisTroposphere(TroposphereDelay):
     value object.
     """
 
-    def __init__(self, min_elevation_deg: float = 3.0) -> None:
-        minimum = _finite_float(min_elevation_deg, name="min_elevation_deg")
+    def __init__(self, elevation_floor_deg: float = 3.0) -> None:
+        minimum = _finite_float(elevation_floor_deg, name="elevation_floor_deg")
         if not 0.0 <= minimum <= 90.0:
-            raise ValueError("min_elevation_deg must be in [0, 90].")
-        self.min_elevation_deg = minimum
+            raise ValueError("elevation_floor_deg must be in [0, 90].")
+        self.elevation_floor_deg = minimum
+
+    @property
+    def elevation_floor_rad(self) -> float:
+        return float(np.deg2rad(self.elevation_floor_deg))
 
     @staticmethod
     def _water_vapor_pressure_hpa(
@@ -113,7 +117,7 @@ class Iers2010MendesPavlisTroposphere(TroposphereDelay):
             raise TypeError("data must be a TroposphereInput.")
         elevation_deg = max(
             float(np.rad2deg(data.elevation_rad)),
-            self.min_elevation_deg,
+            self.elevation_floor_deg,
         )
         latitude_deg = float(np.rad2deg(data.latitude_rad))
         wvp_hpa = self._water_vapor_pressure_hpa(

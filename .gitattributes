@@ -1,2 +1,2 @@
 # Preserve upstream whitespace in vendored IERS/derived SOFA Fortran sources.
-external/iers2010/src/*.F -whitespace
+lunarops/_external/iers2010/src/*.F -whitespace

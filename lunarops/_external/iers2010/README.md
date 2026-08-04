@@ -6,14 +6,14 @@
 
 本文只说明 vendored 源码的组成、调用关系和维护边界。项目级构建方式、
 上游版本固定、生产模型约定和验证要求见
-[`../../docs/DEVELOPMENT.md`](../../docs/DEVELOPMENT.md)。
+[`../../../docs/DEVELOPMENT.md`](../../../docs/DEVELOPMENT.md)。
 
 目录内容：
 
 - `src/`：参与原生扩展编译的 Fortran 源文件。
 - `bindings/iers2010.pyf`：唯一的 Python 原生接口白名单及数组/参数声明。
 - `LICENSE`：随源码及二进制分发的完整 IERS Conventions Software License。
-- `../../meson.build`：f2py 代码生成、Fortran 编译、扩展链接和安装规则。
+- `../../../meson.build`：f2py 代码生成、Fortran 编译、扩展链接和安装规则。
 
 这里的“主要接口”和 IERS 源文件头部的 Class 1、Class 2、Class 3 或
 Canonical model 分类不是一回事：
@@ -157,4 +157,4 @@ HARDISP_WRAP
    入口的原始单位和约定不能仅凭变量名推断。
 
 上游版本固定、构建方式、生产调用约定和验证要求见
-[`../../docs/DEVELOPMENT.md`](../../docs/DEVELOPMENT.md)。
+[`../../../docs/DEVELOPMENT.md`](../../../docs/DEVELOPMENT.md)。

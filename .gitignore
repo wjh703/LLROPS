@@ -20,6 +20,7 @@ wheels/
 # Generated LLR products and local diagnostics
 output/
 logs/
+review/
 *.log
 *.bak_*
 

@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import numpy as np
 import pytest
 
@@ -9,18 +7,14 @@ from lunarops.classes.ephemerides import BodyState, Ephemeris
 
 
 class _ConstantOffsetEphemeris(Ephemeris):
-    @property
-    def source_file(self):
-        return Path("constant.eph")
-
-    def body_state_bcrs(self, body: str, epoch: Epoch) -> BodyState:
+    def body_state_bcrs(self, body_name: str, epoch_tdb: Epoch) -> BodyState:
         return BodyState(np.zeros(3), np.zeros(3))
 
-    def pa2lcrs_matrix(self, epoch: Epoch) -> np.ndarray:
+    def pa2lcrs_matrix(self, epoch_tdb: Epoch) -> np.ndarray:
         return np.eye(3)
 
-    def tdb_minus_tt_sec(self, epoch: Epoch) -> float:
-        epoch.require_scale(TimeScale.TDB)
+    def geocentric_tdb_minus_tt_s(self, epoch_tdb: Epoch) -> float:
+        epoch_tdb.require_scale(TimeScale.TDB)
         return 0.0015
 
 
@@ -35,7 +29,8 @@ def test_epoch_keeps_two_part_jd_scale_and_supports_precise_shifts():
 
 
 def test_tt_tdb_conversion_uses_ephemeris_table_and_round_trips():
-    converter = TimeScaleConverter(_ConstantOffsetEphemeris())
+    ephemeris = _ConstantOffsetEphemeris()
+    converter = TimeScaleConverter(ephemeris)
     tt = Epoch(2451545.0, 0.0, TimeScale.TT)
 
     tdb = converter.tt2tdb(tt)
@@ -45,6 +40,7 @@ def test_tt_tdb_conversion_uses_ephemeris_table_and_round_trips():
         0.0015, abs=1.0e-10
     )
     assert tt.seconds_until(recovered) == pytest.approx(0.0, abs=1.0e-10)
+    assert ephemeris.source_file is None
 
 
 def test_epoch_rejects_implicit_scale_mixing():

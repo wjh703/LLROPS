@@ -64,7 +64,7 @@ class LlrMeasurement:
             solution.bounce_epoch,
             MOON_EXTERNAL_POTENTIAL_BODIES,
         )
-        scale = 1.0 - self.ephemeris.lb_minus_ll - external_potential / C2
+        scale = 1.0 - self.ephemeris.l_b_minus_l_l - external_potential / C2
         jacobian = (
             scale * pa2lcrs
             - 0.5 * np.outer(moon_velocity, moon_velocity @ pa2lcrs) / C2
@@ -95,7 +95,7 @@ class LlrMeasurement:
                     temperature_k=record.temperature_k,
                     relative_humidity_percent=float(record.humidity_percent),
                     latitude_rad=geodetic.latitude_rad,
-                    height_m=geodetic.height_m,
+                    height_m=geodetic.ellipsoidal_height_m,
                     wavelength_um=record.wavelength_um,
                 ),
             )
@@ -217,8 +217,8 @@ class LlrMeasurement:
                 "utc_rate_zeta": solution.utc_rate_zeta,
                 "utc_rate_correction_s": utc_rate_correction_s,
                 "utc_rate_correction_one_way_m": 0.5 * C * utc_rate_correction_s,
-                "longitude_libration_correction_model": str(
-                    self.ephemeris.longitude_libration_model
+                "longitude_libration_correction_type": str(
+                    self.ephemeris.longitude_libration_correction_type
                 ),
                 "longitude_libration_correction_mas": float(
                     np.rad2deg(libration_rad) * 3_600_000.0

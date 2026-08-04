@@ -4,8 +4,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from lunarops.base.epoch import Epoch, TimeScale
 
+from lunarops.base.array_validation import readonly_vector3
+from lunarops.base.epoch import Epoch, TimeScale
 from lunarops.classes.frames.earth_orientation import EarthOrientation
 
 from .base import StationDisplacementInput
@@ -42,6 +43,18 @@ class PoleTideResult:
     geocentric_latitude_rad: float
     longitude_rad: float
 
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "displacement_itrf_m",
+            readonly_vector3(self.displacement_itrf_m, name="displacement_itrf_m"),
+        )
+        object.__setattr__(
+            self,
+            "displacement_enu_m",
+            readonly_vector3(self.displacement_enu_m, name="displacement_enu_m"),
+        )
+
 
 def secular_pole_2018_arcsec(epoch_utc: Epoch) -> tuple[float, float]:
     """IERS Chapter 7 2018 update, Eq. (21), in arcseconds."""
@@ -69,7 +82,7 @@ def polar_wobble(epoch_utc: Epoch, earth_orientation: EarthOrientation) -> Polar
     )
 
 
-class Iers2010PoleTide:
+class Iers2010SolidEarthPoleTide:
     """Solid-Earth pole tide using an explicitly supplied IERS table."""
 
     def __init__(self, earth_orientation: EarthOrientation) -> None:
@@ -78,7 +91,7 @@ class Iers2010PoleTide:
         self.earth_orientation = earth_orientation
 
     def evaluate(self, data: StationDisplacementInput) -> PoleTideResult:
-        latitude_rad, longitude_rad = itrf2geocentric(data.station_itrf_m)
+        latitude_rad, longitude_rad = itrf2geocentric(data.reference_position_itrf_m)
         theta = 0.5 * np.pi - latitude_rad
         wobble = polar_wobble(data.epoch_utc, self.earth_orientation)
 
@@ -98,8 +111,6 @@ class Iers2010PoleTide:
             latitude_rad=latitude_rad,
             longitude_rad=longitude_rad,
         )
-        enu_m.setflags(write=False)
-        itrf_m.setflags(write=False)
         return PoleTideResult(
             displacement_itrf_m=itrf_m,
             displacement_enu_m=enu_m,

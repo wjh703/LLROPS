@@ -86,7 +86,7 @@ class RelativisticFrameTransform:
             epoch,
             MOON_EXTERNAL_POTENTIAL_BODIES,
         )
-        scale = 1.0 - self.ephemeris.lb_minus_ll - potential / C2
+        scale = 1.0 - self.ephemeris.l_b_minus_l_l - potential / C2
         tdb_position = (
             scale * position
             - 0.5 * (np.dot(moon.velocity_mps, position) / C2) * moon.velocity_mps
@@ -102,7 +102,7 @@ class RelativisticFrameTransform:
             epoch,
             MOON_EXTERNAL_POTENTIAL_BODIES,
         )
-        scale = 1.0 + self.ephemeris.lb_minus_ll + potential / C2
+        scale = 1.0 + self.ephemeris.l_b_minus_l_l + potential / C2
         return (
             scale * relative
             + 0.5 * (np.dot(moon.velocity_mps, relative) / C2) * moon.velocity_mps

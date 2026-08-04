@@ -4,10 +4,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 import gzip
 from pathlib import Path
-from typing import TextIO
+from typing import Sequence, TextIO
 
 import numpy as np
 
+from lunarops.base.array_validation import readonly_vector3
 from lunarops.classes.frames.earth_orientation import EarthOrientation
 
 from .base import StationDisplacementInput
@@ -29,7 +30,7 @@ class OceanPoleTideCoefficients:
 
     latitude_rad: float
     longitude_rad: float
-    height_m: float
+    ellipsoidal_height_m: float
     radial: complex
     north: complex
     east: complex
@@ -54,6 +55,18 @@ class OceanPoleTideResult:
     displacement_enu_m: np.ndarray
     coefficients: OceanPoleTideCoefficients
     wobble: PolarWobble
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "displacement_itrf_m",
+            readonly_vector3(self.displacement_itrf_m, name="displacement_itrf_m"),
+        )
+        object.__setattr__(
+            self,
+            "displacement_enu_m",
+            readonly_vector3(self.displacement_enu_m, name="displacement_enu_m"),
+        )
 
 
 class OceanPoleTideGrid:
@@ -202,14 +215,17 @@ class OceanPoleTideGrid:
         upper = (1.0 - fraction_x) * grid[i1, j0] + fraction_x * grid[i1, j1]
         return complex((1.0 - fraction_y) * lower + fraction_y * upper)
 
-    def coefficients_at(self, station_itrf_m) -> OceanPoleTideCoefficients:
-        site = itrf2geodetic(station_itrf_m)
+    def coefficients_at(
+        self,
+        reference_position_itrf_m: Sequence[float],
+    ) -> OceanPoleTideCoefficients:
+        site = itrf2geodetic(reference_position_itrf_m)
         latitude_deg = site.latitude_deg
         longitude_deg = site.longitude_deg
         return OceanPoleTideCoefficients(
             latitude_rad=site.latitude_rad,
             longitude_rad=site.longitude_rad,
-            height_m=site.height_m,
+            ellipsoidal_height_m=site.ellipsoidal_height_m,
             radial=self._interpolate(self.radial_grid, latitude_deg, longitude_deg),
             north=self._interpolate(self.north_grid, latitude_deg, longitude_deg),
             east=self._interpolate(self.east_grid, latitude_deg, longitude_deg),
@@ -229,6 +245,15 @@ class Iers2010OceanPoleTide:
             raise TypeError("grid must be an OceanPoleTideGrid.")
         if not isinstance(earth_orientation, EarthOrientation):
             raise TypeError("earth_orientation must implement EarthOrientation.")
+        try:
+            load_love_combination = complex(load_love_combination)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("load_love_combination must be a complex scalar.") from exc
+        if not (
+            np.isfinite(load_love_combination.real)
+            and np.isfinite(load_love_combination.imag)
+        ):
+            raise ValueError("load_love_combination must have finite real and imaginary parts.")
         pole_tide_height_m = (
             np.sqrt(8.0 * np.pi / 15.0)
             * _EARTH_ANGULAR_VELOCITY_RAD_S**2
@@ -250,7 +275,7 @@ class Iers2010OceanPoleTide:
         self.scale_m = float(scale_m)
 
     def evaluate(self, data: StationDisplacementInput) -> OceanPoleTideResult:
-        coefficients = self.grid.coefficients_at(data.station_itrf_m)
+        coefficients = self.grid.coefficients_at(data.reference_position_itrf_m)
         wobble = polar_wobble(data.epoch_utc, self.earth_orientation)
         gamma_real = float(self.load_love_combination.real)
         gamma_imag = float(self.load_love_combination.imag)
@@ -275,8 +300,6 @@ class Iers2010OceanPoleTide:
             latitude_rad=coefficients.latitude_rad,
             longitude_rad=coefficients.longitude_rad,
         )
-        enu_m.setflags(write=False)
-        itrf_m.setflags(write=False)
         return OceanPoleTideResult(
             displacement_itrf_m=itrf_m,
             displacement_enu_m=enu_m,

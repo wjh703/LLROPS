@@ -36,7 +36,10 @@ def test_troposphere_models_consume_input_object():
     data = _input()
 
     assert ZeroTroposphereDelay().slant_delay_m(data) == 0.0
-    delay = Iers2010MendesPavlisTroposphere().slant_delay_m(data)
+    model = Iers2010MendesPavlisTroposphere()
+    assert model.elevation_floor_rad == pytest.approx(np.deg2rad(3.0))
+    assert ZeroTroposphereDelay().elevation_floor_rad is None
+    delay = model.slant_delay_m(data)
     assert delay == pytest.approx(4.882704085022898, rel=0.0, abs=1.0e-14)
 
 
@@ -69,8 +72,8 @@ def test_fcul_facades_validate_scalar_boundaries():
         model.fculzd_hpa(45.0, 0.0, 1013.25, -1.0, 0.532)
     with pytest.raises(ValueError, match="elevation_deg"):
         model.fcul_a(45.0, 0.0, 293.15, 91.0)
-    with pytest.raises(ValueError, match="min_elevation_deg"):
-        Iers2010MendesPavlisTroposphere(min_elevation_deg=-1.0)
+    with pytest.raises(ValueError, match="elevation_floor_deg"):
+        Iers2010MendesPavlisTroposphere(elevation_floor_deg=-1.0)
     with pytest.raises(ValueError, match="conversion domain"):
         model._water_vapor_pressure_hpa(1.0e308, 50.0)
 

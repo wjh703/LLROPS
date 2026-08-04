@@ -26,13 +26,18 @@ class Iers2010SolidEarthTide:
     @staticmethod
     def _utc_calendar(epoch: Epoch) -> tuple[int, int, int, float]:
         epoch.require_scale(TimeScale.UTC, name="epoch_utc")
-        civil = epoch.to_datetime()
-        fractional_hour = (
-            civil.hour
-            + civil.minute / 60.0
-            + (civil.second + civil.microsecond / 1.0e6) / 3600.0
-        )
-        return civil.year, civil.month, civil.day, fractional_hour
+        date_text, time_text = epoch.isot(precision=9).split("T")
+        year, month, day = (int(part) for part in date_text.split("-"))
+        hour_text, minute_text, second_text = time_text.split(":")
+        hour = int(hour_text)
+        minute = int(minute_text)
+        second = float(second_text)
+        if second >= 60.0:
+            raise ValueError(
+                "IERS DEHANTTIDEINEL cannot represent an exact UTC leap-second label."
+            )
+        fractional_hour = hour + minute / 60.0 + second / 3600.0
+        return year, month, day, fractional_hour
 
     def _body_itrf_m(self, body: str, epoch_utc: Epoch, epoch_tdb: Epoch) -> np.ndarray:
         position_bcrs_m = self.frames.ephemeris.body_position_bcrs(body, epoch_tdb)
@@ -52,7 +57,7 @@ class Iers2010SolidEarthTide:
 
         displacement = np.asarray(
             _iers2010.dehanttideinel(
-                data.station_itrf_m,
+                data.reference_position_itrf_m,
                 year,
                 month,
                 day,
