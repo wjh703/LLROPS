@@ -21,7 +21,7 @@ def _prepare_shared_resources(merged: dict, context) -> dict:
     earth_rotation_config = merged.get("earthRotation")
     if earth_rotation_config is not None:
         from lunarops.classes.observation_factory import ensure_registered
-        from lunarops.classes.frames import C04EarthOrientation
+        from lunarops.classes.frames import TabulatedEarthOrientation
         from lunarops.config.registry import normalize_class_config
 
         cfg = normalize_class_config(earth_rotation_config)
@@ -32,10 +32,10 @@ def _prepare_shared_resources(merged: dict, context) -> dict:
                 earth_rotation_config,
                 cache=True,
             )
-            if not isinstance(earth_orientation, C04EarthOrientation):
+            if not isinstance(earth_orientation, TabulatedEarthOrientation):
                 raise TypeError(
                     "MPI earthRotation resource preparation expected "
-                    "C04EarthOrientation."
+                    "TabulatedEarthOrientation."
                 )
             resources["earthRotation"] = earth_orientation.to_mpi_payload()
     return resources

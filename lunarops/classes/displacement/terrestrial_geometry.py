@@ -7,7 +7,11 @@ from typing import Sequence
 import numpy as np
 
 from lunarops.base.array_validation import vector3
-from lunarops.classes.frames.constants import WGS84_A_M, WGS84_E2, WGS84_F
+from lunarops.classes.frames.constants import (
+    WGS84_FIRST_ECCENTRICITY_SQUARED,
+    WGS84_FLATTENING,
+    WGS84_SEMI_MAJOR_AXIS_M,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,15 +70,26 @@ def itrf2geodetic(station_itrf_m: Sequence[float]) -> GeodeticPosition:
     p = float(np.hypot(x_m, y_m))
     if p == 0.0:
         lat = np.pi / 2.0 if z_m >= 0.0 else -np.pi / 2.0
-        height = abs(z_m) - WGS84_A_M * (1.0 - WGS84_F)
+        height = abs(z_m) - WGS84_SEMI_MAJOR_AXIS_M * (1.0 - WGS84_FLATTENING)
         return GeodeticPosition(float(lat), lon, float(height))
-    lat = float(np.arctan2(z_m, p * (1.0 - WGS84_E2)))
+    lat = float(np.arctan2(z_m, p * (1.0 - WGS84_FIRST_ECCENTRICITY_SQUARED)))
     height = 0.0
     for _ in range(8):
         sin_lat = np.sin(lat)
-        n = WGS84_A_M / np.sqrt(1.0 - WGS84_E2 * sin_lat * sin_lat)
+        n = WGS84_SEMI_MAJOR_AXIS_M / np.sqrt(
+            1.0 - WGS84_FIRST_ECCENTRICITY_SQUARED * sin_lat * sin_lat
+        )
         height = p / np.cos(lat) - n
-        updated = float(np.arctan2(z_m, p * (1.0 - WGS84_E2 * n / (n + height))))
+        updated = float(
+            np.arctan2(
+                z_m,
+                p
+                * (
+                    1.0
+                    - WGS84_FIRST_ECCENTRICITY_SQUARED * n / (n + height)
+                ),
+            )
+        )
         if abs(updated - lat) < 1.0e-15:
             lat = updated
             break

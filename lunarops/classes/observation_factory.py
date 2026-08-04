@@ -30,7 +30,7 @@ from lunarops.config.registry import register_factory, normalize_class_config
 
 if TYPE_CHECKING:
     from lunarops.classes.ephemerides import Ephemeris
-    from lunarops.classes.frames import EarthOrientation, ReferenceFrameSystem
+    from lunarops.classes.frames import EarthOrientationProvider, ReferenceFrameSystem
     from lunarops.config.context import RunContext
 
 
@@ -63,7 +63,7 @@ class _PathResolver(Protocol):
 class _ObservationDependencies:
     run_context: "RunContext"
     ephemeris: "Ephemeris"
-    earth_orientation: "EarthOrientation"
+    earth_orientation_provider: "EarthOrientationProvider"
     frames: "ReferenceFrameSystem"
     cache_namespace: str
 
@@ -132,7 +132,7 @@ def _register_all() -> None:
         ZeroStationDisplacement,
     )
     from lunarops.classes.ephemerides import load_calceph_ephemeris
-    from lunarops.classes.frames import C04EarthOrientation, load_iers_c04
+    from lunarops.classes.frames import TabulatedEarthOrientation, load_iers_eop
     from lunarops.classes.range_bias.models import (
         TableRangeBiasModel,
         ZeroRangeBiasModel,
@@ -157,10 +157,10 @@ def _register_all() -> None:
     def _iers_c04(cfg: dict, ctx):
         payload = ctx.mpi_resources.get("earthRotation")
         if payload is not None:
-            return C04EarthOrientation.from_mpi_payload(payload)
+            return TabulatedEarthOrientation.from_mpi_payload(payload)
         if "file" not in cfg:
             raise ValueError("earthRotation/iersC04 requires 'file'.")
-        return load_iers_c04(
+        return load_iers_eop(
             _resolve_optional_path(ctx, cfg["file"]),
             duplicate_mjd_policy=cfg.get("duplicateMjdPolicy", "error"),
         )
@@ -179,7 +179,7 @@ def _register_all() -> None:
     )
 
     def _required_earth_orientation(ctx):
-        return ctx.earth_orientation
+        return ctx.earth_orientation_provider
 
     def _required_ephemeris(ctx):
         return ctx.ephemeris
@@ -205,7 +205,7 @@ def _register_all() -> None:
             )
         return Iers2010OceanPoleTide(
             grid=OceanPoleTideGrid(coefficient_file),
-            earth_orientation=_required_earth_orientation(ctx),
+            earth_orientation_provider=_required_earth_orientation(ctx),
         )
 
     def _station_ocean_tidal_loading(cfg: dict, ctx) -> Iers2010OceanTidalLoading:
@@ -241,7 +241,7 @@ def _register_all() -> None:
         "stationDisplacement",
         "iers2010poletide",
         lambda cfg, ctx: Iers2010SolidEarthPoleTide(
-            earth_orientation=_required_earth_orientation(ctx)
+            earth_orientation_provider=_required_earth_orientation(ctx)
         ),
     )
     register_factory(
@@ -386,17 +386,17 @@ def build_observation_processor(
     eop_cfg = cfg("earthRotation")
 
     ephemeris = context.create_class("ephemerides", eph_cfg, cache=True)
-    earth_orientation = context.create_class("earthRotation", eop_cfg, cache=True)
+    earth_orientation_provider = context.create_class("earthRotation", eop_cfg, cache=True)
     frames = ReferenceFrameSystem(
         ephemeris=ephemeris,
-        earth_orientation=earth_orientation,
+        earth_orientation_provider=earth_orientation_provider,
     )
     factory_context = _ObservationDependencies(
         run_context=context,
         ephemeris=ephemeris,
-        earth_orientation=earth_orientation,
+        earth_orientation_provider=earth_orientation_provider,
         frames=frames,
-        cache_namespace=f"observation:{id(ephemeris)}:{id(earth_orientation)}",
+        cache_namespace=f"observation:{id(ephemeris)}:{id(earth_orientation_provider)}",
     )
     station_displacement = factory_context.create_class(
         "stationDisplacement",

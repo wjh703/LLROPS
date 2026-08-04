@@ -66,7 +66,7 @@ class LlrObservationProcessor:
 
     @property
     def ephemeris_file(self) -> str:
-        return str(self.measurement.ephemeris.source_file)
+        return str(self.measurement.ephemeris.source_file_path)
 
     def _with_progress(
         self,

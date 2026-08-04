@@ -59,7 +59,7 @@ class LlrMeasurement:
         moon_velocity = self.ephemeris.body_state_bcrs(
             "MOON", solution.bounce_epoch
         ).velocity_mps
-        external_potential = self.frames.external_potential(
+        external_potential = self.frames.external_gravitational_potential_m2_s2(
             "MOON",
             solution.bounce_epoch,
             MOON_EXTERNAL_POTENTIAL_BODIES,

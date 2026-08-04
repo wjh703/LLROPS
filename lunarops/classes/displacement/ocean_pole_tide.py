@@ -9,7 +9,7 @@ from typing import Sequence, TextIO
 import numpy as np
 
 from lunarops.base.array_validation import readonly_vector3
-from lunarops.classes.frames.earth_orientation import EarthOrientation
+from lunarops.classes.frames.earth_orientation import EarthOrientationProvider
 
 from .base import StationDisplacementInput
 from .terrestrial_geometry import enu2itrf, itrf2geodetic
@@ -238,13 +238,25 @@ class Iers2010OceanPoleTide:
     def __init__(
         self,
         grid: OceanPoleTideGrid,
-        earth_orientation: EarthOrientation,
+        earth_orientation_provider: EarthOrientationProvider | None = None,
         load_love_combination: complex = _LOAD_LOVE_COMBINATION,
+        *,
+        earth_orientation: EarthOrientationProvider | None = None,
     ) -> None:
         if not isinstance(grid, OceanPoleTideGrid):
             raise TypeError("grid must be an OceanPoleTideGrid.")
-        if not isinstance(earth_orientation, EarthOrientation):
-            raise TypeError("earth_orientation must implement EarthOrientation.")
+        if earth_orientation_provider is not None and earth_orientation is not None:
+            raise ValueError(
+                "Specify only one of earth_orientation_provider or earth_orientation."
+            )
+        if earth_orientation_provider is None:
+            earth_orientation_provider = earth_orientation
+        if earth_orientation_provider is None:
+            raise TypeError("earth_orientation_provider is required.")
+        if not isinstance(earth_orientation_provider, EarthOrientationProvider):
+            raise TypeError(
+                "earth_orientation_provider must be an EarthOrientationProvider instance."
+            )
         try:
             load_love_combination = complex(load_love_combination)
         except (TypeError, ValueError) as exc:
@@ -270,13 +282,14 @@ class Iers2010OceanPoleTide:
             / (3.0 * _EQUATORIAL_GRAVITY_M_S2)
         )
         self.grid = grid
-        self.earth_orientation = earth_orientation
+        self.earth_orientation_provider = earth_orientation_provider
+        self.earth_orientation = earth_orientation_provider
         self.load_love_combination = load_love_combination
         self.scale_m = float(scale_m)
 
     def evaluate(self, data: StationDisplacementInput) -> OceanPoleTideResult:
         coefficients = self.grid.coefficients_at(data.reference_position_itrf_m)
-        wobble = polar_wobble(data.epoch_utc, self.earth_orientation)
+        wobble = polar_wobble(data.epoch_utc, self.earth_orientation_provider)
         gamma_real = float(self.load_love_combination.real)
         gamma_imag = float(self.load_love_combination.imag)
         factor_real = wobble.m1_rad * gamma_real + wobble.m2_rad * gamma_imag

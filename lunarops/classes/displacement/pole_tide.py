@@ -7,7 +7,7 @@ import numpy as np
 
 from lunarops.base.array_validation import readonly_vector3
 from lunarops.base.epoch import Epoch, TimeScale
-from lunarops.classes.frames.earth_orientation import EarthOrientation
+from lunarops.classes.frames.earth_orientation import EarthOrientationProvider
 
 from .base import StationDisplacementInput
 from .terrestrial_geometry import enu2itrf, itrf2geocentric
@@ -66,9 +66,12 @@ def secular_pole_2018_arcsec(epoch_utc: Epoch) -> tuple[float, float]:
     )
 
 
-def polar_wobble(epoch_utc: Epoch, earth_orientation: EarthOrientation) -> PolarWobble:
+def polar_wobble(
+    epoch_utc: Epoch,
+    earth_orientation_provider: EarthOrientationProvider,
+) -> PolarWobble:
     """Read polar motion and form the IERS wobble variables."""
-    pole = earth_orientation.polar_motion(epoch_utc)
+    pole = earth_orientation_provider.polar_motion(epoch_utc)
     xp_arcsec = pole.xp_arcsec
     yp_arcsec = pole.yp_arcsec
     secular_x, secular_y = secular_pole_2018_arcsec(epoch_utc)
@@ -85,15 +88,31 @@ def polar_wobble(epoch_utc: Epoch, earth_orientation: EarthOrientation) -> Polar
 class Iers2010SolidEarthPoleTide:
     """Solid-Earth pole tide using an explicitly supplied IERS table."""
 
-    def __init__(self, earth_orientation: EarthOrientation) -> None:
-        if not isinstance(earth_orientation, EarthOrientation):
-            raise TypeError("earth_orientation must implement EarthOrientation.")
-        self.earth_orientation = earth_orientation
+    def __init__(
+        self,
+        earth_orientation_provider: EarthOrientationProvider | None = None,
+        *,
+        earth_orientation: EarthOrientationProvider | None = None,
+    ) -> None:
+        if earth_orientation_provider is not None and earth_orientation is not None:
+            raise ValueError(
+                "Specify only one of earth_orientation_provider or earth_orientation."
+            )
+        if earth_orientation_provider is None:
+            earth_orientation_provider = earth_orientation
+        if earth_orientation_provider is None:
+            raise TypeError("earth_orientation_provider is required.")
+        if not isinstance(earth_orientation_provider, EarthOrientationProvider):
+            raise TypeError(
+                "earth_orientation_provider must be an EarthOrientationProvider instance."
+            )
+        self.earth_orientation_provider = earth_orientation_provider
+        self.earth_orientation = earth_orientation_provider
 
     def evaluate(self, data: StationDisplacementInput) -> PoleTideResult:
         latitude_rad, longitude_rad = itrf2geocentric(data.reference_position_itrf_m)
         theta = 0.5 * np.pi - latitude_rad
-        wobble = polar_wobble(data.epoch_utc, self.earth_orientation)
+        wobble = polar_wobble(data.epoch_utc, self.earth_orientation_provider)
 
         sin_lon = np.sin(longitude_rad)
         cos_lon = np.cos(longitude_rad)

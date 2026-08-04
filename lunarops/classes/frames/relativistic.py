@@ -24,33 +24,78 @@ class RelativisticFrameTransform:
             raise TypeError("ephemeris must implement Ephemeris.")
         self.ephemeris = ephemeris
 
+    @staticmethod
+    def _normalize_body_name(value: str, *, parameter_name: str) -> str:
+        if not isinstance(value, str):
+            raise TypeError(f"{parameter_name} must contain body-name strings.")
+        name = value.strip().upper()
+        if not name:
+            raise ValueError(f"{parameter_name} must not contain empty body names.")
+        return name
+
+    def external_gravitational_potential_m2_s2(
+        self,
+        center_body_name: str,
+        epoch_tdb: Epoch,
+        perturbing_body_names: Iterable[str],
+    ) -> float:
+        epoch = require_tdb_epoch(epoch_tdb, name="epoch_tdb")
+        center_name = self._normalize_body_name(
+            center_body_name,
+            parameter_name="center_body_name",
+        )
+        if isinstance(perturbing_body_names, str):
+            raw_names = (perturbing_body_names,)
+        else:
+            raw_names = tuple(perturbing_body_names)
+        names = tuple(
+            dict.fromkeys(
+                self._normalize_body_name(name, parameter_name="perturbing_body_names")
+                for name in raw_names
+            )
+        )
+        if center_name in names:
+            raise ValueError(
+                "center_body_name must not also appear in perturbing_body_names."
+            )
+        center_position = self.ephemeris.body_position_bcrs(center_name, epoch)
+        total = 0.0
+        for body_name in names:
+            try:
+                gm = GM_BY_BODY[body_name]
+            except KeyError:
+                raise KeyError(
+                    "No gravitational parameter configured for body "
+                    f"{body_name!r}."
+                ) from None
+            displacement = self.ephemeris.body_position_bcrs(body_name, epoch) - center_position
+            distance = float(np.linalg.norm(displacement))
+            if distance <= 0.0:
+                raise RuntimeError(
+                    "Ephemeris returned coincident positions for "
+                    f"{center_name!r} and {body_name!r}."
+                )
+            total += gm / distance
+        return float(total)
+
     def external_potential(
         self,
         center: str,
         epoch_tdb: Epoch,
         bodies: Iterable[str],
     ) -> float:
-        epoch = require_tdb_epoch(epoch_tdb, name="epoch_tdb")
-        center_position = self.ephemeris.body_position_bcrs(center, epoch)
-        total = 0.0
-        for body in bodies:
-            key = str(body).strip().upper()
-            try:
-                gm = GM_BY_BODY[key]
-            except KeyError:
-                raise KeyError(f"No gravitational parameter configured for body {body!r}.") from None
-            displacement = self.ephemeris.body_position_bcrs(body, epoch) - center_position
-            distance = float(np.linalg.norm(displacement))
-            if distance <= 0.0:
-                raise RuntimeError(f"Ephemeris returned coincident positions for {center!r} and {body!r}.")
-            total += gm / distance
-        return float(total)
+        """Backward-compatible alias for the explicit potential API."""
+        return self.external_gravitational_potential_m2_s2(
+            center,
+            epoch_tdb,
+            bodies,
+        )
 
     def gcrs2bcrs(self, position_gcrs_m: Sequence[float], epoch_tdb: Epoch) -> np.ndarray:
         epoch = require_tdb_epoch(epoch_tdb, name="epoch_tdb")
         earth = self.ephemeris.body_state_bcrs("EARTH", epoch)
         position = vector3(position_gcrs_m, name="position_gcrs_m")
-        potential = self.external_potential(
+        potential = self.external_gravitational_potential_m2_s2(
             "EARTH",
             epoch,
             EARTH_EXTERNAL_POTENTIAL_BODIES,
@@ -66,7 +111,7 @@ class RelativisticFrameTransform:
         epoch = require_tdb_epoch(epoch_tdb, name="epoch_tdb")
         earth = self.ephemeris.body_state_bcrs("EARTH", epoch)
         relative = vector3(position_bcrs_m, name="position_bcrs_m") - earth.position_m
-        potential = self.external_potential(
+        potential = self.external_gravitational_potential_m2_s2(
             "EARTH",
             epoch,
             EARTH_EXTERNAL_POTENTIAL_BODIES,
@@ -81,7 +126,7 @@ class RelativisticFrameTransform:
         epoch = require_tdb_epoch(epoch_tdb, name="epoch_tdb")
         moon = self.ephemeris.body_state_bcrs("MOON", epoch)
         position = vector3(position_lcrs_m, name="position_lcrs_m")
-        potential = self.external_potential(
+        potential = self.external_gravitational_potential_m2_s2(
             "MOON",
             epoch,
             MOON_EXTERNAL_POTENTIAL_BODIES,
@@ -97,7 +142,7 @@ class RelativisticFrameTransform:
         epoch = require_tdb_epoch(epoch_tdb, name="epoch_tdb")
         moon = self.ephemeris.body_state_bcrs("MOON", epoch)
         relative = vector3(position_bcrs_m, name="position_bcrs_m") - moon.position_m
-        potential = self.external_potential(
+        potential = self.external_gravitational_potential_m2_s2(
             "MOON",
             epoch,
             MOON_EXTERNAL_POTENTIAL_BODIES,
@@ -110,6 +155,9 @@ class RelativisticFrameTransform:
 
     def lcrs2gcrs(self, position_lcrs_m: Sequence[float], epoch_tdb: Epoch) -> np.ndarray:
         return self.bcrs2gcrs(self.lcrs2bcrs(position_lcrs_m, epoch_tdb), epoch_tdb)
+
+    def gcrs2lcrs(self, position_gcrs_m: Sequence[float], epoch_tdb: Epoch) -> np.ndarray:
+        return self.bcrs2lcrs(self.gcrs2bcrs(position_gcrs_m, epoch_tdb), epoch_tdb)
 
 
 __all__ = ["RelativisticFrameTransform"]

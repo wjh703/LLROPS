@@ -50,7 +50,7 @@ class Iers2010SolidEarthTide:
 
     def displacement_itrf_m(self, data: StationDisplacementInput) -> np.ndarray:
         epoch_utc = data.epoch_utc.require_scale(TimeScale.UTC, name="epoch_utc")
-        epoch_tdb = self.frames.time_converter.convert(epoch_utc, TimeScale.TDB)
+        epoch_tdb = self.frames.time_scale_converter.convert(epoch_utc, TimeScale.TDB)
         sun_itrf_m = self._body_itrf_m("SUN", epoch_utc, epoch_tdb)
         moon_itrf_m = self._body_itrf_m("MOON", epoch_utc, epoch_tdb)
         year, month, day, fractional_hour = self._utc_calendar(epoch_utc)

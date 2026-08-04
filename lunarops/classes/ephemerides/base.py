@@ -62,6 +62,11 @@ class Ephemeris(ABC):
     def source_file(self) -> Path | None:
         return None
 
+    @property
+    def source_file_path(self) -> Path | None:
+        """Return the source path using the explicit path-oriented API."""
+        return self.source_file
+
     @abstractmethod
     def body_state_bcrs(self, body_name: str, epoch_tdb: Epoch) -> BodyState:
         """Return a body's SSB-relative BCRS state at a TDB epoch."""

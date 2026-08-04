@@ -213,7 +213,8 @@ class LightTimeSolver:
         if float(tolerance_s) <= 0.0:
             raise ValueError("tolerance_s must be positive.")
         self.frames = frames
-        self.time_converter = frames.time_converter
+        self.time_scale_converter = frames.time_scale_converter
+        self.time_converter = self.time_scale_converter
         self.gravitational_delay = gravitational_delay or ZeroGravitationalDelay()
         self.troposphere_delay = troposphere_delay
         self.station_displacement = station_displacement or ZeroStationDisplacement()
@@ -284,10 +285,10 @@ class LightTimeSolver:
     ) -> _StationEventState:
         """Resolve the station UTC epoch including the topocentric TDB-TT term."""
         epoch_tdb.require_scale(TimeScale.TDB, name="epoch_tdb")
-        epoch_utc = self.time_converter.convert(epoch_tdb, TimeScale.UTC)
+        epoch_utc = self.time_scale_converter.convert(epoch_tdb, TimeScale.UTC)
         state = self._station_state_at_utc(request, epoch_utc)
         for _ in range(3):
-            updated_utc = self.time_converter.convert(
+            updated_utc = self.time_scale_converter.convert(
                 epoch_tdb,
                 TimeScale.UTC,
                 station_gcrs_m=state.position_gcrs_m,
@@ -340,7 +341,7 @@ class LightTimeSolver:
 
         transmit_utc = request.transmit_epoch
         transmit_station = self._station_state_at_utc(request, transmit_utc)
-        transmit_tdb = self.time_converter.convert(
+        transmit_tdb = self.time_scale_converter.convert(
             transmit_utc,
             TimeScale.TDB,
             station_gcrs_m=transmit_station.position_gcrs_m,
@@ -479,11 +480,11 @@ class LightTimeSolver:
             final_state.bounce_epoch,
         )
 
-        transmit_tt = self.time_converter.tdb2tt(
+        transmit_tt = self.time_scale_converter.tdb2tt(
             final_state.transmit_epoch,
             station_gcrs_m=transmit_station.position_gcrs_m,
         )
-        receive_tt = self.time_converter.tdb2tt(
+        receive_tt = self.time_scale_converter.tdb2tt(
             final_state.receive_epoch,
             station_gcrs_m=receive_station.position_gcrs_m,
         )
