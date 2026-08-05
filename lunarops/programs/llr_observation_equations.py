@@ -43,7 +43,7 @@ def llr_observation_equations(config: dict, context: RunContext):
         source_by_identity=source_by_identity,
         metadata={
             "sources": sorted(datasets),
-            "ephemeris": str(processor.ephemeris_file_path),
+            "ephemeris": str(processor.observation_model.ephemeris.source_file_path),
             "compatibility": model_compatibility_fingerprint(config, context),
         },
     )

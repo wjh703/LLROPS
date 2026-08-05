@@ -127,8 +127,8 @@ def build_equation_source(config, context, datasets, processor):
         spec = make_observation_spec(
             config,
             context,
-            station_catalog=processor.station_catalog,
-            reflector_catalog=processor.reflector_catalog,
+            station_catalog=processor.model_state.station_catalog,
+            reflector_catalog=processor.model_state.reflector_catalog,
         )
         chunksize = int((config.get("mpi") or {}).get("chunksize", 8))
 

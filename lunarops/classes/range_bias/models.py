@@ -4,89 +4,99 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Sequence
-
-import numpy as np
+from datetime import date
 
 from lunarops.base.constants import C
-from lunarops.base.epoch import Epoch
-from lunarops.classes.range_bias.table import RangeBiasTable
+from lunarops.base.epoch import Epoch, TimeScale
+
+from .table import AdditiveRangeBiasTable, RangeBiasLookup, RangeBiasLookupStatus
+
+
+@dataclass(frozen=True, slots=True)
+class RangeBiasRequest:
+    """Validated inputs for one range-bias evaluation."""
+
+    station_identifiers: tuple[str, ...]
+    observation_epoch_utc: Epoch
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.station_identifiers, tuple) or not self.station_identifiers:
+            raise TypeError("station_identifiers must be a non-empty tuple of strings.")
+        if any(not isinstance(identifier, str) or not identifier.strip() for identifier in self.station_identifiers):
+            raise TypeError("station_identifiers must contain non-empty strings.")
+        if not isinstance(self.observation_epoch_utc, Epoch):
+            raise TypeError("observation_epoch_utc must be an Epoch.")
+        self.observation_epoch_utc.require_scale(TimeScale.UTC, name="observation_epoch_utc")
+        object.__setattr__(
+            self, "station_identifiers", tuple(identifier.strip() for identifier in self.station_identifiers)
+        )
 
 
 @dataclass(frozen=True, slots=True)
 class RangeBiasCorrection:
-    model: str
-    two_way_cm: float
+    """A range-bias lookup and its derived light-time corrections."""
 
-    def __post_init__(self) -> None:
-        model = str(self.model).strip()
-        value = float(self.two_way_cm)
-        if not model:
-            raise ValueError("Range-bias model name must not be empty.")
-        if not np.isfinite(value):
-            raise ValueError("two_way_cm must be finite.")
-        object.__setattr__(self, "model", model)
-        object.__setattr__(self, "two_way_cm", value)
+    model_label: str
+    lookup: RangeBiasLookup
 
     @property
-    def two_way_m(self) -> float:
-        return 0.01 * self.two_way_cm
+    def correction_two_way_cm(self) -> float:
+        return self.lookup.correction_two_way_cm
 
     @property
-    def two_way_s(self) -> float:
-        return self.two_way_m / C
+    def correction_two_way_m(self) -> float:
+        return 0.01 * self.correction_two_way_cm
 
     @property
-    def one_way_m(self) -> float:
-        return 0.5 * self.two_way_m
+    def correction_round_trip_time_s(self) -> float:
+        return self.correction_two_way_m / C
+
+    @property
+    def correction_one_way_m(self) -> float:
+        return 0.5 * self.correction_two_way_m
+
+    def apply_to_computed_round_trip_time_s(self, computed_round_trip_time_s: float) -> float:
+        return float(computed_round_trip_time_s) - self.correction_round_trip_time_s
 
 
 class RangeBiasModel(ABC):
     @abstractmethod
-    def correction(
-        self,
-        station_candidates: Sequence[str],
-        epoch_utc: Epoch,
-    ) -> RangeBiasCorrection:
-        """Return the correction applied to the calculated two-way observable."""
+    def evaluate(self, request: RangeBiasRequest) -> RangeBiasCorrection:
+        """Evaluate one range-bias request."""
 
 
 class ZeroRangeBiasModel(RangeBiasModel):
-    def __init__(self, name: str = "none") -> None:
-        self.name = name
+    model_label = "none"
 
-    def correction(
-        self,
-        station_candidates: Sequence[str],
-        epoch_utc: Epoch,
-    ) -> RangeBiasCorrection:
-        return RangeBiasCorrection(self.name, 0.0)
+    def evaluate(self, request: RangeBiasRequest) -> RangeBiasCorrection:
+        day = date.fromisoformat(request.observation_epoch_utc.date_iso())
+        lookup = RangeBiasLookup(
+            requested_station_identifiers=request.station_identifiers,
+            matched_station_id=None,
+            observation_date_utc=day,
+            active_components=(),
+            status=RangeBiasLookupStatus.EXPLICIT_ZERO,
+        )
+        return RangeBiasCorrection(self.model_label, lookup)
 
 
 class TableRangeBiasModel(RangeBiasModel):
-    def __init__(self, table: RangeBiasTable) -> None:
-        if not isinstance(table, RangeBiasTable):
-            raise TypeError("table must be a RangeBiasTable.")
-        self.table = table
+    def __init__(self, bias_table: AdditiveRangeBiasTable) -> None:
+        self.bias_table = bias_table
 
     @property
     def model_label(self) -> str:
-        return self.table.source or "range-bias table"
+        return self.bias_table.source or "additive range-bias table"
 
-    def correction(
-        self,
-        station_candidates: Sequence[str],
-        epoch_utc: Epoch,
-    ) -> RangeBiasCorrection:
-        return RangeBiasCorrection(
-            self.model_label,
-            self.table.two_way_cm(list(station_candidates), epoch_utc),
-        )
+    def evaluate(self, request: RangeBiasRequest) -> RangeBiasCorrection:
+        lookup = self.bias_table.lookup(request.station_identifiers, request.observation_epoch_utc)
+        return RangeBiasCorrection(self.model_label, lookup)
 
 
 __all__ = [
     "RangeBiasCorrection",
     "RangeBiasModel",
+    "RangeBiasRequest",
     "TableRangeBiasModel",
     "ZeroRangeBiasModel",
 ]

@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Sequence
+from collections.abc import Sequence
 
 import numpy as np
 
-from lunarops.base.parameter_name import ParameterName
 from lunarops.base.array_validation import parameter_vector
-from lunarops.config.registry import register
+from lunarops.base.parameter_name import ParameterName
 from lunarops.classes.observation.equations import ObservationEquation
 from lunarops.classes.observation.resolver import ObservationCatalogState
+from lunarops.config.registry import register
+
 from .base import Parametrization
 
 _AXES = ("x", "y", "z")
@@ -29,7 +30,7 @@ class ReflectorPositionParametrization(Parametrization):
     owns the coordinates updated between nonlinear iterations.
     """
 
-    def __init__(self, *, reflectors: Optional[Sequence[str]] = None) -> None:
+    def __init__(self, *, reflectors: Sequence[str] | None = None) -> None:
         if isinstance(reflectors, (str, bytes)):
             raise TypeError("reflectorPosition reflectors must be a sequence of strings.")
         if reflectors is not None and not isinstance(reflectors, Sequence):
@@ -52,13 +53,13 @@ class ReflectorPositionParametrization(Parametrization):
                     "reflectorPosition reflectors must not be empty; omit it to estimate all observed keys."
                 )
         self.requested = requested
-        self.keys: List[str] = []
-        self._index_by_key: Dict[str, int] = {}
-        self._names: List[ParameterName] = []
+        self.keys: list[str] = []
+        self._index_by_key: dict[str, int] = {}
+        self._names: list[ParameterName] = []
         self._model_state: ObservationCatalogState | None = None
 
     @classmethod
-    def from_config(cls, config: dict, context) -> "ReflectorPositionParametrization":
+    def from_config(cls, config: dict, context) -> ReflectorPositionParametrization:
         unknown = set(config) - {"type", "reflectors"}
         if unknown:
             raise ValueError(f"reflectorPosition has unknown key(s) {sorted(unknown)}.")
@@ -88,7 +89,7 @@ class ReflectorPositionParametrization(Parametrization):
         self._index_by_key = {key: index for index, key in enumerate(self.keys)}
         self._names = [ParameterName(key, f"position.{axis}") for key in self.keys for axis in _AXES]
 
-    def parameter_names(self) -> List[ParameterName]:
+    def parameter_names(self) -> list[ParameterName]:
         return list(self._names)
 
     def _partial_block(self, eq: ObservationEquation) -> tuple[int | None, np.ndarray | None]:
@@ -134,7 +135,7 @@ class ReflectorPositionParametrization(Parametrization):
             return 0.0
         return max(float(np.linalg.norm(delta[3 * j : 3 * j + 3])) for j in range(len(self.keys)))
 
-    def state(self) -> Dict[str, object]:
+    def state(self) -> dict[str, object]:
         if self._model_state is None:
             return {}
         return {

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol, Sequence, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 import numpy as np
 
-from lunarops.base.epoch import Epoch, TimeScale
 from lunarops.base.array_validation import readonly_vector3
+from lunarops.base.epoch import Epoch, TimeScale
 from lunarops.base.station_identity import canonical_station_id
 
 
@@ -87,8 +88,10 @@ class ZeroReflectorDisplacement:
 
 
 class CompositeStationDisplacement:
-    def __init__(self, components: Sequence[StationDisplacement] = ()) -> None:
+    def __init__(self, components: Sequence[StationDisplacement]) -> None:
         normalized = tuple(components)
+        if not normalized:
+            raise ValueError("CompositeStationDisplacement requires at least one component.")
         for index, component in enumerate(normalized):
             if component is None:
                 raise TypeError(

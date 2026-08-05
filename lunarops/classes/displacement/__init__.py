@@ -10,6 +10,13 @@ from .base import (
     ZeroStationDisplacement,
 )
 from .lunar_solid_tide import LunarSolidTide
+from .ocean_pole_tide import (
+    Iers2010OceanPoleTide,
+    OceanPoleTideCoefficients,
+    OceanPoleTideGrid,
+    OceanPoleTideGridInfo,
+    OceanPoleTideResult,
+)
 from .ocean_tidal_loading import (
     BLQ_NATIVE_COMPONENT_NAMES,
     BLQ_TIDE_NAMES,
@@ -18,13 +25,6 @@ from .ocean_tidal_loading import (
     OceanTidalLoadingCatalogInfo,
     OceanTidalLoadingCoefficients,
     OceanTidalLoadingResult,
-)
-from .ocean_pole_tide import (
-    Iers2010OceanPoleTide,
-    OceanPoleTideCoefficients,
-    OceanPoleTideGrid,
-    OceanPoleTideGridInfo,
-    OceanPoleTideResult,
 )
 from .pole_tide import (
     Iers2010SolidEarthPoleTide,
@@ -39,8 +39,8 @@ __all__ = [
     "BLQ_NATIVE_COMPONENT_NAMES",
     "BLQ_TIDE_NAMES",
     "CompositeStationDisplacement",
-    "Iers2010OceanTidalLoading",
     "Iers2010OceanPoleTide",
+    "Iers2010OceanTidalLoading",
     "Iers2010SolidEarthPoleTide",
     "Iers2010SolidEarthTide",
     "LunarSolidTide",

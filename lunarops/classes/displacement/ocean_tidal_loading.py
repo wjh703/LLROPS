@@ -2,22 +2,21 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import gzip
-from pathlib import Path
 import re
+from dataclasses import dataclass
+from pathlib import Path
 from typing import TextIO
 
 import numpy as np
 
-import lunarops._iers2010 as _iers2010  # pyright: ignore[reportMissingModuleSource]
+from lunarops import _iers2010  # pyright: ignore[reportMissingModuleSource]
 from lunarops.base.array_validation import readonly_vector3
 from lunarops.base.epoch import Epoch, TimeScale
 from lunarops.base.station_identity import canonical_station_id, normalize_station_key
 
 from .base import StationDisplacementInput
 from .terrestrial_geometry import enu2itrf, itrf2geodetic
-
 
 BLQ_TIDE_NAMES = ("M2", "S2", "N2", "K2", "K1", "O1", "P1", "Q1", "MF", "MM", "SSA")
 BLQ_NATIVE_COMPONENT_NAMES = ("up", "west", "south")
@@ -121,7 +120,7 @@ class OceanTidalLoadingCatalog:
     declaration is present, it must exactly match the 11 HARDISP constituents.
     """
 
-    __slots__ = ("coefficient_file", "_coefficients", "_info")
+    __slots__ = ("_coefficients", "_info", "coefficient_file")
 
     def __init__(self, coefficient_file: str | Path) -> None:
         path = Path(coefficient_file).expanduser()

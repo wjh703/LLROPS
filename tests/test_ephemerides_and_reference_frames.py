@@ -6,7 +6,6 @@ import numpy as np
 import pytest
 
 from lunarops.base.epoch import Epoch, TimeScale
-from lunarops.classes.time_scale_converter import TimeScaleConverter
 from lunarops.classes.delays.shapiro import Iers2010ShapiroDelay
 from lunarops.classes.ephemerides import (
     BodyState,
@@ -17,14 +16,15 @@ from lunarops.classes.ephemerides import (
     normalize_longitude_libration_correction_type,
 )
 from lunarops.classes.frames import (
-    EarthOrientationSample,
     EarthOrientationProvider,
+    EarthOrientationSample,
     LunarFrameTransform,
     PolarMotion,
     ReferenceFrameSystem,
     RelativisticFrameTransform,
     TabulatedEarthOrientation,
 )
+from lunarops.classes.time_scale_converter import TimeScaleConverter
 
 
 class _FakeEphemeris(Ephemeris):
@@ -144,7 +144,7 @@ def test_reference_frame_system_owns_one_time_converter():
     )
 
     assert not earth_orientation.installed
-    assert system.ephemeris_file_path == Path("fake.eph")
+    assert system.ephemeris.source_file_path == Path("fake.eph")
     assert isinstance(system.time_scale_converter, TimeScaleConverter)
     assert system.time_scale_converter.ephemeris is ephemeris
     assert np.allclose(system.pa2lcrs([1.0, 0.0, 0.0], _tdb()), [0.0, 1.0, 0.0])
@@ -160,7 +160,7 @@ def test_zero_libration_factory_and_shapiro_use_epoch():
     assert isinstance(correction, LongitudeLibrationCorrectionModel)
     assert correction.correction_rad(epoch, j2000_epoch_tdb=epoch) == 0.0
 
-    model = Iers2010ShapiroDelay(ephemeris=_FakeEphemeris(), bodies=("SUN",))
+    model = Iers2010ShapiroDelay(ephemeris=_FakeEphemeris())
     delay = model.path_delay_m(
         [2.0e11, 0.0, 0.0],
         [3.0e11, 0.0, 0.0],
@@ -183,18 +183,8 @@ def test_ephemeris_exposes_libration_selection_as_enum():
     assert ephemeris.longitude_libration_correction_type is LongitudeLibrationCorrectionType.NONE
 
 
-def test_shapiro_normalizes_body_inputs_and_validates_positions():
-    model = Iers2010ShapiroDelay(
-        ephemeris=_FakeEphemeris(),
-        bodies="SUN",
-    )
-    assert model.bodies == ("SUN",)
-
-    deduplicated = Iers2010ShapiroDelay(
-        ephemeris=_FakeEphemeris(),
-        bodies=("SUN", "SUN", "EARTH"),
-    )
-    assert deduplicated.bodies == ("SUN", "EARTH")
+def test_shapiro_validates_positions():
+    model = Iers2010ShapiroDelay(ephemeris=_FakeEphemeris())
     with pytest.raises(ValueError, match="transmitter_bcrs_m"):
         model.path_delay_m([1.0, 2.0], [3.0, 4.0, 5.0], _tdb())
 
@@ -221,14 +211,10 @@ def test_parse_eop_c04_and_finals_rows(tmp_path):
 
     path = tmp_path / "eop.txt"
     path.write_text(
-        "\n".join(
-            [
-                "# header",
-                "1962 1 1 37665 0.123 0.456 0.789 0.0",
-                "73 1 2 41684.00 I 0.120733 0.009786 0.136966 0.015902 I 0.8084176 0.0002710 3.5563 0.1916",
-                "2020 1 1 0 58849 0.076 0.282 -0.177",
-            ]
-        ),
+        "# header\n"
+        "1962 1 1 37665 0.123 0.456 0.789 0.0\n"
+        "73 1 2 41684.00 I 0.120733 0.009786 0.136966 0.015902 I 0.8084176 0.0002710 3.5563 0.1916\n"
+        "2020 1 1 0 58849 0.076 0.282 -0.177\n",
         encoding="utf-8",
     )
     samples = read_iers_eop(path)

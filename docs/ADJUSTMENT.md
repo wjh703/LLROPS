@@ -72,7 +72,7 @@ globals:
       - station: APOLLO
         start: 2020-01-01
         end: 2021-01-01
-        biasCm: 1.25
+        correctionTwoWayCm: 1.25
 ```
 
 ## Stages and output

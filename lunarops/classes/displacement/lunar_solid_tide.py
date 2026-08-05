@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 
-from lunarops.classes.relativistic.constants import GM_EARTH, GM_MOON, GM_SUN
 from lunarops.classes.displacement.constants import (
     LUNAR_H2,
     LUNAR_L2,
@@ -12,6 +11,7 @@ from lunarops.classes.displacement.constants import (
 )
 from lunarops.classes.ephemerides import Ephemeris, require_tdb_epoch
 from lunarops.classes.frames.relativistic import RelativisticFrameTransform
+from lunarops.classes.relativistic.constants import GM_EARTH, GM_MOON, GM_SUN
 
 from .base import ReflectorDisplacementInput
 
@@ -25,9 +25,6 @@ class LunarSolidTide:
         h2: float = LUNAR_H2,
         l2: float = LUNAR_L2,
         moon_radius_m: float = MOON_REFERENCE_RADIUS_M,
-        moon_gm_m3_s2: float = GM_MOON,
-        earth_gm_m3_s2: float = GM_EARTH,
-        sun_gm_m3_s2: float = GM_SUN,
     ) -> None:
         if not isinstance(ephemeris, Ephemeris):
             raise TypeError("ephemeris must implement Ephemeris.")
@@ -35,9 +32,6 @@ class LunarSolidTide:
             "h2": h2,
             "l2": l2,
             "moon_radius_m": moon_radius_m,
-            "moon_gm_m3_s2": moon_gm_m3_s2,
-            "earth_gm_m3_s2": earth_gm_m3_s2,
-            "sun_gm_m3_s2": sun_gm_m3_s2,
         }
         normalized: dict[str, float] = {}
         for name, value in scalar_values.items():
@@ -47,21 +41,12 @@ class LunarSolidTide:
                 raise TypeError(f"{name} must be a real scalar.") from exc
             if not np.isfinite(normalized[name]):
                 raise ValueError(f"{name} must be finite.")
-        for name in (
-            "moon_radius_m",
-            "moon_gm_m3_s2",
-            "earth_gm_m3_s2",
-            "sun_gm_m3_s2",
-        ):
-            if normalized[name] <= 0.0:
-                raise ValueError(f"{name} must be positive.")
+        if normalized["moon_radius_m"] <= 0.0:
+            raise ValueError("moon_radius_m must be positive.")
         self.ephemeris = ephemeris
         self.h2 = normalized["h2"]
         self.l2 = normalized["l2"]
         self.moon_radius_m = normalized["moon_radius_m"]
-        self.moon_gm_m3_s2 = normalized["moon_gm_m3_s2"]
-        self.earth_gm_m3_s2 = normalized["earth_gm_m3_s2"]
-        self.sun_gm_m3_s2 = normalized["sun_gm_m3_s2"]
 
     def displacement_lcrs_m(self, data: ReflectorDisplacementInput) -> np.ndarray:
         epoch = require_tdb_epoch(data.epoch_tdb, name="data.epoch_tdb")
@@ -89,10 +74,10 @@ class LunarSolidTide:
             cosine = float(np.dot(body_direction, reflector_direction))
             radial = 0.5 * self.h2 * (3.0 * cosine * cosine - 1.0) * reflector_direction
             tangential = 3.0 * self.l2 * cosine * (body_direction - cosine * reflector_direction)
-            scale = body_gm_m3_s2 * self.moon_radius_m**4 / (self.moon_gm_m3_s2 * distance_m**3)
+            scale = body_gm_m3_s2 * self.moon_radius_m**4 / (GM_MOON * distance_m**3)
             return scale * (radial + tangential)
 
-        return body_term(earth_lcrs, self.earth_gm_m3_s2) + body_term(
+        return body_term(earth_lcrs, GM_EARTH) + body_term(
             sun_lcrs,
-            self.sun_gm_m3_s2,
+            GM_SUN,
         )

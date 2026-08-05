@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-from typing import Iterable
-
 import numpy as np
 from numpy.typing import ArrayLike
 
-from lunarops.base.constants import C2
 from lunarops.base.array_validation import vector3
-from lunarops.classes.relativistic.constants import GM_BY_BODY
+from lunarops.base.constants import C2
 from lunarops.base.epoch import Epoch
-from lunarops.classes.ephemerides import Ephemeris, require_tdb_epoch
 from lunarops.classes.delays.base import GravitationalDelay
-
+from lunarops.classes.ephemerides import Ephemeris, require_tdb_epoch
+from lunarops.classes.relativistic.constants import GM_BY_BODY
 
 # IERS Conventions 2010 S11.2 (Eq. 11.17) one-way path delay used for LLR.
 # Pavlov, Williams & Suvorkin (2016) S4 explicitly include Sun, Earth, Moon,
@@ -28,23 +25,10 @@ _DEFAULT_LLR_SHAPIRO_BODIES = (
 class Iers2010ShapiroDelay(GravitationalDelay):
     """IERS 2010 Eq. (11.17) one-way gravitational path delay."""
 
-    def __init__(
-        self,
-        ephemeris: Ephemeris,
-        bodies: Iterable[str] = _DEFAULT_LLR_SHAPIRO_BODIES,
-    ) -> None:
+    def __init__(self, ephemeris: Ephemeris) -> None:
         if not isinstance(ephemeris, Ephemeris):
             raise TypeError("ephemeris must implement Ephemeris.")
-        if isinstance(bodies, str):
-            bodies = (bodies,)
-        normalized_bodies = tuple(dict.fromkeys(str(body).strip().upper() for body in bodies))
-        if not normalized_bodies:
-            raise ValueError("Iers2010ShapiroDelay requires at least one gravitating body.")
-        unknown = [body for body in normalized_bodies if body not in GM_BY_BODY]
-        if unknown:
-            raise KeyError(f"No gravitational parameter configured for: {unknown!r}")
         self.ephemeris = ephemeris
-        self.bodies = normalized_bodies
 
     def _body_position_bcrs(self, body: str, epoch: Epoch) -> np.ndarray:
         return vector3(
@@ -64,7 +48,7 @@ class Iers2010ShapiroDelay(GravitationalDelay):
         rho = float(np.linalg.norm(x2 - x1))
 
         total = 0.0
-        for body in self.bodies:
+        for body in _DEFAULT_LLR_SHAPIRO_BODIES:
             xb = self._body_position_bcrs(body, epoch)
             r1 = float(np.linalg.norm(x1 - xb))
             r2 = float(np.linalg.norm(x2 - xb))

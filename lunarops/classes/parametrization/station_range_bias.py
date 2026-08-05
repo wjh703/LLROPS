@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
-from collections.abc import Callable, Mapping, Sequence
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -17,7 +16,6 @@ from lunarops.classes.observation.equations import ObservationEquation
 from lunarops.config.registry import register
 
 from .base import Parametrization
-
 
 _MODES = {"station", "station+interval"}
 
@@ -39,8 +37,8 @@ def _iso_date(value: object, field: str) -> date:
 class StationBiasInterval:
     station: str
     start: date
-    end_exclusive: Optional[date]
-    name: Optional[str] = None
+    end_exclusive: date | None
+    name: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.station, str):
@@ -80,13 +78,13 @@ class StationBiasInterval:
         return self.start <= epoch_date and (self.end_exclusive is None or epoch_date < self.end_exclusive)
 
 
-def parse_station_bias_intervals(config_value: object) -> List[StationBiasInterval]:
+def parse_station_bias_intervals(config_value: object) -> list[StationBiasInterval]:
     """Parse the canonical list-of-mappings interval schema."""
     if config_value is None:
         return []
     if isinstance(config_value, (str, bytes)) or not isinstance(config_value, Sequence):
         raise TypeError("stationRangeBias intervals must be a sequence of mappings.")
-    intervals: List[StationBiasInterval] = []
+    intervals: list[StationBiasInterval] = []
     for index, item in enumerate(config_value):
         if not isinstance(item, Mapping):
             raise TypeError(f"stationRangeBias intervals[{index}] must be a mapping.")
@@ -122,8 +120,8 @@ def active_station_bias_interval_keys(
     intervals: Sequence[StationBiasInterval],
     eq: ObservationEquation,
     *,
-    requested: Optional[set[str]] = None,
-) -> Tuple[str, ...]:
+    requested: set[str] | None = None,
+) -> tuple[str, ...]:
     station = canonical_station_for_equation(eq)
     if requested is not None and station not in requested:
         return ()
@@ -134,19 +132,6 @@ def active_station_bias_interval_keys(
     )
 
 
-def _station_range_bias_coefficient(eq: ObservationEquation) -> float:
-    raw = eq.design_partials.get("station_range_bias")
-    if raw is None:
-        return 1.0
-    values = np.asarray(raw, dtype=float).reshape(-1)
-    if values.size != 1:
-        raise ValueError("Observation equation 'station_range_bias' partial must contain exactly one scalar.")
-    coefficient = float(values[0])
-    if not np.isfinite(coefficient):
-        raise ValueError("Observation equation 'station_range_bias' partial must be finite.")
-    return coefficient
-
-
 @register("parametrization", "stationRangeBias")
 class StationRangeBiasParametrization(Parametrization):
     """Estimate one-way station biases by station or explicit interval."""
@@ -154,9 +139,9 @@ class StationRangeBiasParametrization(Parametrization):
     def __init__(
         self,
         *,
-        stations: Optional[Sequence[str]] = None,
+        stations: Sequence[str] | None = None,
         per: str = "station",
-        intervals: Optional[Sequence[Mapping[str, object]]] = None,
+        intervals: Sequence[Mapping[str, object]] | None = None,
     ) -> None:
         if per not in _MODES:
             raise ValueError(f"stationRangeBias per must be one of {sorted(_MODES)}, got {per!r}.")
@@ -178,13 +163,13 @@ class StationRangeBiasParametrization(Parametrization):
         self.requested = None if stations is None else [canonical_station_id(station) for station in stations]
         if self.requested is not None and len(set(self.requested)) != len(self.requested):
             raise ValueError("stationRangeBias stations must be unique.")
-        self.keys: List[str] = []
-        self._index_by_key: Dict[str, int] = {}
-        self._names: List[ParameterName] = []
-        self.values: Dict[str, float] = {}
+        self.keys: list[str] = []
+        self._index_by_key: dict[str, int] = {}
+        self._names: list[ParameterName] = []
+        self.values: dict[str, float] = {}
 
     @classmethod
-    def from_config(cls, config: dict, context) -> "StationRangeBiasParametrization":
+    def from_config(cls, config: dict, context) -> StationRangeBiasParametrization:
         unknown = set(config) - {"type", "stations", "per", "intervals"}
         if unknown:
             raise ValueError(f"stationRangeBias has unknown key(s) {sorted(unknown)}.")
@@ -194,13 +179,13 @@ class StationRangeBiasParametrization(Parametrization):
             intervals=config.get("intervals"),
         )
 
-    def _station_key_for(self, eq: ObservationEquation) -> Optional[str]:
+    def _station_key_for(self, eq: ObservationEquation) -> str | None:
         station = canonical_station_for_equation(eq)
         if self.requested is not None and station not in self.requested:
             return None
         return station
 
-    def _active_keys_for(self, eq: ObservationEquation) -> Tuple[str, ...]:
+    def _active_keys_for(self, eq: ObservationEquation) -> tuple[str, ...]:
         if self.per == "station":
             key = self._station_key_for(eq)
             return () if key is None else (key,)
@@ -225,11 +210,11 @@ class StationRangeBiasParametrization(Parametrization):
         self._index_by_key = {key: index for index, key in enumerate(self.keys)}
         self._names = self._build_parameter_names()
 
-    def _build_parameter_names(self) -> List[ParameterName]:
+    def _build_parameter_names(self) -> list[ParameterName]:
         if self.per == "station":
             return [ParameterName(key, "rangeBias") for key in self.keys]
         interval_by_key = {interval.key: interval for interval in self.intervals}
-        names: List[ParameterName] = []
+        names: list[ParameterName] = []
         for key in self.keys:
             interval = interval_by_key[key]
             end = "present" if interval.end_exclusive is None else interval.end_exclusive.isoformat()
@@ -243,7 +228,7 @@ class StationRangeBiasParametrization(Parametrization):
             )
         return names
 
-    def parameter_names(self) -> List[ParameterName]:
+    def parameter_names(self) -> list[ParameterName]:
         return list(self._names)
 
     def design_columns(self, eq: ObservationEquation) -> np.ndarray:
@@ -253,21 +238,14 @@ class StationRangeBiasParametrization(Parametrization):
         return columns
 
     def design_entries(self, eq: ObservationEquation) -> list[tuple[int, float]]:
-        coefficient = _station_range_bias_coefficient(eq)
-        if not coefficient:
-            return []
-        return [
-            (self._index_by_key[key], coefficient) for key in self._active_keys_for(eq) if key in self._index_by_key
-        ]
+        return [(self._index_by_key[key], 1.0) for key in self._active_keys_for(eq) if key in self._index_by_key]
 
     def reduce_observation(self, eq: ObservationEquation) -> float:
-        coefficient = _station_range_bias_coefficient(eq)
-        return coefficient * float(sum(self.values.get(key, 0.0) for key in self._active_keys_for(eq)))
+        return float(sum(self.values.get(key, 0.0) for key in self._active_keys_for(eq)))
 
     def initial_update(
         self,
         equations: Sequence[ObservationEquation],
-        reduced_observation: Callable[[ObservationEquation], float],
         *,
         weight_cap: float,
         maximum_iterations: int,
@@ -276,7 +254,10 @@ class StationRangeBiasParametrization(Parametrization):
         if not parameter_count:
             return np.zeros(0, dtype=float)
         design = np.vstack([self.design_columns(eq) for eq in equations])
-        observations = np.asarray([reduced_observation(eq) for eq in equations], dtype=float)
+        observations = np.asarray(
+            [float(eq.observed_minus_computed_one_way_m) - self.reduce_observation(eq) for eq in equations],
+            dtype=float,
+        )
         formal_weights = np.asarray(
             [min(1.0 / eq.sigma_one_way_m**2, weight_cap) for eq in equations],
             dtype=float,
@@ -319,7 +300,7 @@ class StationRangeBiasParametrization(Parametrization):
         for key, update in zip(self.keys, updates):
             self.values[key] = self.values.get(key, 0.0) + float(update)
 
-    def state(self) -> Dict[str, object]:
+    def state(self) -> dict[str, object]:
         return {
             "per": self.per,
             "intervals": [

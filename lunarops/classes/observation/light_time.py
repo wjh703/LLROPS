@@ -2,31 +2,31 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Callable
+from collections.abc import Callable
+from dataclasses import dataclass
 
 import numpy as np
 from numpy.typing import ArrayLike
 
+from lunarops.base.array_validation import readonly_vector3, vector3
 from lunarops.base.constants import C
 from lunarops.base.epoch import Epoch, TimeScale
-from lunarops.base.array_validation import readonly_vector3, vector3
 from lunarops.classes.delays import (
     GravitationalDelay,
     TroposphereDelay,
     TroposphereInput,
-    ZeroGravitationalDelay,
 )
 from lunarops.classes.displacement import (
     ReflectorDisplacement,
     ReflectorDisplacementInput,
     StationDisplacement,
     StationDisplacementInput,
-    ZeroReflectorDisplacement,
-    ZeroStationDisplacement,
 )
-from lunarops.classes.frames import ReferenceFrameSystem
 from lunarops.classes.displacement.terrestrial_geometry import local_up_unit_itrf
+from lunarops.classes.frames import ReferenceFrameSystem
+
+_MAX_LIGHT_TIME_ITERATIONS = 12
+_ROUND_TRIP_TIME_TOLERANCE_S = 1.0e-12
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,23 +76,13 @@ class TroposphereEnvironment:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class LightTimeRequest:
-    station_reference_itrf_m: np.ndarray
     reflector_reference_pa_m: np.ndarray
     transmit_epoch_utc: Epoch
     troposphere_environment: TroposphereEnvironment
-    station_reference_itrf_at_utc: Callable[[Epoch], ArrayLike] | None = field(
-        default=None,
-        repr=False,
-        compare=False,
-    )
-    station_key: str | None = None
+    station_reference_itrf_at_utc: Callable[[Epoch], ArrayLike]
+    station_key: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self,
-            "station_reference_itrf_m",
-            readonly_vector3(self.station_reference_itrf_m, name="station_reference_itrf_m"),
-        )
         object.__setattr__(
             self,
             "reflector_reference_pa_m",
@@ -103,17 +93,15 @@ class LightTimeRequest:
         self.transmit_epoch_utc.require_scale(TimeScale.UTC, name="transmit_epoch_utc")
         if not isinstance(self.troposphere_environment, TroposphereEnvironment):
             raise TypeError("troposphere_environment must be a TroposphereEnvironment.")
-        if self.station_reference_itrf_at_utc is not None and not callable(self.station_reference_itrf_at_utc):
+        if not callable(self.station_reference_itrf_at_utc):
             raise TypeError("station_reference_itrf_at_utc must be callable.")
-        if self.station_key is not None and (not isinstance(self.station_key, str) or not self.station_key.strip()):
-            raise TypeError("station_key must be a non-empty string when provided.")
+        if not isinstance(self.station_key, str) or not self.station_key.strip():
+            raise TypeError("station_key must be a non-empty string.")
 
     def station_reference_itrf_at(self, epoch_utc: Epoch) -> np.ndarray:
         if not isinstance(epoch_utc, Epoch):
             raise TypeError("epoch_utc must be an Epoch.")
         epoch_utc.require_scale(TimeScale.UTC, name="epoch_utc")
-        if self.station_reference_itrf_at_utc is None:
-            return readonly_vector3(self.station_reference_itrf_m, name="station_reference_itrf_at result")
         return readonly_vector3(
             self.station_reference_itrf_at_utc(epoch_utc),
             name="station_reference_itrf_at_utc result",
@@ -251,46 +239,33 @@ class LightTimeSolver:
         self,
         frame_system: ReferenceFrameSystem,
         *,
-        gravitational_delay_model: GravitationalDelay | None = None,
+        gravitational_delay_model: GravitationalDelay,
         troposphere_delay_model: TroposphereDelay,
-        station_displacement_model: StationDisplacement | None = None,
-        reflector_displacement_model: ReflectorDisplacement | None = None,
-        max_iterations: int = 12,
-        round_trip_time_tolerance_s: float = 1e-12,
+        station_displacement_model: StationDisplacement,
+        reflector_displacement_model: ReflectorDisplacement,
     ) -> None:
         if not isinstance(frame_system, ReferenceFrameSystem):
             raise TypeError("frame_system must be a ReferenceFrameSystem.")
-        if gravitational_delay_model is not None and not isinstance(gravitational_delay_model, GravitationalDelay):
-            raise TypeError("gravitational_delay_model must be a GravitationalDelay or None.")
+        if not isinstance(gravitational_delay_model, GravitationalDelay):
+            raise TypeError("gravitational_delay_model must be a GravitationalDelay.")
         if not isinstance(troposphere_delay_model, TroposphereDelay):
             raise TypeError("troposphere_delay_model must be a TroposphereDelay.")
-        if isinstance(max_iterations, bool) or not isinstance(max_iterations, int):
-            raise TypeError("max_iterations must be an integer.")
-        if max_iterations <= 0:
-            raise ValueError("max_iterations must be positive.")
-        if station_displacement_model is not None and not isinstance(station_displacement_model, StationDisplacement):
-            raise TypeError("station_displacement_model must be a StationDisplacement or None.")
-        if reflector_displacement_model is not None and not isinstance(
-            reflector_displacement_model, ReflectorDisplacement
-        ):
-            raise TypeError("reflector_displacement_model must be a ReflectorDisplacement or None.")
-        tolerance = float(round_trip_time_tolerance_s)
-        if not np.isfinite(tolerance) or tolerance <= 0.0:
-            raise ValueError("round_trip_time_tolerance_s must be positive and finite.")
+        if not isinstance(station_displacement_model, StationDisplacement):
+            raise TypeError("station_displacement_model must be a StationDisplacement.")
+        if not isinstance(reflector_displacement_model, ReflectorDisplacement):
+            raise TypeError("reflector_displacement_model must be a ReflectorDisplacement.")
         self.frame_system = frame_system
         self.time_scale_converter = frame_system.time_scale_converter
-        self.gravitational_delay_model = gravitational_delay_model or ZeroGravitationalDelay()
+        self.gravitational_delay_model = gravitational_delay_model
         self.troposphere_delay_model = troposphere_delay_model
-        self.station_displacement_model = station_displacement_model or ZeroStationDisplacement()
-        self.reflector_displacement_model = reflector_displacement_model or ZeroReflectorDisplacement()
-        self.max_iterations = max_iterations
-        self.round_trip_time_tolerance_s = tolerance
+        self.station_displacement_model = station_displacement_model
+        self.reflector_displacement_model = reflector_displacement_model
 
     def _station_displacement_itrf_m(
         self,
         station_reference_itrf_m: ArrayLike,
         epoch_utc: Epoch,
-        station_key: str | None,
+        station_key: str,
     ) -> np.ndarray:
         reference = vector3(station_reference_itrf_m, name="station_reference_itrf_m")
         return np.asarray(
@@ -358,7 +333,7 @@ class LightTimeSolver:
                 TimeScale.UTC,
                 station_gcrs_m=state.position_gcrs_m,
             )
-            if abs(epoch_utc.seconds_until(updated_utc)) <= self.round_trip_time_tolerance_s:
+            if abs(epoch_utc.seconds_until(updated_utc)) <= _ROUND_TRIP_TIME_TOLERANCE_S:
                 if updated_utc == epoch_utc:
                     return state
                 return self._station_state_at_utc(request, updated_utc)
@@ -424,7 +399,7 @@ class LightTimeSolver:
         final_state: _IterationState | None = None
         converged = False
 
-        for iteration in range(1, self.max_iterations + 1):
+        for iteration in range(1, _MAX_LIGHT_TIME_ITERATIONS + 1):
             receive_station = self._station_state_from_tdb(request, receive_tdb)
             receive_utc = receive_station.epoch_utc
             reflector_lcrs_bounce, _ = self._reflector_state_lcrs_m(
@@ -512,7 +487,7 @@ class LightTimeSolver:
             )
             bounce_tdb = new_bounce_tdb
             receive_tdb = new_receive_tdb
-            if abs(new_rtt_s - previous_rtt_s) < self.round_trip_time_tolerance_s:
+            if abs(new_rtt_s - previous_rtt_s) < _ROUND_TRIP_TIME_TOLERANCE_S:
                 converged = True
                 break
             previous_rtt_s = new_rtt_s

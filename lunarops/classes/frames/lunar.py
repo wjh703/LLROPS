@@ -5,10 +5,9 @@ from __future__ import annotations
 import numpy as np
 from numpy.typing import ArrayLike
 
+from lunarops.base.array_validation import vector3
 from lunarops.base.epoch import Epoch
 from lunarops.classes.ephemerides import Ephemeris, require_tdb_epoch
-
-from lunarops.base.array_validation import vector3
 
 
 class LunarFrameTransform:

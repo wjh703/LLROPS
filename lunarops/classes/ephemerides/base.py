@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import Self
 
 import numpy as np
 
@@ -98,9 +99,9 @@ class Ephemeris(ABC):
 
     def close(self) -> None:
         """Release resources; the default implementation owns none."""
-        return None
+        return
 
-    def __enter__(self) -> "Ephemeris":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, exc_type, exc, traceback) -> None:

@@ -4,28 +4,28 @@ from typing import Any, cast
 import numpy as np
 import pytest
 
-from lunarops.classes.observation_factory import ensure_registered
+from lunarops.base.epoch import Epoch, TimeScale
 from lunarops.classes.displacement import (
     CompositeStationDisplacement,
     Iers2010OceanPoleTide,
     Iers2010SolidEarthPoleTide,
     Iers2010SolidEarthTide,
     LunarSolidTide,
-    OceanPoleTideResult,
     OceanPoleTideGrid,
-    PoleTideResult,
+    OceanPoleTideResult,
     PolarWobble,
+    PoleTideResult,
     ReflectorDisplacementInput,
     StationDisplacementInput,
     ZeroReflectorDisplacement,
     ZeroStationDisplacement,
     secular_pole_2018_arcsec,
 )
-from lunarops.config.context import RunContext
-from lunarops.base.epoch import Epoch, TimeScale
+from lunarops.classes.displacement.terrestrial_geometry import enu2itrf
 from lunarops.classes.ephemerides import BodyState, Ephemeris
 from lunarops.classes.frames import EarthOrientationProvider, PolarMotion, ReferenceFrameSystem
-from lunarops.classes.displacement.terrestrial_geometry import enu2itrf
+from lunarops.classes.observation_factory import ensure_registered
+from lunarops.config.context import RunContext
 
 
 class _ConstantDisplacement:
@@ -111,6 +111,8 @@ def test_composite_station_displacement_sums_components():
 def test_composite_station_displacement_rejects_invalid_components():
     with pytest.raises(TypeError, match="cannot contain None"):
         CompositeStationDisplacement(components=cast(Any, (None,)))
+    with pytest.raises(ValueError, match="at least one component"):
+        CompositeStationDisplacement(components=())
 
 
 def test_registered_station_sum_and_context_cache():
@@ -122,6 +124,11 @@ def test_registered_station_sum_and_context_cache():
         cache=True,
     )
     assert np.allclose(model.displacement_itrf_m(_station_input()), 0.0)
+
+    with pytest.raises(ValueError, match="at least one component"):
+        context.create_class("stationDisplacement", {"type": "sum"})
+    with pytest.raises(TypeError, match="components list"):
+        context.create_class("stationDisplacement", {"type": "sum", "components": "none"})
 
     first = context.create_class("stationDisplacement", "none", cache=True)
     second = context.create_class("stationDisplacement", "none", cache=True)
@@ -257,13 +264,6 @@ def test_ocean_pole_tide_grid_and_model(tmp_path):
     assert not direct_result.displacement_itrf_m.flags.writeable
     assert not direct_result.displacement_enu_m.flags.writeable
 
-    with pytest.raises(ValueError, match="finite real and imaginary"):
-        Iers2010OceanPoleTide(
-            grid=grid,
-            earth_orientation_provider=_FakeEarthOrientation(),
-            load_love_combination=complex(np.nan, 0.0),
-        )
-
 
 @pytest.mark.parametrize(
     ("mjd", "m1_arcsec", "m2_arcsec", "expected_enu_m"),
@@ -350,8 +350,6 @@ def test_lunar_solid_tide_requires_no_runtime_backend_injection():
         ("h2", np.nan, "h2 must be finite"),
         ("l2", np.inf, "l2 must be finite"),
         ("moon_radius_m", 0.0, "moon_radius_m must be positive"),
-        ("earth_gm_m3_s2", -1.0, "earth_gm_m3_s2 must be positive"),
-        ("sun_gm_m3_s2", np.nan, "sun_gm_m3_s2 must be finite"),
     ),
 )
 def test_lunar_solid_tide_validates_scalar_parameters(name, value, message):

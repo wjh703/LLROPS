@@ -1,23 +1,28 @@
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 import numpy as np
 import pytest
 
 from lunarops.base.constants import C
 from lunarops.base.epoch import Epoch, TimeScale
-from lunarops.classes.delays import ZeroTroposphereDelay
+from lunarops.classes.delays import ZeroGravitationalDelay, ZeroTroposphereDelay
 from lunarops.classes.delays.troposphere import Iers2010MendesPavlisTroposphere
-from lunarops.classes.displacement import Iers2010SolidEarthTide
+from lunarops.classes.displacement import (
+    Iers2010SolidEarthTide,
+    ZeroReflectorDisplacement,
+    ZeroStationDisplacement,
+)
 from lunarops.classes.ephemerides import BodyState, Ephemeris
 from lunarops.classes.frames import EarthOrientationProvider, PolarMotion, ReferenceFrameSystem
 from lunarops.classes.observation import (
+    LightTimeSolver,
     LlrObservationModel,
     LlrObservationProcessor,
-    LightTimeSolver,
     ObservationCatalogState,
     ObservationProcessingOptions,
     ObservationResolver,
+    ObservationResultDetail,
 )
 from lunarops.classes.parametrization.reflector_position import (
     ReflectorPositionParametrization,
@@ -28,7 +33,7 @@ from lunarops.fileio.normal_points import NptDataset, NptRecord
 
 
 class _Ephemeris(Ephemeris):
-    _POSITIONS = {
+    _POSITIONS: ClassVar[dict[str, np.ndarray]] = {
         "SSB": np.zeros(3),
         "EARTH": np.zeros(3),
         "MOON": np.array([384_400_000.0, 0.0, 0.0]),
@@ -96,8 +101,10 @@ def _pipeline(troposphere_delay=None, *, frames=None, station_displacement=None)
         frames = ReferenceFrameSystem(_Ephemeris(), _EarthOrientation())
     solver = LightTimeSolver(
         frames,
+        gravitational_delay_model=ZeroGravitationalDelay(),
         troposphere_delay_model=(ZeroTroposphereDelay() if troposphere_delay is None else troposphere_delay),
-        station_displacement_model=station_displacement,
+        station_displacement_model=station_displacement or ZeroStationDisplacement(),
+        reflector_displacement_model=ZeroReflectorDisplacement(),
     )
     state = ObservationCatalogState(
         {
@@ -191,7 +198,7 @@ def test_native_solid_earth_tide_enters_transmit_and_receive_light_time():
         with_tide.observation_model.evaluate(
             observation,
             min_elevation_deg=-90.0,
-            result_detail="full",
+            result_detail=ObservationResultDetail.FULL,
         ).result_row,
     )
     zero = cast(
@@ -200,7 +207,7 @@ def test_native_solid_earth_tide_enters_transmit_and_receive_light_time():
         .observation_model.evaluate(
             observation,
             min_elevation_deg=-90.0,
-            result_detail="full",
+            result_detail=ObservationResultDetail.FULL,
         )
         .result_row,
     )
@@ -241,7 +248,7 @@ def test_end_to_end_contribution_changes_rtt_and_oc_separately():
         with_tide.observation_model.evaluate(
             observation,
             min_elevation_deg=-90.0,
-            result_detail="full",
+            result_detail=ObservationResultDetail.FULL,
         ).result_row,
     )
     zero = cast(
@@ -249,7 +256,7 @@ def test_end_to_end_contribution_changes_rtt_and_oc_separately():
         without_tide.observation_model.evaluate(
             without_tide.resolver.resolve(_record()),
             min_elevation_deg=-90.0,
-            result_detail="full",
+            result_detail=ObservationResultDetail.FULL,
         ).result_row,
     )
 
@@ -304,7 +311,7 @@ def test_fortran_troposphere_contributes_to_both_light_time_legs(monkeypatch):
         processor.observation_model.evaluate(
             observation,
             min_elevation_deg=-90.0,
-            result_detail="full",
+            result_detail=ObservationResultDetail.FULL,
         ).result_row,
     )
     without_troposphere = cast(
@@ -313,7 +320,7 @@ def test_fortran_troposphere_contributes_to_both_light_time_legs(monkeypatch):
         .observation_model.evaluate(
             observation,
             min_elevation_deg=-90.0,
-            result_detail="full",
+            result_detail=ObservationResultDetail.FULL,
         )
         .result_row,
     )
@@ -336,7 +343,11 @@ def test_fortran_troposphere_contributes_to_both_light_time_legs(monkeypatch):
 def test_measurement_marks_geometry_below_requested_elevation():
     processor = _pipeline()
     observation = processor.resolver.resolve(_record())
-    result = processor.observation_model.evaluate(observation, min_elevation_deg=91.0, result_detail="full")
+    result = processor.observation_model.evaluate(
+        observation,
+        min_elevation_deg=91.0,
+        result_detail=ObservationResultDetail.FULL,
+    )
     row = cast(dict[str, Any], result.result_row)
 
     assert result.below_elevation_limit
@@ -344,6 +355,9 @@ def test_measurement_marks_geometry_below_requested_elevation():
     assert not row["valid_geometry"]
     assert row["status"] == "below_elevation_limit"
     assert row["computed_rtt_s"] == pytest.approx(row["computed_rtt_before_range_bias_s"])
+    assert row["range_bias_model_label"] == "none"
+    assert row["range_bias_lookup_status"] == "explicit_zero"
+    assert row["range_bias_correction_two_way_cm"] == 0.0
 
     options = ObservationProcessingOptions(min_elevation_deg=91.0)
     dataset = NptDataset([_record()])

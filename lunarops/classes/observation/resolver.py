@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
-from typing import Mapping, Sequence
 
 import numpy as np
 
@@ -41,7 +41,7 @@ class ResolvedObservation:
             self.normal_point.station_name,
             self.normal_point.station_code,
         )
-        return tuple(str(value) for value in values if value is not None and str(value).strip())
+        return tuple(value for value in values if value is not None and value.strip())
 
 
 class ObservationCatalogState:
@@ -50,7 +50,7 @@ class ObservationCatalogState:
     station_catalog: dict[str, StationRecord]
     reflector_catalog: dict[str, ReflectorRecord]
 
-    __slots__ = ("station_catalog", "reflector_catalog")
+    __slots__ = ("reflector_catalog", "station_catalog")
 
     def __init__(
         self,
@@ -91,14 +91,6 @@ class ObservationResolver:
             raise TypeError("model_state must be an ObservationCatalogState.")
         self.model_state = model_state
 
-    @property
-    def station_catalog(self) -> dict[str, StationRecord]:
-        return self.model_state.station_catalog
-
-    @property
-    def reflector_catalog(self) -> dict[str, ReflectorRecord]:
-        return self.model_state.reflector_catalog
-
     @staticmethod
     def _candidates(
         normal_point: NptRecord,
@@ -123,19 +115,18 @@ class ObservationResolver:
     ) -> ResolvedObservation:
         catalog_selection = catalog_selection or ObservationCatalogSelection()
         station_candidates, reflector_candidates = self._candidates(normal_point, catalog_selection)
-        station_key = first_resolvable_key(station_candidates, self.station_catalog, "Station")
+        station_key = first_resolvable_key(station_candidates, self.model_state.station_catalog, "Station")
         reflector_key = first_resolvable_key(
             reflector_candidates,
-            self.reflector_catalog,
+            self.model_state.reflector_catalog,
             "Reflector",
         )
-        normal_point = replace(normal_point)
         return ResolvedObservation(
             normal_point=normal_point,
             station_key=station_key,
-            station=self.station_catalog[station_key],
+            station=self.model_state.station_catalog[station_key],
             reflector_key=reflector_key,
-            reflector=self.reflector_catalog[reflector_key],
+            reflector=self.model_state.reflector_catalog[reflector_key],
         )
 
     def resolve_all(

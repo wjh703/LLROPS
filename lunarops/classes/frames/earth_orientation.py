@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import warnings
 from abc import ABC, abstractmethod
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from collections.abc import Mapping, Sequence
 from typing import Literal, TypeGuard, cast
 
 import erfa
@@ -106,9 +106,7 @@ def _deduplicate_samples(
     result: list[EarthOrientationSample] = []
     for mjd in sorted(grouped):
         samples = grouped[mjd]
-        if len(samples) == 1:
-            result.append(samples[0])
-        elif policy == "first":
+        if len(samples) == 1 or policy == "first":
             result.append(samples[0])
         elif policy == "last":
             result.append(samples[-1])
@@ -149,7 +147,7 @@ class EarthOrientationProvider(ABC):
 
     def close(self) -> None:
         """Release resources; the default implementation owns none."""
-        return None
+        return
 
 
 class TabulatedEarthOrientation(EarthOrientationProvider):
@@ -158,14 +156,14 @@ class TabulatedEarthOrientation(EarthOrientationProvider):
     _duplicate_mjd_policy: DuplicateMjdPolicy
 
     __slots__ = (
-        "_source_file_path",
         "_duplicate_mjd_policy",
-        "_mjd",
-        "_xp_arcsec",
-        "_yp_arcsec",
-        "_ut1_minus_tai_sec",
         "_dx_arcsec",
         "_dy_arcsec",
+        "_mjd",
+        "_source_file_path",
+        "_ut1_minus_tai_sec",
+        "_xp_arcsec",
+        "_yp_arcsec",
     )
 
     def __init__(
@@ -217,7 +215,7 @@ class TabulatedEarthOrientation(EarthOrientationProvider):
         *,
         source_file_path: str | Path | None = None,
         duplicate_mjd_policy: DuplicateMjdPolicy = "error",
-    ) -> "TabulatedEarthOrientation":
+    ) -> TabulatedEarthOrientation:
         """Construct directly from already parsed EOP columns.
 
         This path is used by MPI workers after rank 0 broadcasts the parsed
@@ -283,7 +281,7 @@ class TabulatedEarthOrientation(EarthOrientationProvider):
     def from_mpi_payload(
         cls,
         payload: Mapping[str, object],
-    ) -> "TabulatedEarthOrientation":
+    ) -> TabulatedEarthOrientation:
         if not isinstance(payload, Mapping) or payload.get("kind") != "iersC04Arrays":
             raise ValueError("Invalid MPI Earth-orientation payload.")
         required = ("mjdUtc", "xpArcsec", "ypArcsec", "ut1MinusUtcSec")
@@ -593,8 +591,8 @@ def load_iers_eop(
 
 __all__ = [
     "CelestialPoleOffsets",
-    "EarthOrientationProvider",
     "DuplicateMjdPolicy",
+    "EarthOrientationProvider",
     "EarthOrientationSample",
     "PolarMotion",
     "TabulatedEarthOrientation",

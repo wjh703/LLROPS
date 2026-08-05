@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import math
+from dataclasses import dataclass
 
-from lunarops.base.epoch import Epoch, TimeScale
-from lunarops.base.epoch import utc2tt
-import lunarops._iers2010 as _iers2010  # pyright: ignore[reportMissingModuleSource]
-
+from lunarops import _iers2010  # pyright: ignore[reportMissingModuleSource]
+from lunarops.base.epoch import Epoch, TimeScale, utc2tt
 
 _MICROARCSECOND_TO_ARCSECOND = 1.0e-6
 _MICROSECOND_TO_SECOND = 1.0e-6

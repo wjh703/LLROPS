@@ -16,13 +16,12 @@ Love-number or orbit-state parameters never touches them.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Dict, List, Sequence
+from collections.abc import Sequence
 
 import numpy as np
 
-from lunarops.base.parameter_name import ParameterName
 from lunarops.base.array_validation import parameter_vector
+from lunarops.base.parameter_name import ParameterName
 from lunarops.classes.observation.equations import ObservationEquation
 
 
@@ -40,7 +39,7 @@ class Parametrization:
         """Inspect the dataset once before the first iteration (e.g. discover
         which reflectors / stations actually occur).  Default: no-op."""
 
-    def parameter_names(self) -> List[ParameterName]:
+    def parameter_names(self) -> list[ParameterName]:
         raise NotImplementedError
 
     @property
@@ -74,14 +73,13 @@ class Parametrization:
         """Convergence metric for this block; default max |delta_i|."""
         return float(np.max(np.abs(delta))) if len(delta) else 0.0
 
-    def state(self) -> Dict[str, object]:
+    def state(self) -> dict[str, object]:
         """Current parameter values for reporting."""
         return {}
 
     def initial_update(
         self,
         equations: Sequence[ObservationEquation],
-        reduced_observation: Callable[[ObservationEquation], float],
         *,
         weight_cap: float,
         maximum_iterations: int,
@@ -103,8 +101,8 @@ class ParametrizationList:
         if invalid:
             raise TypeError(f"ParametrizationList blocks must be Parametrization instances, got {invalid!r}.")
         self._blocks: tuple[Parametrization, ...] = normalized
-        self._parameter_names: List[ParameterName] | None = None
-        self._slices: List[slice] = []
+        self._parameter_names: list[ParameterName] | None = None
+        self._slices: list[slice] = []
 
     @property
     def blocks(self) -> tuple[Parametrization, ...]:
@@ -119,8 +117,8 @@ class ParametrizationList:
     def _ensure_layout(self) -> None:
         if self._parameter_names is not None:
             return
-        names: List[ParameterName] = []
-        slices: List[slice] = []
+        names: list[ParameterName] = []
+        slices: list[slice] = []
         offset = 0
         for block in self.blocks:
             block_names = list(block.parameter_names())
@@ -143,11 +141,11 @@ class ParametrizationList:
             block.setup(equations, model_state)
         self._ensure_layout()
 
-    def parameter_names(self) -> List[ParameterName]:
+    def parameter_names(self) -> list[ParameterName]:
         self._ensure_layout()
         return list(self._parameter_names or [])
 
-    def select_blocks(self, selectors: Sequence[str]) -> "ParametrizationList":
+    def select_blocks(self, selectors: Sequence[str]) -> ParametrizationList:
         """Return a view over selected parameter blocks, reusing block state.
 
         Selectors are stable registry type names, for example
@@ -233,18 +231,18 @@ class ParametrizationList:
     def reduced_observation(self, eq: ObservationEquation) -> float:
         return float(eq.observed_minus_computed_one_way_m) - sum(block.reduce_observation(eq) for block in self.blocks)
 
-    def split(self, delta: np.ndarray) -> List[np.ndarray]:
+    def split(self, delta: np.ndarray) -> list[np.ndarray]:
         self._ensure_layout()
         values = parameter_vector(delta, expected_size=self.parameter_count, name="delta")
         return [values[block_slice] for block_slice in self._slices]
 
-    def update_norms(self, delta: np.ndarray) -> Dict[str, float]:
+    def update_norms(self, delta: np.ndarray) -> dict[str, float]:
         return {
             block.block_id: float(block.max_update_norm(block_delta))
             for block, block_delta in zip(self.blocks, self.split(delta))
         }
 
-    def apply_update(self, delta: np.ndarray) -> Dict[str, float]:
+    def apply_update(self, delta: np.ndarray) -> dict[str, float]:
         """Apply all block updates; returns per-block max update norms."""
         block_updates = self.split(delta)
         norms = {
@@ -255,7 +253,7 @@ class ParametrizationList:
             block.apply_update(block_delta)
         return norms
 
-    def state(self) -> Dict[str, object]:
+    def state(self) -> dict[str, object]:
         return {block.block_id: block.state() for block in self.blocks}
 
     def initial_update(
@@ -268,7 +266,6 @@ class ParametrizationList:
         updates = [
             block.initial_update(
                 equations,
-                self.reduced_observation,
                 weight_cap=weight_cap,
                 maximum_iterations=maximum_iterations,
             )

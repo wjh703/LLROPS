@@ -2,22 +2,21 @@
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 import numpy as np
 from numpy.typing import ArrayLike
 
+from lunarops.base.array_validation import vector3
 from lunarops.base.constants import C2
+from lunarops.base.epoch import Epoch
+from lunarops.classes.ephemerides import Ephemeris, require_tdb_epoch
 from lunarops.classes.relativistic.constants import (
     EARTH_EXTERNAL_POTENTIAL_BODIES,
     GM_BY_BODY,
     L_B_MINUS_L_G,
     MOON_EXTERNAL_POTENTIAL_BODIES,
 )
-from lunarops.base.epoch import Epoch
-from lunarops.classes.ephemerides import Ephemeris, require_tdb_epoch
-
-from lunarops.base.array_validation import vector3
 
 
 class RelativisticFrameTransform:
@@ -46,11 +45,7 @@ class RelativisticFrameTransform:
             center_body_name,
             parameter_name="center_body_name",
         )
-        raw_names: tuple[str, ...]
-        if isinstance(perturbing_body_names, str):
-            raw_names = (perturbing_body_names,)
-        else:
-            raw_names = tuple(perturbing_body_names)
+        raw_names = tuple(perturbing_body_names)
         names = tuple(
             dict.fromkeys(self._normalize_body_name(name, parameter_name="perturbing_body_names") for name in raw_names)
         )

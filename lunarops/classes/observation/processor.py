@@ -2,23 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
-from pathlib import Path
-from typing import Iterable
 
 import numpy as np
+from tqdm import tqdm as _tqdm  # type: ignore[import-untyped]
 
-from lunarops.fileio.catalogs import ReflectorRecord, StationRecord
 from lunarops.fileio.normal_points import NptDataset
 
 from .equations import ObservationEquation, ObservationResultDetail
 from .measurement import LlrObservationModel
 from .resolver import ObservationCatalogSelection, ObservationResolver, ResolvedObservation
-
-try:
-    from tqdm import tqdm as _tqdm  # type: ignore
-except ImportError:  # pragma: no cover
-    _tqdm = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,7 +39,7 @@ class ObservationProcessingOptions:
         description: str | None,
         *,
         enabled: bool | None = None,
-    ) -> "ObservationProcessingOptions":
+    ) -> ObservationProcessingOptions:
         return replace(
             self,
             progress_description=description,
@@ -63,18 +57,6 @@ class LlrObservationProcessor:
         self.model_state = resolver.model_state
         self.observation_model = observation_model
 
-    @property
-    def station_catalog(self) -> dict[str, StationRecord]:
-        return self.resolver.station_catalog
-
-    @property
-    def reflector_catalog(self) -> dict[str, ReflectorRecord]:
-        return self.resolver.reflector_catalog
-
-    @property
-    def ephemeris_file_path(self) -> Path | None:
-        return self.observation_model.ephemeris.source_file_path
-
     def _with_progress(
         self,
         observations: Iterable[ResolvedObservation],
@@ -85,26 +67,14 @@ class LlrObservationProcessor:
         if not options.show_progress or total <= 0:
             return observations
         description = options.progress_description or "LLR observations"
-        if _tqdm is not None:
-            return _tqdm(
-                observations,
-                total=total,
-                desc=description,
-                unit="np",
-                dynamic_ncols=True,
-                smoothing=0.1,
-            )
-
-        def generator():
-            for index, item in enumerate(observations, start=1):
-                print(
-                    f"\r{description}: {index}/{total}",
-                    end="" if index < total else "\n",
-                    flush=True,
-                )
-                yield item
-
-        return generator()
+        return _tqdm(
+            observations,
+            total=total,
+            desc=description,
+            unit="np",
+            dynamic_ncols=True,
+            smoothing=0.1,
+        )
 
     def _resolved_observations(
         self,
@@ -140,7 +110,7 @@ class LlrObservationProcessor:
         dataset: NptDataset,
         *,
         options: ObservationProcessingOptions | None = None,
-        detail: ObservationResultDetail | str = ObservationResultDetail.STANDARD,
+        detail: ObservationResultDetail = ObservationResultDetail.STANDARD,
     ) -> list[dict[str, object]]:
         options = options or ObservationProcessingOptions()
         rows: list[dict[str, object]] = []

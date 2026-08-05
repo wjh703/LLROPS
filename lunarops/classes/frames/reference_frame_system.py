@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Iterable
+from collections.abc import Iterable
 
 import numpy as np
 from numpy.typing import ArrayLike
 
 from lunarops.base.epoch import Epoch
-from lunarops.classes.time_scale_converter import TimeScaleConverter
 from lunarops.classes.ephemerides import Ephemeris
+from lunarops.classes.time_scale_converter import TimeScaleConverter
 
 from .earth_orientation import EarthOrientationProvider
 from .lunar import LunarFrameTransform
@@ -23,26 +22,17 @@ class ReferenceFrameSystem:
         self,
         ephemeris: Ephemeris,
         earth_orientation_provider: EarthOrientationProvider,
-        time_scale_converter: TimeScaleConverter | None = None,
     ) -> None:
         if not isinstance(ephemeris, Ephemeris):
             raise TypeError("ephemeris must implement Ephemeris.")
         if not isinstance(earth_orientation_provider, EarthOrientationProvider):
             raise TypeError("earth_orientation_provider must be an EarthOrientationProvider instance.")
-        if time_scale_converter is None:
-            time_scale_converter = TimeScaleConverter(ephemeris)
-        elif time_scale_converter.ephemeris is not ephemeris:
-            raise ValueError("time_scale_converter must use the same ephemeris as the frame system.")
         self.ephemeris = ephemeris
         self.earth_orientation_provider = earth_orientation_provider
-        self.time_scale_converter = time_scale_converter
+        self.time_scale_converter = TimeScaleConverter(ephemeris)
         self.terrestrial_transform = TerrestrialFrameTransform(earth_orientation_provider)
         self.lunar_transform = LunarFrameTransform(ephemeris)
         self.relativistic_transform = RelativisticFrameTransform(ephemeris)
-
-    @property
-    def ephemeris_file_path(self) -> Path | None:
-        return self.ephemeris.source_file_path
 
     def itrf2gcrs(self, position_itrf_m: ArrayLike, epoch_utc: Epoch) -> np.ndarray:
         return self.terrestrial_transform.itrf2gcrs(position_itrf_m, epoch_utc)

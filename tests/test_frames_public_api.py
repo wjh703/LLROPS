@@ -1,8 +1,8 @@
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 import pytest
-from typing import Any, cast
 
 from lunarops.base.epoch import Epoch, TimeScale
 from lunarops.classes.ephemerides import BodyState, Ephemeris
@@ -76,9 +76,9 @@ def test_gcrs2itrf_matrix_is_read_only():
 def test_external_gravitational_potential_normalizes_and_deduplicates_names():
     epoch = Epoch(2_450_000.5, 0.0, TimeScale.TDB)
     transform = RelativisticFrameTransform(_Ephemeris())
-    potential = transform.external_gravitational_potential_m2_s2(" earth ", epoch, " sun ")
+    potential = transform.external_gravitational_potential_m2_s2(" earth ", epoch, (" sun ",))
     assert potential == pytest.approx(GM_SUN / 1.0e11)
     deduplicated = transform.external_gravitational_potential_m2_s2("EARTH", epoch, ("SUN", " sun "))
     assert deduplicated == pytest.approx(potential)
     with pytest.raises(ValueError, match="must not also appear"):
-        transform.external_gravitational_potential_m2_s2("EARTH", epoch, "earth")
+        transform.external_gravitational_potential_m2_s2("EARTH", epoch, ("earth",))

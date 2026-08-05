@@ -41,7 +41,7 @@ def llr_normal_equations(config: dict, context: RunContext):
         parametrization,
         parameter_names=names,
         sources=sorted(datasets),
-        ephemeris=processor.ephemeris_file_path,
+        ephemeris=processor.observation_model.ephemeris.source_file_path,
         compatibility=model_compatibility_fingerprint(config, context),
     )
 

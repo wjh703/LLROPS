@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import gzip
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
 
@@ -14,8 +14,8 @@ from lunarops.base.array_validation import readonly_vector3
 from lunarops.classes.frames.earth_orientation import EarthOrientationProvider
 
 from .base import StationDisplacementInput
-from .terrestrial_geometry import enu2itrf, itrf2geodetic
 from .pole_tide import PolarWobble, polar_wobble
+from .terrestrial_geometry import enu2itrf, itrf2geodetic
 
 _GRAVITATIONAL_CONSTANT_M3_KG_S2 = 6.67428e-11
 _EARTH_EQUATORIAL_RADIUS_M = 6_378_136.6
@@ -76,17 +76,17 @@ class OceanPoleTideGrid:
 
     __slots__ = (
         "coefficient_file",
-        "longitude_grid_deg",
-        "latitude_grid_deg",
-        "radial_grid",
-        "north_grid",
         "east_grid",
-        "longitude_step_deg",
-        "latitude_step_deg",
-        "longitude_min_deg",
-        "longitude_max_deg",
-        "latitude_min_deg",
+        "latitude_grid_deg",
         "latitude_max_deg",
+        "latitude_min_deg",
+        "latitude_step_deg",
+        "longitude_grid_deg",
+        "longitude_max_deg",
+        "longitude_min_deg",
+        "longitude_step_deg",
+        "north_grid",
+        "radial_grid",
     )
 
     def __init__(self, coefficient_file: str | Path) -> None:
@@ -241,18 +241,11 @@ class Iers2010OceanPoleTide:
         self,
         grid: OceanPoleTideGrid,
         earth_orientation_provider: EarthOrientationProvider,
-        load_love_combination: complex = _LOAD_LOVE_COMBINATION,
     ) -> None:
         if not isinstance(grid, OceanPoleTideGrid):
             raise TypeError("grid must be an OceanPoleTideGrid.")
         if not isinstance(earth_orientation_provider, EarthOrientationProvider):
             raise TypeError("earth_orientation_provider must be an EarthOrientationProvider instance.")
-        try:
-            load_love_combination = complex(load_love_combination)
-        except (TypeError, ValueError) as exc:
-            raise TypeError("load_love_combination must be a complex scalar.") from exc
-        if not (np.isfinite(load_love_combination.real) and np.isfinite(load_love_combination.imag)):
-            raise ValueError("load_love_combination must have finite real and imaginary parts.")
         pole_tide_height_m = (
             np.sqrt(8.0 * np.pi / 15.0)
             * _EARTH_ANGULAR_VELOCITY_RAD_S**2
@@ -270,14 +263,13 @@ class Iers2010OceanPoleTide:
         )
         self.grid = grid
         self.earth_orientation_provider = earth_orientation_provider
-        self.load_love_combination = load_love_combination
         self.scale_m = float(scale_m)
 
     def evaluate(self, data: StationDisplacementInput) -> OceanPoleTideResult:
         coefficients = self.grid.coefficients_at(data.reference_position_itrf_m)
         wobble = polar_wobble(data.epoch_utc, self.earth_orientation_provider)
-        gamma_real = float(self.load_love_combination.real)
-        gamma_imag = float(self.load_love_combination.imag)
+        gamma_real = float(_LOAD_LOVE_COMBINATION.real)
+        gamma_imag = float(_LOAD_LOVE_COMBINATION.imag)
         factor_real = wobble.m1_rad * gamma_real + wobble.m2_rad * gamma_imag
         factor_imag = wobble.m2_rad * gamma_real - wobble.m1_rad * gamma_imag
 

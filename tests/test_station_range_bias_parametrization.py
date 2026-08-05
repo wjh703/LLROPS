@@ -12,7 +12,7 @@ def _eq(station_key, epoch, station_id=None):
     return ObservationEquation(
         observed_minus_computed_one_way_m=0.0,
         sigma_one_way_m=1.0,
-        design_partials={"station_range_bias": np.array([1.0])},
+        design_partials={},
         observation_id=1,
         station_key=station_key,
         reflector_key="apollo15",
@@ -95,42 +95,6 @@ def test_station_range_bias_rejects_intervals_in_station_mode():
                 }
             ],
         )
-
-
-def test_station_range_bias_uses_partial_coefficient_for_state_reduction():
-    eq = ObservationEquation(
-        observed_minus_computed_one_way_m=0.0,
-        sigma_one_way_m=1.0,
-        design_partials={"station_range_bias": np.array([2.0])},
-        observation_id=1,
-        station_key="APOLLO",
-        reflector_key="apollo15",
-        transmit_epoch_utc=Epoch.from_isot("2020-01-01T00:00:00", scale=TimeScale.UTC),
-    )
-    block = StationRangeBiasParametrization(per="station")
-    block.setup([eq], None)
-    block.apply_update(np.array([0.5]))
-
-    assert block.design_entries(eq) == [(0, 2.0)]
-    assert block.reduce_observation(eq) == pytest.approx(1.0)
-
-
-@pytest.mark.parametrize("partial", [[], [1.0, 2.0]])
-def test_station_range_bias_requires_one_partial_coefficient(partial):
-    eq = ObservationEquation(
-        observed_minus_computed_one_way_m=0.0,
-        sigma_one_way_m=1.0,
-        design_partials={"station_range_bias": np.array(partial)},
-        observation_id=1,
-        station_key="APOLLO",
-        reflector_key="apollo15",
-        transmit_epoch_utc=Epoch.from_isot("2020-01-01T00:00:00", scale=TimeScale.UTC),
-    )
-    block = StationRangeBiasParametrization(per="station")
-    block.setup([eq], None)
-
-    with pytest.raises(ValueError, match="exactly one scalar"):
-        block.design_entries(eq)
 
 
 def test_station_range_bias_rejects_alias_schema():

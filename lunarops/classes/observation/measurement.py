@@ -7,17 +7,17 @@ from typing import cast
 
 import numpy as np
 
-from lunarops.base.constants import C, C2
+from lunarops.base.constants import C2, C
+from lunarops.classes.displacement.terrestrial_geometry import itrf2geodetic
 from lunarops.classes.ephemerides import Ephemeris
 from lunarops.classes.frames import ReferenceFrameSystem
-from lunarops.classes.range_bias.models import RangeBiasCorrection, RangeBiasModel
+from lunarops.classes.range_bias.models import RangeBiasCorrection, RangeBiasModel, RangeBiasRequest
 from lunarops.classes.relativistic.constants import MOON_EXTERNAL_POTENTIAL_BODIES
-from lunarops.classes.displacement.terrestrial_geometry import itrf2geodetic
 
 from .equations import (
+    REFLECTOR_DESIGN_OUTPUT_FIELDS,
     ObservationEquation,
     ObservationResultDetail,
-    REFLECTOR_DESIGN_OUTPUT_FIELDS,
 )
 from .light_time import LightTimeRequest, LightTimeSolution, LightTimeSolver, TroposphereEnvironment
 from .resolver import ResolvedObservation
@@ -78,7 +78,7 @@ class LlrObservationModel:
         *,
         min_elevation_deg: float,
         include_reflector_position_partials: bool = False,
-        result_detail: ObservationResultDetail | str | None = None,
+        result_detail: ObservationResultDetail | None = None,
     ) -> LlrObservationEvaluation:
         min_elevation = float(min_elevation_deg)
         if not np.isfinite(min_elevation):
@@ -89,7 +89,6 @@ class LlrObservationModel:
         geodetic = itrf2geodetic(station_itrf_m)
         solution = self.light_time_solver.solve(
             LightTimeRequest(
-                station_reference_itrf_m=station_itrf_m,
                 station_reference_itrf_at_utc=station.itrf_xyz_at,
                 station_key=resolved_observation.station_key,
                 reflector_reference_pa_m=np.asarray(
@@ -110,12 +109,13 @@ class LlrObservationModel:
 
         elevation_up_deg = float(np.rad2deg(solution.uplink.vacuum_elevation_rad))
         elevation_down_deg = float(np.rad2deg(solution.downlink.vacuum_elevation_rad))
-        range_bias_correction = self.range_bias_model.correction(
-            resolved_observation.station_identity_candidates,
-            resolved_observation.transmit_epoch_utc,
+        range_bias_request = RangeBiasRequest(
+            station_identifiers=resolved_observation.station_identity_candidates,
+            observation_epoch_utc=resolved_observation.transmit_epoch_utc,
         )
+        range_bias_correction = self.range_bias_model.evaluate(range_bias_request)
         computed_before_range_bias_s = float(solution.computed_observable_round_trip_time_s)
-        computed_s = computed_before_range_bias_s - range_bias_correction.two_way_s
+        computed_s = range_bias_correction.apply_to_computed_round_trip_time_s(computed_before_range_bias_s)
         observed_minus_computed_before_range_bias_rtt_s = (
             float(record.observed_round_trip_time_s) - computed_before_range_bias_s
         )
@@ -143,7 +143,7 @@ class LlrObservationModel:
         if result_detail is None:
             return LlrObservationEvaluation(equation, below_elevation_limit=below_elevation_limit)
 
-        level = ObservationResultDetail.parse(result_detail)
+        level = result_detail
         status = (
             "below_elevation_limit"
             if below_elevation_limit
@@ -217,11 +217,15 @@ class LlrObservationModel:
                 "wavelength_nm": record.wavelength_nm,
                 "computed_rtt_before_range_bias_s": computed_before_range_bias_s,
                 "coordinate_rtt_tdb_s": coordinate_rtt_s,
-                "range_bias_model": range_bias_correction.model,
-                "range_bias_two_way_cm": range_bias_correction.two_way_cm,
-                "range_bias_two_way_m": range_bias_correction.two_way_m,
-                "range_bias_two_way_s": range_bias_correction.two_way_s,
-                "range_bias_one_way_m": range_bias_correction.one_way_m,
+                "range_bias_model_label": range_bias_correction.model_label,
+                "range_bias_lookup_status": range_bias_correction.lookup.status.value,
+                "range_bias_station_id": range_bias_correction.lookup.matched_station_id,
+                "range_bias_active_component_count": len(range_bias_correction.lookup.active_components),
+                "range_bias_sources": range_bias_correction.lookup.sources,
+                "range_bias_correction_two_way_cm": range_bias_correction.correction_two_way_cm,
+                "range_bias_correction_two_way_m": range_bias_correction.correction_two_way_m,
+                "range_bias_correction_round_trip_time_s": range_bias_correction.correction_round_trip_time_s,
+                "range_bias_correction_one_way_m": range_bias_correction.correction_one_way_m,
                 "tt_minus_tdb_correction_s": tt_minus_tdb_s,
                 "tt_minus_tdb_correction_one_way_m": 0.5 * C * tt_minus_tdb_s,
                 "pre_1972_utc_rate_offset": solution.pre_1972_utc_rate_offset,
@@ -284,4 +288,4 @@ class LlrObservationModel:
         )
 
 
-__all__ = ["LlrObservationModel", "LlrObservationEvaluation"]
+__all__ = ["LlrObservationEvaluation", "LlrObservationModel"]

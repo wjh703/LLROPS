@@ -6,8 +6,8 @@ from typing import Protocol, runtime_checkable
 
 import numpy as np
 
+from lunarops import _iers2010  # pyright: ignore[reportMissingModuleSource]
 from lunarops.base.epoch import Epoch
-import lunarops._iers2010 as _iers2010  # pyright: ignore[reportMissingModuleSource]
 
 from .base import LongitudeLibrationCorrectionType, require_tdb_epoch
 

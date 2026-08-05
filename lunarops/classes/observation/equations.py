@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Hashable, Mapping
 from dataclasses import dataclass
 from enum import Enum
-from typing import Hashable, Mapping
 
 import numpy as np
 
@@ -16,7 +16,7 @@ class ObservationResultDetail(str, Enum):
     FULL = "full"
 
     @classmethod
-    def parse(cls, value: object) -> "ObservationResultDetail":
+    def parse(cls, value: object) -> ObservationResultDetail:
         if isinstance(value, cls):
             return value
         candidate = cls.STANDARD.value if value is None else str(value).strip().lower()
@@ -102,8 +102,8 @@ class ObservationEquation:
 
 
 __all__ = [
-    "ObservationEquation",
-    "ObservationResultDetail",
     "REFLECTOR_DESIGN_OUTPUT_FIELDS",
     "STANDARD_OUTPUT_FIELDS",
+    "ObservationEquation",
+    "ObservationResultDetail",
 ]
