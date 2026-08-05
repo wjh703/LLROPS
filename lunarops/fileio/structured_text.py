@@ -14,7 +14,7 @@ from .archive import atomic_text_writer, open_text_reader, parse_header
 
 
 def plain_data(value):
-    if is_dataclass(value):
+    if is_dataclass(value) and not isinstance(value, type):
         return plain_data(asdict(value))
     if isinstance(value, np.ndarray):
         return [plain_data(item) for item in value.tolist()]
@@ -27,9 +27,7 @@ def plain_data(value):
             if not normalized_key:
                 raise ValueError("Structured LunarOps text rejects empty mapping keys.")
             if normalized_key in result:
-                raise ValueError(
-                    f"Structured LunarOps text has colliding mapping key {normalized_key!r}."
-                )
+                raise ValueError(f"Structured LunarOps text has colliding mapping key {normalized_key!r}.")
             result[normalized_key] = plain_data(item)
         return result
     if isinstance(value, set):
@@ -42,9 +40,7 @@ def plain_data(value):
         if isinstance(value, float) and not np.isfinite(value):
             raise ValueError("Structured LunarOps text rejects non-finite floats.")
         return value
-    raise TypeError(
-        f"Structured LunarOps text cannot encode {type(value).__name__} objects."
-    )
+    raise TypeError(f"Structured LunarOps text cannot encode {type(value).__name__} objects.")
 
 
 def write_structured_text(

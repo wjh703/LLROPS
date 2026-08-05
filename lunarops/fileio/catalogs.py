@@ -6,9 +6,10 @@ import copy
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Sequence
+from typing import Dict, Mapping, Sequence
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 from lunarops.base.array_validation import catalog_vector3
 from lunarops.base.constants import SECONDS_PER_DAY
@@ -35,9 +36,9 @@ from lunarops.fileio.archive import (
 @dataclass(eq=False, repr=False)
 class StationRecord:
     name: str
-    itrf_xyz_m: Sequence[float]
+    itrf_xyz_m: ArrayLike
     aliases: Sequence[str] = field(default_factory=tuple)
-    itrf_velocity_m_per_year: Sequence[float] = (0.0, 0.0, 0.0)
+    itrf_velocity_m_per_year: ArrayLike = (0.0, 0.0, 0.0)
     position_epoch_utc: str = "2010-01-01T00:00:00"
 
     def __post_init__(self) -> None:
@@ -50,9 +51,7 @@ class StationRecord:
             name="station.itrf_velocity_m_per_year",
         )
         self.aliases = tuple(str(alias).strip() for alias in self.aliases)
-        if any(not alias for alias in self.aliases) or len(set(self.aliases)) != len(
-            self.aliases
-        ):
+        if any(not alias for alias in self.aliases) or len(set(self.aliases)) != len(self.aliases):
             raise ValueError("Station aliases must be non-empty and unique.")
         self.position_epoch_utc = str(self.position_epoch_utc).strip()
         Epoch.from_isot(self.position_epoch_utc, scale=TimeScale.UTC)
@@ -75,9 +74,7 @@ class StationRecord:
         epoch = self._position_epoch()
         time = self._utc_epoch(obstime_utc)
         years = epoch.seconds_until(time) / (365.25 * SECONDS_PER_DAY)
-        return np.asarray(self.itrf_xyz_m, dtype=float) + years * np.asarray(
-            self.itrf_velocity_m_per_year, dtype=float
-        )
+        return np.asarray(self.itrf_xyz_m, dtype=float) + years * np.asarray(self.itrf_velocity_m_per_year, dtype=float)
 
     def geodetic_at(self, obstime_utc: Epoch) -> GeodeticPosition:
         return itrf2geodetic(self.itrf_xyz_at(obstime_utc))
@@ -104,7 +101,7 @@ class StationRecord:
 @dataclass(eq=False, repr=False)
 class ReflectorRecord:
     name: str
-    moon_fixed_xyz_m: Sequence[float]
+    moon_fixed_xyz_m: ArrayLike
     aliases: Sequence[str] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
@@ -116,9 +113,7 @@ class ReflectorRecord:
             name="reflector.moon_fixed_xyz_m",
         )
         self.aliases = tuple(str(alias).strip() for alias in self.aliases)
-        if any(not alias for alias in self.aliases) or len(set(self.aliases)) != len(
-            self.aliases
-        ):
+        if any(not alias for alias in self.aliases) or len(set(self.aliases)) != len(self.aliases):
             raise ValueError("Reflector aliases must be non-empty and unique.")
 
 
@@ -129,7 +124,7 @@ def _canonical_catalog_token(value: object) -> str:
     return re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
 
 
-def resolve_catalog_key(value: object, catalog: Dict[str, object], label: str) -> str:
+def resolve_catalog_key(value: object, catalog: Mapping[str, object], label: str) -> str:
     """Resolve exact keys, case-insensitive keys, aliases, and compact tokens."""
     raw = str(value or "").strip()
     if not raw:
@@ -149,18 +144,14 @@ def resolve_catalog_key(value: object, catalog: Dict[str, object], label: str) -
             _canonical_catalog_token(key),
             _canonical_catalog_token(getattr(record, "name", "")),
         }
-        tokens.update(
-            _canonical_catalog_token(alias) for alias in getattr(record, "aliases", ())
-        )
+        tokens.update(_canonical_catalog_token(alias) for alias in getattr(record, "aliases", ()))
         if target in tokens:
             return key
 
     raise KeyError(f"{label} '{raw}' not found in catalog.")
 
 
-def first_resolvable_key(
-    candidates: Sequence[object], catalog: Dict[str, object], label: str
-) -> str:
+def first_resolvable_key(candidates: Sequence[object], catalog: Mapping[str, object], label: str) -> str:
     last_error = None
     for candidate in candidates:
         if candidate is None or str(candidate).strip() == "":
@@ -219,12 +210,7 @@ def read_station_catalog(path: str | Path) -> Dict[str, StationRecord]:
             marker = next(lines)
         except StopIteration as exc:
             raise ValueError(f"Truncated station catalog header in {source}.") from exc
-        if (
-            frame != ["frame", "ITRF"]
-            or len(count_line) != 2
-            or count_line[0] != "recordCount"
-            or marker != "data"
-        ):
+        if frame != ["frame", "ITRF"] or len(count_line) != 2 or count_line[0] != "recordCount" or marker != "data":
             raise ValueError(f"Malformed station catalog header in {source}.")
         count = int(count_line[1])
         if count < 0:
@@ -246,21 +232,13 @@ def read_station_catalog(path: str | Path) -> Dict[str, StationRecord]:
                 raise ValueError(f"Duplicate station catalog key {key!r}.")
             catalog[key] = StationRecord(
                 name=decode_token(fields[1]),
-                itrf_xyz_m=[
-                    parse_float(value, field="station position")
-                    for value in fields[2:5]
-                ],
-                itrf_velocity_m_per_year=[
-                    parse_float(value, field="station velocity")
-                    for value in fields[5:8]
-                ],
+                itrf_xyz_m=[parse_float(value, field="station position") for value in fields[2:5]],
+                itrf_velocity_m_per_year=[parse_float(value, field="station velocity") for value in fields[5:8]],
                 position_epoch_utc=decode_token(fields[8]),
                 aliases=tuple(decode_token(value) for value in fields[10:]),
             )
     if len(catalog) != count:
-        raise ValueError(
-            f"Station catalog declares {count} records, found {len(catalog)}."
-        )
+        raise ValueError(f"Station catalog declares {count} records, found {len(catalog)}.")
     return catalog
 
 
@@ -301,15 +279,8 @@ def read_reflector_catalog(path: str | Path) -> Dict[str, ReflectorRecord]:
             count_line = next(lines).split()
             marker = next(lines)
         except StopIteration as exc:
-            raise ValueError(
-                f"Truncated reflector catalog header in {source}."
-            ) from exc
-        if (
-            frame != ["frame", "MOON_PA"]
-            or len(count_line) != 2
-            or count_line[0] != "recordCount"
-            or marker != "data"
-        ):
+            raise ValueError(f"Truncated reflector catalog header in {source}.") from exc
+        if frame != ["frame", "MOON_PA"] or len(count_line) != 2 or count_line[0] != "recordCount" or marker != "data":
             raise ValueError(f"Malformed reflector catalog header in {source}.")
         count = int(count_line[1])
         if count < 0:
@@ -318,16 +289,12 @@ def read_reflector_catalog(path: str | Path) -> Dict[str, ReflectorRecord]:
         for line in lines:
             fields = line.split()
             if len(fields) < 6:
-                raise ValueError(
-                    f"Malformed reflector catalog row in {source}: {line!r}"
-                )
+                raise ValueError(f"Malformed reflector catalog row in {source}: {line!r}")
             alias_count = int(fields[5])
             if alias_count < 0:
                 raise ValueError("Reflector alias count must be non-negative.")
             if len(fields) != 6 + alias_count:
-                raise ValueError(
-                    f"Reflector alias count mismatch in {source}: {line!r}"
-                )
+                raise ValueError(f"Reflector alias count mismatch in {source}: {line!r}")
             key = decode_token(fields[0])
             if not key:
                 raise ValueError("Reflector catalog keys must not be empty.")
@@ -335,20 +302,15 @@ def read_reflector_catalog(path: str | Path) -> Dict[str, ReflectorRecord]:
                 raise ValueError(f"Duplicate reflector catalog key {key!r}.")
             catalog[key] = ReflectorRecord(
                 name=decode_token(fields[1]),
-                moon_fixed_xyz_m=[
-                    parse_float(value, field="reflector position")
-                    for value in fields[2:5]
-                ],
+                moon_fixed_xyz_m=[parse_float(value, field="reflector position") for value in fields[2:5]],
                 aliases=tuple(decode_token(value) for value in fields[6:]),
             )
     if len(catalog) != count:
-        raise ValueError(
-            f"Reflector catalog declares {count} records, found {len(catalog)}."
-        )
+        raise ValueError(f"Reflector catalog declares {count} records, found {len(catalog)}.")
     return catalog
 
 
-def load_station_catalog(source) -> Dict[str, StationRecord]:
+def load_station_catalog(source: object) -> Dict[str, StationRecord]:
     """Build a station catalog.
 
     ``source`` may be
@@ -356,9 +318,7 @@ def load_station_catalog(source) -> Dict[str, StationRecord]:
       * a path to a native ``stationCatalog`` text file
       * an already-built ``Dict[str, StationRecord]`` (passed through).
     """
-    if isinstance(source, dict) and all(
-        isinstance(v, StationRecord) for v in source.values()
-    ):
+    if isinstance(source, dict) and all(isinstance(v, StationRecord) for v in source.values()):
         return source
     if source in (None, "builtin"):
         from lunarops.fileio.builtin_catalogs import STATIONS
@@ -367,14 +327,14 @@ def load_station_catalog(source) -> Dict[str, StationRecord]:
         # graph so estimator/model-state updates cannot pollute later programs
         # or a fresh RunContext in the same Python process.
         return copy.deepcopy(STATIONS)
+    if not isinstance(source, (str, Path)):
+        raise TypeError("Station catalog source must be a path, 'builtin', or a station mapping.")
     return read_station_catalog(source)
 
 
-def load_reflector_catalog(source) -> Dict[str, ReflectorRecord]:
+def load_reflector_catalog(source: object) -> Dict[str, ReflectorRecord]:
     """Build a reflector catalog; see :func:`load_station_catalog`."""
-    if isinstance(source, dict) and all(
-        isinstance(v, ReflectorRecord) for v in source.values()
-    ):
+    if isinstance(source, dict) and all(isinstance(v, ReflectorRecord) for v in source.values()):
         return source
     if source in (None, "builtin"):
         from lunarops.fileio.builtin_catalogs import REFLECTORS
@@ -382,6 +342,8 @@ def load_reflector_catalog(source) -> Dict[str, ReflectorRecord]:
         # See load_station_catalog: reflector coordinates are mutable model
         # state during fitting, so builtin globals must never be handed out.
         return copy.deepcopy(REFLECTORS)
+    if not isinstance(source, (str, Path)):
+        raise TypeError("Reflector catalog source must be a path, 'builtin', or a reflector mapping.")
     return read_reflector_catalog(source)
 
 

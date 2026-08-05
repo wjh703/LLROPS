@@ -21,7 +21,7 @@ def _prepare_shared_resources(merged: dict, context) -> dict:
     earth_rotation_config = merged.get("earthRotation")
     if earth_rotation_config is not None:
         from lunarops.classes.observation_factory import ensure_registered
-        from lunarops.classes.frames import C04EarthOrientation
+        from lunarops.classes.frames import TabulatedEarthOrientation
         from lunarops.config.registry import normalize_class_config
 
         cfg = normalize_class_config(earth_rotation_config)
@@ -32,11 +32,8 @@ def _prepare_shared_resources(merged: dict, context) -> dict:
                 earth_rotation_config,
                 cache=True,
             )
-            if not isinstance(earth_orientation, C04EarthOrientation):
-                raise TypeError(
-                    "MPI earthRotation resource preparation expected "
-                    "C04EarthOrientation."
-                )
+            if not isinstance(earth_orientation, TabulatedEarthOrientation):
+                raise TypeError("MPI earthRotation resource preparation expected TabulatedEarthOrientation.")
             resources["earthRotation"] = earth_orientation.to_mpi_payload()
     return resources
 
@@ -97,7 +94,7 @@ def build_worker_processor(spec: dict, shared_class_cache: Optional[dict] = None
 def snapshot_catalog_state(model_state) -> dict:
     """Pickle-light snapshot of the mutable per-iteration model state."""
     return {
-        "reflectorPositions": model_state.reflector_positions(),
+        "reflectorPositions": model_state.reflector_positions_pa_m(),
     }
 
 
@@ -106,7 +103,7 @@ def apply_catalog_state(processor, catalog_state: Optional[dict]) -> None:
         return
     positions = catalog_state.get("reflectorPositions") or {}
     if positions:
-        processor.model_state.apply_reflector_positions(positions)
+        processor.model_state.apply_reflector_positions_pa_m(positions)
 
 
 __all__ = [

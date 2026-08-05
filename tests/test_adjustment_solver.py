@@ -1,5 +1,6 @@
 import json
 from dataclasses import replace
+from typing import Any, cast
 
 import numpy as np
 import pytest
@@ -8,6 +9,7 @@ from lunarops.base.epoch import Epoch, TimeScale
 from lunarops.base.parameter_name import ParameterName
 from lunarops.classes.observation.equations import ObservationEquation
 from lunarops.classes.parametrization.base import Parametrization, ParametrizationList
+from lunarops.classes.parametrization.station_range_bias import StationRangeBiasParametrization
 from lunarops.estimation.adjustment_preprocessing import floor_prefit_uncertainties
 from lunarops.estimation.convergence import ParameterConvergencePolicy
 from lunarops.estimation.linearized_least_squares import (
@@ -35,15 +37,20 @@ from lunarops.estimation.variance_components import (
 )
 
 
-def _equation(identity, value, station, wavelength=532.0):
+def _equation(
+    identity: object,
+    value: float,
+    station: str,
+    wavelength: float = 532.0,
+) -> ObservationEquation:
     return ObservationEquation(
-        observed_minus_computed_m=float(value),
-        sigma_m=1.0,
-        partials={"test": np.array([1.0])},
-        identity=identity,
+        observed_minus_computed_one_way_m=float(value),
+        sigma_one_way_m=1.0,
+        design_partials={"test": np.array([1.0])},
+        observation_id=identity,
         station_key=station,
         reflector_key="REF",
-        epoch=Epoch.from_isot("2020-01-01T00:00:00", scale=TimeScale.UTC),
+        transmit_epoch_utc=Epoch.from_isot("2020-01-01T00:00:00", scale=TimeScale.UTC),
         wavelength_nm=wavelength,
     )
 
@@ -55,10 +62,10 @@ class OffsetParametrization(Parametrization):
     def parameter_names(self):
         return [ParameterName("test", "position.x")]
 
-    def design_columns(self, equation):
+    def design_columns(self, eq):
         return np.array([1.0])
 
-    def reduce_observation(self, equation):
+    def reduce_observation(self, eq):
         return self.value
 
     def apply_update(self, delta):
@@ -75,12 +82,13 @@ class AffineParametrization(Parametrization):
             ParameterName("test", "position.y"),
         ]
 
-    def design_columns(self, equation):
-        station_offset = 10.0 if equation.station_key == "STA_B" else 0.0
-        return np.array([1.0, 1.0e4 * (equation.identity[1] + station_offset)])
+    def design_columns(self, eq):
+        station_offset = 10.0 if eq.station_key == "STA_B" else 0.0
+        observation_id = cast(Any, eq.observation_id)
+        return np.array([1.0, 1.0e4 * (observation_id[1] + station_offset)])
 
-    def reduce_observation(self, equation):
-        return float(self.design_columns(equation) @ self.value)
+    def reduce_observation(self, eq):
+        return float(self.design_columns(eq) @ self.value)
 
     def apply_update(self, delta):
         self.value += np.asarray(delta, dtype=float)
@@ -96,6 +104,25 @@ def test_parametrization_selection_reuses_block_state():
     assert offset.value == pytest.approx(2.0)
     with pytest.raises(KeyError, match="Unknown parametrization"):
         parametrization.select_blocks(["MissingParametrization"])
+
+
+def test_parametrization_list_blocks_are_immutable():
+    parametrization = ParametrizationList([OffsetParametrization()])
+    dynamic_parametrization = cast(Any, parametrization)
+
+    assert isinstance(parametrization.blocks, tuple)
+    with pytest.raises(AttributeError):
+        dynamic_parametrization.blocks.append(OffsetParametrization())
+    with pytest.raises(AttributeError):
+        dynamic_parametrization.blocks = ()
+
+
+@pytest.mark.parametrize("selectors", ["OffsetParametrization", ["OffsetParametrization", "OffsetParametrization"]])
+def test_parametrization_selection_rejects_invalid_selector_contract(selectors):
+    parametrization = ParametrizationList([OffsetParametrization()])
+
+    with pytest.raises((TypeError, ValueError)):
+        parametrization.select_blocks(selectors)
 
 
 def test_parameter_convergence_policy_supports_block_tolerances():
@@ -164,14 +191,14 @@ def test_vce_assignment_distinguishes_overlapping_cerga_systems_by_wavelength():
 
 def test_prefit_uncertainty_qc_floors_only_abnormally_small_sigmas():
     equations = [
-        replace(_equation("tiny", 0.0, "STA_A"), sigma_m=1.0e-5),
-        replace(_equation("normal-1", 0.0, "STA_A"), sigma_m=0.02),
-        replace(_equation("normal-2", 0.0, "STA_A"), sigma_m=0.03),
+        replace(_equation("tiny", 0.0, "STA_A"), sigma_one_way_m=1.0e-5),
+        replace(_equation("normal-1", 0.0, "STA_A"), sigma_one_way_m=0.02),
+        replace(_equation("normal-2", 0.0, "STA_A"), sigma_one_way_m=0.03),
     ]
 
     adjusted, records, groups = floor_prefit_uncertainties(
         equations,
-        {equation.identity: "A" for equation in equations},
+        {equation.observation_id: "A" for equation in equations},
         minimum_sigma_m=1.0e-3,
         minimum_group_median_fraction=0.1,
     )
@@ -182,9 +209,7 @@ def test_prefit_uncertainty_qc_floors_only_abnormally_small_sigmas():
         "observation_count": 3,
         "floored_count": 1,
     }
-    assert [equation.sigma_m for equation in adjusted] == pytest.approx(
-        [0.002, 0.02, 0.03]
-    )
+    assert [equation.sigma_one_way_m for equation in adjusted] == pytest.approx([0.002, 0.02, 0.03])
     assert records["tiny"]["status"] == "FLOORED"
     assert records["tiny"]["reported_sigma_m"] == pytest.approx(1.0e-5)
     assert records["normal-1"]["status"] == "UNCHANGED"
@@ -235,9 +260,7 @@ def test_direct_rejection_boundaries():
         (0.0, 1.0, 1.0),
     ],
 )
-def test_robust_factor_change_is_absolute(
-    old_factor, new_factor, expected
-):
+def test_robust_factor_change_is_absolute(old_factor, new_factor, expected):
     assert maximum_robust_factor_change(
         {"observation": old_factor},
         {"observation": new_factor},
@@ -339,19 +362,19 @@ def test_factor_change_ignores_insignificant_boundary_crossings():
     )
 
     assert change == pytest.approx(0.01)
-    assert maximum_robust_factor_change(
-        {"weak": 0.0},
-        {"weak": 1.0e-4},
-        ["weak"],
-        significance_floor=1.0e-3,
-    ) == 0.0
+    assert (
+        maximum_robust_factor_change(
+            {"weak": 0.0},
+            {"weak": 1.0e-4},
+            ["weak"],
+            significance_floor=1.0e-3,
+        )
+        == 0.0
+    )
 
 
 def test_vce_direct_update_respects_variance_ratio_limit():
-    equations = [
-        _equation(index, value, "STA_A")
-        for index, value in enumerate([0.0, 100.0, 200.0])
-    ]
+    equations = [_equation(index, value, "STA_A") for index, value in enumerate([0.0, 100.0, 200.0])]
     components = (
         VarianceComponentDefinition.from_config(
             {
@@ -390,10 +413,10 @@ def test_vce_direct_update_respects_variance_ratio_limit():
 
 def _two_component_case():
     equations = [
-        replace(_equation(("A", i), value, "STA_A"), sigma_m=0.5 + 0.1 * i)
+        replace(_equation(("A", i), value, "STA_A"), sigma_one_way_m=0.5 + 0.1 * i)
         for i, value in enumerate([0.7, 1.0, 1.2, 0.8, 1.1, 0.9])
     ] + [
-        replace(_equation(("B", i), value, "STA_B"), sigma_m=0.8 + 0.1 * i)
+        replace(_equation(("B", i), value, "STA_B"), sigma_one_way_m=0.8 + 0.1 * i)
         for i, value in enumerate([0.0, 2.0, 1.7, -0.2, 2.4, 0.4])
     ]
     components = tuple(
@@ -418,13 +441,12 @@ def test_dense_linearization_matches_streaming_normal_equations():
     assignments = assign_variance_components(equations, components)
     scales = {"A": 1.3, "B": 0.7}
     factors = {
-        equation.identity: 0.2 + 0.8 * (index + 1) / len(equations)
-        for index, equation in enumerate(equations)
+        equation.observation_id: 0.2 + 0.8 * (index + 1) / len(equations) for index, equation in enumerate(equations)
     }
     weights = np.asarray(
         [
-            factors[equation.identity]
-            / (scales[assignments[equation.identity]] ** 2 * equation.sigma_m**2)
+            factors[equation.observation_id]
+            / (scales[assignments[equation.observation_id]] ** 2 * equation.sigma_one_way_m**2)
             for equation in equations
         ]
     )
@@ -445,9 +467,9 @@ def test_dense_linearization_matches_streaming_normal_equations():
     dense_solved = solve_normal_equations(dense_normals)
     streaming_solved = solve_normal_equations(streaming_normals)
     assert dense_solved.delta == pytest.approx(streaming_solved.delta, rel=1.0e-13)
-    assert dense_solved.covariance == pytest.approx(
-        streaming_solved.covariance, rel=1.0e-13
-    )
+    assert dense_solved.covariance == pytest.approx(streaming_solved.covariance, rel=1.0e-13)
+
+
 def _run_adjustment(*, initial_scales=None, initial_factors=None):
     equations, components = _two_component_case()
     return LlrAdjustmentSolver(
@@ -469,12 +491,11 @@ def _run_adjustment(*, initial_scales=None, initial_factors=None):
 
 def test_adjustment_is_warm_startable():
     first = _run_adjustment()
-    warm = _run_adjustment(
-        initial_scales=first.scales, initial_factors=first.robust_factors
-    )
+    warm = _run_adjustment(initial_scales=first.scales, initial_factors=first.robust_factors)
     assert warm.settings["warm_started_scale_count"] == 2
     assert warm.settings["warm_started_factor_count"] == 12
-    assert set(warm.summary["performance_seconds"]) == {
+    warm_summary = cast(dict[str, Any], warm.summary)
+    assert set(cast(dict[str, float], warm_summary["performance_seconds"])) == {
         "cache_build",
         "normal_solve",
         "leverage",
@@ -484,12 +505,8 @@ def test_adjustment_is_warm_startable():
 
 def test_llr_adjustment_runs_joint_helmert_vce_cycle():
     equations = [
-        _equation(("A", index), value, "STA_A")
-        for index, value in enumerate([0.7, 1.0, 1.2, 0.8, 1.1, 0.9])
-    ] + [
-        _equation(("B", index), value, "STA_B")
-        for index, value in enumerate([0.0, 2.0, 1.7, -0.2, 2.4, 0.4])
-    ]
+        _equation(("A", index), value, "STA_A") for index, value in enumerate([0.7, 1.0, 1.2, 0.8, 1.1, 0.9])
+    ] + [_equation(("B", index), value, "STA_B") for index, value in enumerate([0.0, 2.0, 1.7, -0.2, 2.4, 0.4])]
     components = (
         VarianceComponentDefinition.from_config(
             {
@@ -524,12 +541,11 @@ def test_llr_adjustment_runs_joint_helmert_vce_cycle():
     assert set(result.scales) == {"A", "B"}
     assert result.normals is not None
     assert len(result.observations) == len(equations)
-    for item in result.observations:
+    observations = cast(list[dict[str, Any]], result.observations)
+    for item in observations:
         base_sigma = item["base_scale"] * item["effective_sigma_m"]
         assert 0.0 <= item["leverage"] < 1.0
-        assert item["residual_sigma_m"] == pytest.approx(
-            base_sigma * np.sqrt(1.0 - item["leverage"])
-        )
+        assert item["residual_sigma_m"] == pytest.approx(base_sigma * np.sqrt(1.0 - item["leverage"]))
         assert item["standardized_residual"] == pytest.approx(
             item["current_state_residual_m"] / item["residual_sigma_m"]
         )
@@ -541,18 +557,16 @@ def test_llr_adjustment_runs_joint_helmert_vce_cycle():
         result.iterations[-1].expected_total_redundancy
     )
     for iteration in result.iterations:
+        variance_components = cast(dict[str, dict[str, float]], iteration.variance_components)
         expected = max(
-            abs(group["proposed_variance"] / group["current_variance"] - 1.0)
-            for group in iteration.variance_components.values()
+            abs(group["proposed_variance"] / group["current_variance"] - 1.0) for group in variance_components.values()
         )
         assert iteration.maximum_variance_ratio_change == pytest.approx(expected)
-    payload = result.to_dict()
+    payload = cast(dict[str, Any], result.to_dict())
     json.dumps(payload)
     assert payload["summary"]["source_observation_count"] == len(equations)
     assert payload["summary"]["equation_evaluation_count"] == len(payload["equation_evaluations"])
-    assert payload["summary"][
-        "parameter_uncertainty_sigma_multiplier"
-    ] == pytest.approx(3.0)
+    assert payload["summary"]["parameter_uncertainty_sigma_multiplier"] == pytest.approx(3.0)
     parameter = payload["parameters"][0]
     assert parameter["formal_uncertainty_m"] is not None
     assert parameter["formal_uncertainty_m"] == pytest.approx(
@@ -562,7 +576,10 @@ def test_llr_adjustment_runs_joint_helmert_vce_cycle():
     assert payload["global_residuals"]["residual_m"]["count"] == len(equations)
     assert payload["variance_components"][0]["actual_start_epoch"] is not None
     counts = ("full_weight_count", "downweighted_count", "rejected_count")
-    assert sum(payload["variance_components"][0][key] for key in counts) == payload["variance_components"][0]["observation_count"]
+    assert (
+        sum(payload["variance_components"][0][key] for key in counts)
+        == payload["variance_components"][0]["observation_count"]
+    )
     assert payload["iterations"][0]["candidate_update_by_block_m"]
     assert payload["iterations"][0]["variance_components"]
     assert "maximum_scale_log_target_change" in payload["iterations"][0]
@@ -573,10 +590,7 @@ def test_llr_adjustment_runs_joint_helmert_vce_cycle():
 
 
 def test_direct_rejection_uses_existing_vce_path_with_binary_factors():
-    equations = [
-        _equation(index, -0.2 if index % 2 else 0.2, "STA_A")
-        for index in range(20)
-    ]
+    equations = [_equation(index, -0.2 if index % 2 else 0.2, "STA_A") for index in range(20)]
     equations.append(_equation("outlier", 20.0, "STA_A"))
     components = (
         VarianceComponentDefinition.from_config(
@@ -614,18 +628,16 @@ def test_direct_rejection_uses_existing_vce_path_with_binary_factors():
     assert iteration.rejected_observation_count == 1
     assert iteration.robust_factor_summary["downweighted_count"] == 0
     assert iteration.variance_components["A"]["active_count"] == 20.0
-    outlier = next(
-        item for item in result.observations if item["observation_id"] == "outlier"
-    )
+    outlier = next(item for item in result.observations if item["observation_id"] == "outlier")
     assert outlier["applied_robust_factor"] == 0.0
     assert outlier["applied_robust_status"] == "REJECTED"
 
 
 def test_adjustment_reports_prefit_uncertainty_floor():
     equations = [
-        replace(_equation("tiny", 0.0, "STA_A"), sigma_m=1.0e-5),
-        replace(_equation("normal-1", 1.0, "STA_A"), sigma_m=0.02),
-        replace(_equation("normal-2", 2.0, "STA_A"), sigma_m=0.03),
+        replace(_equation("tiny", 0.0, "STA_A"), sigma_one_way_m=1.0e-5),
+        replace(_equation("normal-1", 1.0, "STA_A"), sigma_one_way_m=0.02),
+        replace(_equation("normal-2", 2.0, "STA_A"), sigma_one_way_m=0.03),
     ]
     components = (
         VarianceComponentDefinition.from_config(
@@ -657,19 +669,15 @@ def test_adjustment_reports_prefit_uncertainty_floor():
         ),
     ).run()
 
-    records = {item["observation_id"]: item for item in result.observations}
+    records = {item["observation_id"]: item for item in cast(list[dict[str, Any]], result.observations)}
     assert result.summary["uncertainty_sigma_floored_count"] == 1
     assert result.summary["retained_uncertainty_sigma_floored_count"] == 1
     assert records["tiny"]["reported_sigma_m"] == pytest.approx(1.0e-5)
     assert records["tiny"]["effective_sigma_m"] == pytest.approx(0.002)
     assert records["tiny"]["uncertainty_qc_status"] == "FLOORED"
     assert records["normal-1"]["effective_sigma_m"] == pytest.approx(0.02)
-    assert result.uncertainty_quality_control["groups"]["A"][
-        "floored_count"
-    ] == 1
-
-
-from lunarops.classes.parametrization.station_range_bias import StationRangeBiasParametrization
+    quality_control = cast(dict[str, Any], result.uncertainty_quality_control)
+    assert quality_control["groups"]["A"]["floored_count"] == 1
 
 
 def test_open_bias_interval_remains_active():
@@ -745,11 +753,11 @@ def test_extended_variance_components_cover_mcdonald_1969_and_current_meo():
     )
     mcdonald = replace(
         _equation("mcdonald-1969", 0.0, "MCDONALD", 694.3),
-        epoch=Epoch.from_isot("1969-08-20T00:00:00", scale=TimeScale.UTC),
+        transmit_epoch_utc=Epoch.from_isot("1969-08-20T00:00:00", scale=TimeScale.UTC),
     )
     meo = replace(
         _equation("meo-2024", 0.0, "GRASSE", 532.1),
-        epoch=Epoch.from_isot("2024-12-21T00:00:00", scale=TimeScale.UTC),
+        transmit_epoch_utc=Epoch.from_isot("2024-12-21T00:00:00", scale=TimeScale.UTC),
     )
 
     assert assign_variance_components([mcdonald, meo], components) == {
@@ -758,12 +766,8 @@ def test_extended_variance_components_cover_mcdonald_1969_and_current_meo():
     }
 
 
-
 def test_stochastic_iterations_do_not_recompute_observation_equations():
-    equations = [
-        _equation(index, value, "STA_A")
-        for index, value in enumerate([0.0, 0.0, 0.0, 0.0, 0.0, 20.0])
-    ]
+    equations = [_equation(index, value, "STA_A") for index, value in enumerate([0.0, 0.0, 0.0, 0.0, 0.0, 20.0])]
     components = (
         VarianceComponentDefinition.from_config(
             {
@@ -812,10 +816,7 @@ def test_stochastic_iterations_do_not_recompute_observation_equations():
 
 
 def test_stochastic_iteration_limit_still_applies_parameter_update():
-    equations = [
-        _equation(index, value, "STA_A")
-        for index, value in enumerate([0.0, 0.0, 0.0, 0.0, 0.0, 20.0])
-    ]
+    equations = [_equation(index, value, "STA_A") for index, value in enumerate([0.0, 0.0, 0.0, 0.0, 0.0, 20.0])]
     components = (
         VarianceComponentDefinition.from_config(
             {
@@ -854,7 +855,7 @@ def test_stochastic_iteration_limit_still_applies_parameter_update():
     ).run()
 
     assert source_calls == [1, 2, 3]
-    first = result.linearizations[0]
+    first = cast(dict[str, Any], result.linearizations[0])
     assert not first["stochastic_converged"]
     assert first["stochastic_iteration_limit_reached"]
     assert first["parameter_update_factor"] == 0.5
@@ -879,10 +880,7 @@ def test_parameter_update_factor_must_be_in_unit_interval(factor):
 
 
 def test_fixed_domain_observation_can_reenter_after_one_failed_linearization():
-    equations = [
-        _equation(index, value, "STA_A")
-        for index, value in enumerate([0.7, 1.0, 1.2, 0.8, 1.1, 0.9])
-    ]
+    equations = [_equation(index, value, "STA_A") for index, value in enumerate([0.7, 1.0, 1.2, 0.8, 1.1, 0.9])]
     components = (
         VarianceComponentDefinition.from_config(
             {
@@ -896,7 +894,7 @@ def test_fixed_domain_observation_can_reenter_after_one_failed_linearization():
 
     def source(iteration):
         return [
-            replace(equation, converged=not (iteration == 2 and index == 0))
+            replace(equation, light_time_converged=not (iteration == 2 and index == 0))
             for index, equation in enumerate(equations)
         ]
 
@@ -916,18 +914,12 @@ def test_fixed_domain_observation_can_reenter_after_one_failed_linearization():
         ),
     ).run()
 
-    assert [
-        item["fixed_domain_returned_count"]
-        for item in result.equation_evaluations
-    ] == [6, 5, 6, 6]
+    assert [item["fixed_domain_returned_count"] for item in result.equation_evaluations] == [6, 5, 6, 6]
     assert set(result.robust_factors) == set(range(6))
 
 
 def test_parameter_convergence_requires_two_confirmation_linearizations():
-    equations = [
-        _equation(index, value, "STA_A")
-        for index, value in enumerate([0.7, 1.0, 1.2, 0.8, 1.1, 0.9])
-    ]
+    equations = [_equation(index, value, "STA_A") for index, value in enumerate([0.7, 1.0, 1.2, 0.8, 1.1, 0.9])]
     late = _equation("late", 100.0, "STA_A")
     components = (
         VarianceComponentDefinition.from_config(
@@ -943,7 +935,7 @@ def test_parameter_convergence_requires_two_confirmation_linearizations():
 
     def source(iteration):
         source_calls.append(iteration)
-        return equations + [replace(late, converged=iteration > 1)]
+        return equations + [replace(late, light_time_converged=iteration > 1)]
 
     block = OffsetParametrization()
     result = LlrAdjustmentSolver(
@@ -964,7 +956,7 @@ def test_parameter_convergence_requires_two_confirmation_linearizations():
 
     assert source_calls == [1, 2, 3, 4]
     assert len(result.linearizations) == 3
-    first_linearization = result.linearizations[0]
+    first_linearization = cast(dict[str, Any], result.linearizations[0])
     assert not first_linearization["parameter_converged"]
     assert first_linearization["applied_update_by_block_m"]["OffsetParametrization"] == pytest.approx(
         first_linearization["candidate_update_by_block_m"]["OffsetParametrization"]
@@ -982,10 +974,7 @@ def test_parameter_convergence_requires_two_confirmation_linearizations():
 
 def test_final_report_matches_the_applied_damped_state():
     values = [1.0, 2.0, 3.0, 1.0, 2.0, 3.0]
-    equations = [
-        _equation(index, value, "STA_A")
-        for index, value in enumerate(values)
-    ]
+    equations = [_equation(index, value, "STA_A") for index, value in enumerate(values)]
     components = (
         VarianceComponentDefinition.from_config(
             {
@@ -1018,9 +1007,7 @@ def test_final_report_matches_the_applied_damped_state():
     ).run()
 
     assert block.value == pytest.approx(1.0)
-    assert result.parameters[0]["remaining_linearized_correction_m"] == pytest.approx(
-        1.0
-    )
+    assert result.parameters[0]["remaining_linearized_correction_m"] == pytest.approx(1.0)
     first = result.observations[0]
     assert first["current_state_residual_m"] == pytest.approx(0.0)
     assert first["linearized_postfit_residual_m"] == pytest.approx(-1.0)

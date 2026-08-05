@@ -1,29 +1,26 @@
 """Dataset orchestration for LLR measurement evaluation."""
+
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
-from typing import Iterable
 
 import numpy as np
+from tqdm import tqdm as _tqdm  # type: ignore[import-untyped]
 
 from lunarops.fileio.normal_points import NptDataset
 
-from .equations import ObservationEquation, ObservationOutputLevel
-from .measurement import LlrMeasurement
-from .resolver import CatalogSelection, ObservationResolver, ResolvedObservation
-
-try:
-    from tqdm import tqdm as _tqdm  # type: ignore
-except ImportError:  # pragma: no cover
-    _tqdm = None
+from .equations import ObservationEquation, ObservationResultDetail
+from .measurement import LlrObservationModel
+from .resolver import ObservationCatalogSelection, ObservationResolver, ResolvedObservation
 
 
 @dataclass(frozen=True, slots=True)
 class ObservationProcessingOptions:
-    station_name: str | None = None
-    reflector_name: str | None = None
+    station_identifier: str | None = None
+    reflector_identifier: str | None = None
     min_elevation_deg: float = 0.0
-    include_reflector_position_partial: bool = False
+    include_reflector_position_partials: bool = False
     show_progress: bool = False
     progress_description: str | None = None
 
@@ -34,15 +31,15 @@ class ObservationProcessingOptions:
         object.__setattr__(self, "min_elevation_deg", min_elevation)
 
     @property
-    def catalog_selection(self) -> CatalogSelection:
-        return CatalogSelection(self.station_name, self.reflector_name)
+    def catalog_selection(self) -> ObservationCatalogSelection:
+        return ObservationCatalogSelection(self.station_identifier, self.reflector_identifier)
 
     def with_progress(
         self,
         description: str | None,
         *,
         enabled: bool | None = None,
-    ) -> "ObservationProcessingOptions":
+    ) -> ObservationProcessingOptions:
         return replace(
             self,
             progress_description=description,
@@ -51,22 +48,14 @@ class ObservationProcessingOptions:
 
 
 class LlrObservationProcessor:
-    def __init__(self, resolver: ObservationResolver, measurement: LlrMeasurement) -> None:
+    def __init__(self, resolver: ObservationResolver, observation_model: LlrObservationModel) -> None:
+        if not isinstance(resolver, ObservationResolver):
+            raise TypeError("resolver must be an ObservationResolver.")
+        if not isinstance(observation_model, LlrObservationModel):
+            raise TypeError("observation_model must be an LlrObservationModel.")
         self.resolver = resolver
         self.model_state = resolver.model_state
-        self.measurement = measurement
-
-    @property
-    def station_catalog(self):
-        return self.resolver.station_catalog
-
-    @property
-    def reflector_catalog(self):
-        return self.resolver.reflector_catalog
-
-    @property
-    def ephemeris_file(self) -> str:
-        return str(self.measurement.ephemeris.source_file)
+        self.observation_model = observation_model
 
     def _with_progress(
         self,
@@ -78,35 +67,21 @@ class LlrObservationProcessor:
         if not options.show_progress or total <= 0:
             return observations
         description = options.progress_description or "LLR observations"
-        if _tqdm is not None:
-            return _tqdm(
-                observations,
-                total=total,
-                desc=description,
-                unit="np",
-                dynamic_ncols=True,
-                smoothing=0.1,
-            )
+        return _tqdm(
+            observations,
+            total=total,
+            desc=description,
+            unit="np",
+            dynamic_ncols=True,
+            smoothing=0.1,
+        )
 
-        def generator():
-            for index, item in enumerate(observations, start=1):
-                print(
-                    f"\r{description}: {index}/{total}",
-                    end="" if index < total else "\n",
-                    flush=True,
-                )
-                yield item
-
-        return generator()
-
-    def _observations(
+    def _resolved_observations(
         self,
         dataset: NptDataset,
         options: ObservationProcessingOptions,
     ) -> Iterable[ResolvedObservation]:
-        observations = self.resolver.validate(
-            dataset.records, options.catalog_selection
-        )
+        observations = self.resolver.resolve_all(dataset.records, options.catalog_selection)
         return self._with_progress(
             observations,
             total=len(observations),
@@ -120,35 +95,35 @@ class LlrObservationProcessor:
         options: ObservationProcessingOptions | None = None,
     ) -> list[ObservationEquation]:
         options = options or ObservationProcessingOptions()
-        return [
-            self.measurement.evaluate(
+        evaluations = [
+            self.observation_model.evaluate(
                 observation,
                 min_elevation_deg=options.min_elevation_deg,
-                include_reflector_position_partial=(
-                    options.include_reflector_position_partial
-                ),
-            ).equation
-            for observation in self._observations(dataset, options)
+                include_reflector_position_partials=(options.include_reflector_position_partials),
+            )
+            for observation in self._resolved_observations(dataset, options)
         ]
+        return [evaluation.equation for evaluation in evaluations if not evaluation.below_elevation_limit]
 
     def rows(
         self,
         dataset: NptDataset,
         *,
         options: ObservationProcessingOptions | None = None,
-        level: ObservationOutputLevel | str = ObservationOutputLevel.STANDARD,
+        detail: ObservationResultDetail = ObservationResultDetail.STANDARD,
     ) -> list[dict[str, object]]:
         options = options or ObservationProcessingOptions()
         rows: list[dict[str, object]] = []
-        for observation in self._observations(dataset, options):
-            row = self.measurement.evaluate(
+        for observation in self._resolved_observations(dataset, options):
+            evaluation = self.observation_model.evaluate(
                 observation,
                 min_elevation_deg=options.min_elevation_deg,
-                include_reflector_position_partial=(
-                    options.include_reflector_position_partial
-                ),
-                output_level=level,
-            ).row
+                include_reflector_position_partials=(options.include_reflector_position_partials),
+                result_detail=detail,
+            )
+            if evaluation.below_elevation_limit:
+                continue
+            row = evaluation.result_row
             if row is None:
                 raise RuntimeError("Measurement row was not generated.")
             rows.append(row)

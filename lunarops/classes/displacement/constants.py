@@ -1,4 +1,5 @@
 """Displacement-model default constants."""
+
 from __future__ import annotations
 
 # Lunar tidal constants compatible with the DE430 lunar solution.

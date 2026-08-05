@@ -1,4 +1,5 @@
 """Robust observation-weight models for iterative LLR adjustment."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -51,10 +52,7 @@ class RobustWeightModel:
         targets = self.target_factors(standardized_residuals, keys)
         applied = dict(current_factors)
         applied.update(targets)
-        previous_targets = {
-            key: previous_target_factors.get(key, current_factors.get(key, 1.0))
-            for key in keys
-        }
+        previous_targets = {key: previous_target_factors.get(key, current_factors.get(key, 1.0)) for key in keys}
         return RobustWeightUpdate(
             target_factors=targets,
             applied_factors=applied,
@@ -170,9 +168,7 @@ def create_robust_weight_model(
         if k1 is not None:
             raise ValueError("directRejection uses k0 only; omit k1.")
         return DirectRejectionWeightModel(k0=k0, **common)
-    raise ValueError(
-        f"Robust model must be one of {sorted(ROBUST_WEIGHT_MODELS)}, got {model!r}."
-    )
+    raise ValueError(f"Robust model must be one of {sorted(ROBUST_WEIGHT_MODELS)}, got {model!r}.")
 
 
 def maximum_robust_factor_change(
@@ -186,8 +182,7 @@ def maximum_robust_factor_change(
         (
             abs(new_factors[key] - old_factors[key])
             for key in keys
-            if max(abs(old_factors[key]), abs(new_factors[key]))
-            >= significance_floor
+            if max(abs(old_factors[key]), abs(new_factors[key])) >= significance_floor
         ),
         default=0.0,
     )
@@ -205,8 +200,7 @@ def robust_factor_change_quantile(
         [
             abs(target_factors[key] - old_factors[key])
             for key in keys
-            if max(abs(old_factors[key]), abs(target_factors[key]))
-            >= significance_floor
+            if max(abs(old_factors[key]), abs(target_factors[key])) >= significance_floor
         ],
         dtype=float,
     )
@@ -216,19 +210,22 @@ def robust_factor_change_quantile(
 def active_set_change_fraction(old_factors, new_factors, keys, *, active_threshold):
     if not keys:
         return 0.0
-    changed = sum(
-        (old_factors[key] > active_threshold)
-        != (new_factors[key] > active_threshold)
-        for key in keys
-    )
+    changed = sum((old_factors[key] > active_threshold) != (new_factors[key] > active_threshold) for key in keys)
     return float(changed / len(keys))
 
 
 __all__ = [
-    "DIRECT_REJECTION_MODEL", "IGG3_MODEL", "ROBUST_WEIGHT_MODELS",
-    "DirectRejectionWeightModel", "Igg3WeightModel", "RobustWeightModel",
-    "RobustWeightUpdate", "active_set_change_fraction",
-    "create_robust_weight_model", "direct_rejection_factors", "igg3_factors",
+    "DIRECT_REJECTION_MODEL",
+    "IGG3_MODEL",
+    "ROBUST_WEIGHT_MODELS",
+    "DirectRejectionWeightModel",
+    "Igg3WeightModel",
+    "RobustWeightModel",
+    "RobustWeightUpdate",
+    "active_set_change_fraction",
+    "create_robust_weight_model",
+    "direct_rejection_factors",
+    "igg3_factors",
     "maximum_robust_factor_change",
     "robust_factor_change_quantile",
 ]

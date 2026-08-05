@@ -1,13 +1,18 @@
 """Small coordinate helpers used by displacement and topocentric models."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 from lunarops.base.array_validation import vector3
-from lunarops.classes.frames.constants import WGS84_A_M, WGS84_E2, WGS84_F
+from lunarops.classes.frames.constants import (
+    WGS84_FIRST_ECCENTRICITY_SQUARED,
+    WGS84_FLATTENING,
+    WGS84_SEMI_MAJOR_AXIS_M,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,7 +31,7 @@ class GeodeticPosition:
 
 
 def enu2itrf(
-    enu_m: Sequence[float],
+    enu_m: ArrayLike,
     *,
     latitude_rad: float,
     longitude_rad: float,
@@ -55,7 +60,7 @@ def enu2itrf(
     )
 
 
-def itrf2geodetic(station_itrf_m: Sequence[float]) -> GeodeticPosition:
+def itrf2geodetic(station_itrf_m: ArrayLike) -> GeodeticPosition:
     """Convert ITRF XYZ metres to WGS84 geodetic coordinates.
 
     The iteration is Bowring-style and converges well for terrestrial stations;
@@ -66,15 +71,20 @@ def itrf2geodetic(station_itrf_m: Sequence[float]) -> GeodeticPosition:
     p = float(np.hypot(x_m, y_m))
     if p == 0.0:
         lat = np.pi / 2.0 if z_m >= 0.0 else -np.pi / 2.0
-        height = abs(z_m) - WGS84_A_M * (1.0 - WGS84_F)
+        height = abs(z_m) - WGS84_SEMI_MAJOR_AXIS_M * (1.0 - WGS84_FLATTENING)
         return GeodeticPosition(float(lat), lon, float(height))
-    lat = float(np.arctan2(z_m, p * (1.0 - WGS84_E2)))
+    lat = float(np.arctan2(z_m, p * (1.0 - WGS84_FIRST_ECCENTRICITY_SQUARED)))
     height = 0.0
     for _ in range(8):
         sin_lat = np.sin(lat)
-        n = WGS84_A_M / np.sqrt(1.0 - WGS84_E2 * sin_lat * sin_lat)
+        n = WGS84_SEMI_MAJOR_AXIS_M / np.sqrt(1.0 - WGS84_FIRST_ECCENTRICITY_SQUARED * sin_lat * sin_lat)
         height = p / np.cos(lat) - n
-        updated = float(np.arctan2(z_m, p * (1.0 - WGS84_E2 * n / (n + height))))
+        updated = float(
+            np.arctan2(
+                z_m,
+                p * (1.0 - WGS84_FIRST_ECCENTRICITY_SQUARED * n / (n + height)),
+            )
+        )
         if abs(updated - lat) < 1.0e-15:
             lat = updated
             break
@@ -86,7 +96,7 @@ def itrf2geodetic(station_itrf_m: Sequence[float]) -> GeodeticPosition:
     )
 
 
-def itrf2geocentric(station_itrf_m: Sequence[float]) -> tuple[float, float]:
+def itrf2geocentric(station_itrf_m: ArrayLike) -> tuple[float, float]:
     """Return geocentric latitude and east longitude in radians."""
     x_m, y_m, z_m = vector3(station_itrf_m, name="station_itrf_m")
     latitude_rad = float(np.arctan2(z_m, np.hypot(x_m, y_m)))
@@ -94,7 +104,7 @@ def itrf2geocentric(station_itrf_m: Sequence[float]) -> tuple[float, float]:
     return latitude_rad, longitude_rad
 
 
-def local_up_unit_itrf(station_itrf_m: Sequence[float]) -> np.ndarray:
+def local_up_unit_itrf(station_itrf_m: ArrayLike) -> np.ndarray:
     site = itrf2geodetic(station_itrf_m)
     return enu2itrf(
         [0.0, 0.0, 1.0],

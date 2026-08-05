@@ -97,9 +97,7 @@ def test_typed_catalog_files_round_trip(tmp_path):
             position_epoch_utc="2020-01-01T00:00:00",
         )
     }
-    reflectors = {
-        "REF": ReflectorRecord("Test Reflector", [4.0, 5.0, 6.0], aliases=["R 1"])
-    }
+    reflectors = {"REF": ReflectorRecord("Test Reflector", [4.0, 5.0, 6.0], aliases=["R 1"])}
     station_path = tmp_path / "stations.txt.gz"
     reflector_path = tmp_path / "reflectors.txt.gz"
 

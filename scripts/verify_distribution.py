@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Verify that built distributions contain the native IERS payload."""
+
 from __future__ import annotations
 
 import argparse
@@ -9,8 +10,7 @@ from pathlib import Path
 
 
 SOURCE_NAMES = {
-    path.name
-    for path in Path(__file__).parents[1].joinpath("lunarops", "_external", "iers2010", "src").glob("*.F")
+    path.name for path in Path(__file__).parents[1].joinpath("lunarops", "_external", "iers2010", "src").glob("*.F")
 }
 
 
@@ -38,9 +38,7 @@ def _check_wheel(path: Path) -> None:
         *(f"lunarops/_external/iers2010/src/{name}" for name in SOURCE_NAMES),
     }
     missing = sorted(required - names)
-    extensions = sorted(
-        name for name in names if name.startswith("lunarops/_iers2010") and name.endswith(".so")
-    )
+    extensions = sorted(name for name in names if name.startswith("lunarops/_iers2010") and name.endswith(".so"))
     if missing:
         raise SystemExit(f"{path}: missing {', '.join(missing)}")
     if not extensions:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from lunarops.config.context import RunContext
 from lunarops.programs.registry import ArtifactSlot, ProgramSpec, program
 
@@ -33,9 +35,7 @@ def matrix_convert(config: dict, context: RunContext):
         name="ObservationResultsStatistics",
         summary="Summarize numeric fields and status counts in observation results.",
         inputs=(ArtifactSlot("inputFileObservationResults", "ObservationResultFile"),),
-        outputs=(
-            ArtifactSlot("outputFileStatistics", "ObservationResultStatisticsFile"),
-        ),
+        outputs=(ArtifactSlot("outputFileStatistics", "ObservationResultStatisticsFile"),),
     )
 )
 def observation_results_statistics(config: dict, context: RunContext):
@@ -46,16 +46,13 @@ def observation_results_statistics(config: dict, context: RunContext):
     from lunarops.fileio.observation_results import read_observation_results
     from lunarops.fileio.structured_text import write_structured_text
 
-    rows = read_observation_results(
-        context.resolve_path(config["inputFileObservationResults"])
-    )
+    rows = read_observation_results(context.resolve_path(config["inputFileObservationResults"]))
     numeric: dict[str, dict[str, float | int]] = {}
     for field in rows[0] if rows else ():
         values = [
-            float(row[field])
+            float(cast(int | float, row[field]))
             for row in rows
-            if isinstance(row.get(field), (int, float))
-            and not isinstance(row.get(field), bool)
+            if isinstance(row.get(field), (int, float)) and not isinstance(row.get(field), bool)
         ]
         if values:
             array = np.asarray(values)
@@ -68,12 +65,8 @@ def observation_results_statistics(config: dict, context: RunContext):
             }
     payload = {
         "recordCount": len(rows),
-        "sourceCounts": dict(
-            sorted(Counter(str(row.get("source", "")) for row in rows).items())
-        ),
-        "statusCounts": dict(
-            sorted(Counter(str(row.get("status", "")) for row in rows).items())
-        ),
+        "sourceCounts": dict(sorted(Counter(str(row.get("source", "")) for row in rows).items())),
+        "statusCounts": dict(sorted(Counter(str(row.get("status", "")) for row in rows).items())),
         "numericFields": numeric,
     }
     output = context.resolve_path(config["outputFileStatistics"])

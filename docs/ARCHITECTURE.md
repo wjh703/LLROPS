@@ -22,7 +22,7 @@ typed normal-point file
   -> NptRecord
   -> ObservationResolver
   -> LightTimeSolver
-  -> LlrMeasurement
+  -> LlrObservationModel
   -> ObservationEquation
   -> residual table, normal equations, or adjustment
 ```

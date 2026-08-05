@@ -23,9 +23,7 @@ def test_parameter_name_parse_round_trip_uses_renamed_fields():
     assert str(name) == "GRASSE:rangeBias::"
 
 
-@pytest.mark.parametrize(
-    "field", ["object_name", "parameter_type", "temporal", "interval"]
-)
+@pytest.mark.parametrize("field", ["object_name", "parameter_type", "temporal", "interval"])
 def test_parameter_name_rejects_colons_in_all_fields(field):
     values = {
         "object_name": "station",

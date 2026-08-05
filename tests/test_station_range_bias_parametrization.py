@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 import numpy as np
 import pytest
 
@@ -8,13 +10,13 @@ from lunarops.classes.parametrization.station_range_bias import StationRangeBias
 
 def _eq(station_key, epoch, station_id=None):
     return ObservationEquation(
-        observed_minus_computed_m=0.0,
-        sigma_m=1.0,
-        partials={"station_range_bias": np.array([1.0])},
-        identity=1,
+        observed_minus_computed_one_way_m=0.0,
+        sigma_one_way_m=1.0,
+        design_partials={},
+        observation_id=1,
         station_key=station_key,
         reflector_key="apollo15",
-        epoch=epoch,
+        transmit_epoch_utc=epoch,
     )
 
 
@@ -76,9 +78,29 @@ def test_station_mode_requested_alias_matches_canonical_observation():
     assert np.allclose(block.design_columns(eq), [1.0])
 
 
+def test_station_range_bias_rejects_empty_station_selection():
+    with pytest.raises(ValueError, match="must not be empty"):
+        StationRangeBiasParametrization(stations=[])
+
+
+def test_station_range_bias_rejects_intervals_in_station_mode():
+    with pytest.raises(ValueError, match=r"require per='station\+interval'"):
+        StationRangeBiasParametrization(
+            per="station",
+            intervals=[
+                {
+                    "station": "APOLLO",
+                    "start": "2020-01-01",
+                    "end_exclusive": None,
+                }
+            ],
+        )
+
+
 def test_station_range_bias_rejects_alias_schema():
-    with pytest.raises(TypeError, match="list of mappings"):
+    with pytest.raises(TypeError, match="sequence of mappings"):
+        invalid_intervals = cast(Any, {"APOLLO": ["2006-04-07/2010-11-01"]})
         StationRangeBiasParametrization(
             per="station+interval",
-            intervals={"APOLLO": ["2006-04-07/2010-11-01"]},
+            intervals=invalid_intervals,
         )

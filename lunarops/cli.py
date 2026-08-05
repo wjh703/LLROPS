@@ -15,6 +15,7 @@ the ``variables:`` section for scripted batch runs (e.g. SLURM arrays).
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 import sys
 import time
 
@@ -77,9 +78,7 @@ def cmd_run(args) -> int:
         config = load_config_file(args.config)
         overrides = parse_set_overrides(args.set or [])
 
-        for name, program_config, global_configs in iter_program_calls(
-            config, overrides
-        ):
+        for name, program_config, global_configs in iter_program_calls(config, overrides):
             if context is None or context.global_class_configs != global_configs:
                 if context is not None:
                     context.close()
@@ -122,9 +121,7 @@ def cmd_describe_program(args) -> int:
     _import_programs()
     from lunarops.programs.registry import get_program
 
-    print(
-        yaml.safe_dump(get_program(args.name).spec.describe(), sort_keys=False), end=""
-    )
+    print(yaml.safe_dump(get_program(args.name).spec.describe(), sort_keys=False), end="")
     return 0
 
 
@@ -145,7 +142,7 @@ def cmd_validate(args) -> int:
     config = load_config_file(args.config)
     overrides = parse_set_overrides(args.set or [])
     count = 0
-    produced = {}
+    produced: dict[Path, str] = {}
     for name, program_config, globals_config in iter_program_calls(config, overrides):
         context = RunContext(
             global_class_configs=globals_config,
@@ -166,9 +163,7 @@ def cmd_validate(args) -> int:
                     for path in values:
                         resolved = context.resolve_path(path).resolve()
                         if resolved in produced:
-                            raise ValueError(
-                                f"Scenario publishes more than one artifact to {resolved}."
-                            )
+                            raise ValueError(f"Scenario publishes more than one artifact to {resolved}.")
                         produced[resolved] = slot.artifact_type
         finally:
             context.close()
@@ -221,15 +216,11 @@ def main(argv=None) -> int:
     p_lp = sub.add_parser("list-programs", help="List registered programs.")
     p_lp.set_defaults(func=cmd_list_programs)
 
-    p_dp = sub.add_parser(
-        "describe-program", help="Show one declarative program contract."
-    )
+    p_dp = sub.add_parser("describe-program", help="Show one declarative program contract.")
     p_dp.add_argument("name")
     p_dp.set_defaults(func=cmd_describe_program)
 
-    p_validate = sub.add_parser(
-        "validate", help="Validate a YAML scenario and its typed inputs."
-    )
+    p_validate = sub.add_parser("validate", help="Validate a YAML scenario and its typed inputs.")
     p_validate.add_argument("config")
     p_validate.add_argument("--set", action="append", metavar="NAME=VALUE")
     p_validate.add_argument("--working-dir", default=".")

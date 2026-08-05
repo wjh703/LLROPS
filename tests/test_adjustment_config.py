@@ -1,5 +1,6 @@
 from copy import deepcopy
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -7,7 +8,7 @@ from lunarops.config.loader import load_config_file
 from lunarops.estimation.adjustment_config import parse_adjustment_plan
 
 
-def _component(component_id="A"):
+def _component(component_id: str = "A") -> dict[str, Any]:
     return {
         "id": component_id,
         "station": "STA_A",
@@ -16,7 +17,7 @@ def _component(component_id="A"):
     }
 
 
-def _config():
+def _config() -> dict[str, Any]:
     return {"vce": {"components": [_component()]}}
 
 
@@ -181,9 +182,7 @@ def test_variance_component_station_alias_fields_are_rejected(obsolete_key):
 
 def test_duplicate_stage_names_are_rejected():
     config = _config()
-    config["adjustment"] = {
-        "stages": [{"name": "joint"}, {"name": "joint"}]
-    }
+    config["adjustment"] = {"stages": [{"name": "joint"}, {"name": "joint"}]}
 
     with pytest.raises(ValueError, match="names must be unique"):
         parse_adjustment_plan(config)
@@ -191,9 +190,7 @@ def test_duplicate_stage_names_are_rejected():
 
 def test_stage_override_is_validated_eagerly():
     config = _config()
-    config["adjustment"] = {
-        "stages": [{"name": "joint", "parameterUpdateFactor": 1.5}]
-    }
+    config["adjustment"] = {"stages": [{"name": "joint", "parameterUpdateFactor": 1.5}]}
 
     with pytest.raises(ValueError, match="Parameter update factor"):
         parse_adjustment_plan(config)
@@ -217,12 +214,8 @@ def test_variance_component_dates_are_validated():
 
 def test_detailed_adjustment_config_uses_the_canonical_schema():
     root = Path(__file__).resolve().parents[1]
-    config = load_config_file(
-        root / "configs" / "lunarops_reflector_bias_adjustment_detailed.yml"
-    )
-    adjustment_program = next(
-        item for item in config["programs"] if item.get("program") == "LlrAdjustment"
-    )
+    config = load_config_file(root / "configs" / "lunarops_reflector_bias_adjustment_detailed.yml")
+    adjustment_program = next(item for item in config["programs"] if item.get("program") == "LlrAdjustment")
 
     plan = parse_adjustment_plan(deepcopy(adjustment_program))
 

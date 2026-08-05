@@ -1,4 +1,5 @@
 """Small lifecycle helpers shared by run contexts and execution backends."""
+
 from __future__ import annotations
 
 import logging

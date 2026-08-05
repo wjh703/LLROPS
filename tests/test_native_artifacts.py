@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+from typing import Any, cast
 
 import lunarops.cli as cli
 from lunarops.base.epoch import Epoch, TimeScale
@@ -68,13 +69,9 @@ def test_text_tokens_distinguish_literal_tilde_from_missing_value():
 
 def test_structured_text_rejects_opaque_python_objects(tmp_path):
     with pytest.raises(TypeError, match="cannot encode"):
-        write_structured_text(
-            tmp_path / "opaque.txt", "testArtifact", {"value": object()}
-        )
+        write_structured_text(tmp_path / "opaque.txt", "testArtifact", {"value": object()})
     with pytest.raises(ValueError, match="non-finite"):
-        write_structured_text(
-            tmp_path / "nonfinite.txt", "testArtifact", {"value": np.float64(np.inf)}
-        )
+        write_structured_text(tmp_path / "nonfinite.txt", "testArtifact", {"value": np.float64(np.inf)})
 
 
 def test_parameter_vector_and_covariance_round_trip_with_names_and_units(tmp_path):
@@ -87,9 +84,7 @@ def test_parameter_vector_and_covariance_round_trip_with_names_and_units(tmp_pat
         kind="estimate",
         uncertainty_sigma_multiplier=3.0,
     )
-    covariance = CovarianceMatrix(
-        names, np.array([[1.0, 0.25], [0.25, 4.0]]), ("m", "m"), "posteriorCovariance"
-    )
+    covariance = CovarianceMatrix(names, np.array([[1.0, 0.25], [0.25, 4.0]]), ("m", "m"), "posteriorCovariance")
     vector_path = tmp_path / "solution.txt"
     covariance_path = tmp_path / "covariance"
 
@@ -101,6 +96,8 @@ def test_parameter_vector_and_covariance_round_trip_with_names_and_units(tmp_pat
     assert recovered_vector.parameter_names == names
     assert recovered_vector.kind == "estimate"
     assert np.allclose(recovered_vector.values, vector.values)
+    assert recovered_vector.uncertainties is not None
+    assert vector.uncertainties is not None
     assert np.allclose(recovered_vector.uncertainties, vector.uncertainties)
     assert recovered_vector.uncertainty_sigma_multiplier == pytest.approx(3.0)
     vector_text = vector_path.read_text()
@@ -155,10 +152,7 @@ def test_normal_equation_addition_rejects_different_model_fingerprints():
 
 def _frozen_equations() -> FrozenObservationEquations:
     names = (ParameterName("test", "x"), ParameterName("test", "y"))
-    epochs = tuple(
-        Epoch.from_isot(f"2020-01-0{day}T00:00:00", scale=TimeScale.UTC)
-        for day in (1, 2, 3)
-    )
+    epochs = tuple(Epoch.from_isot(f"2020-01-0{day}T00:00:00", scale=TimeScale.UTC) for day in (1, 2, 3))
     return FrozenObservationEquations(
         names,
         ("m", "m"),
@@ -222,15 +216,18 @@ def test_normals_solve_program_publishes_all_typed_products(tmp_path):
     cli._import_programs()
     context = RunContext(working_dir=tmp_path)
 
-    solution = run_program(
-        "NormalsSolve",
-        {
-            "inputFileNormalEquations": "normals",
-            "outputFileSolution": "solution.txt.gz",
-            "outputFileCovariance": "covariance",
-            "outputFileReport": "solveReport.txt",
-        },
-        context,
+    solution = cast(
+        ParameterVector,
+        run_program(
+            "NormalsSolve",
+            {
+                "inputFileNormalEquations": "normals",
+                "outputFileSolution": "solution.txt.gz",
+                "outputFileCovariance": "covariance",
+                "outputFileReport": "solveReport.txt",
+            },
+            context,
+        ),
     )
 
     assert solution.kind == "correction"
@@ -238,16 +235,13 @@ def test_normals_solve_program_publishes_all_typed_products(tmp_path):
     persisted_covariance = read_covariance(tmp_path / "covariance")
     assert persisted_solution.parameter_names == tuple(names)
     assert persisted_solution.uncertainty_sigma_multiplier == pytest.approx(3.0)
+    assert persisted_solution.uncertainties is not None
     assert np.allclose(
         persisted_solution.uncertainties,
         3.0 * np.sqrt(np.diag(persisted_covariance.matrix)),
     )
     assert persisted_covariance.parameter_names == tuple(names)
-    assert (
-        (tmp_path / "solveReport.txt")
-        .read_text()
-        .startswith("lunarops normalEquationSolutionReport")
-    )
+    assert (tmp_path / "solveReport.txt").read_text().startswith("lunarops normalEquationSolutionReport")
 
 
 def test_apply_solution_publishes_catalog_and_model_state(tmp_path):
@@ -280,7 +274,7 @@ def test_apply_solution_publishes_catalog_and_model_state(tmp_path):
     )
 
     updated = read_reflector_catalog(tmp_path / "updatedReflectors.txt")
-    state = read_structured_text(tmp_path / "modelState.txt", "llrModelState")
+    state = cast(dict[str, Any], read_structured_text(tmp_path / "modelState.txt", "llrModelState"))
     assert np.allclose(updated["REF"].moon_fixed_xyz_m, [11.0, 18.0, 33.0])
     assert state["solutionKind"] == "correction"
     assert state["rangeBiasValuesM"]["STA:rangeBias::"] == pytest.approx(0.25)

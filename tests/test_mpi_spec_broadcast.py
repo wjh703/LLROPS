@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 from lunarops.classes.observation_factory import resolve_observation_assembly
 from lunarops.config.context import RunContext
 from lunarops.fileio.catalogs import (
@@ -65,7 +67,7 @@ class _FakeMPI:
 
 def _runtime(comm):
     runtime = object.__new__(MpiRuntime)
-    runtime._MPI = _FakeMPI()
+    cast(Any, runtime)._MPI = _FakeMPI()
     runtime.comm = comm
     runtime._prepared_spec_ids = set()
     runtime._initialized_spec_ids = set()
@@ -142,9 +144,7 @@ def test_single_rank_spec_uses_serial_cache(monkeypatch):
 
     monkeypatch.setattr(
         "lunarops.parallel.mpi._processor_for_task",
-        lambda cache, prepared_spec: cache.setdefault(
-            ("processor", prepared_spec["specId"]), processor
-        ),
+        lambda cache, prepared_spec: cache.setdefault(("processor", prepared_spec["specId"]), processor),
     )
 
     assert runtime.prepare_observation_spec(spec) is True

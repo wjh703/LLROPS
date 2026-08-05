@@ -13,6 +13,7 @@ Examples
 ``moon:orbitState.x0::``                      (future) integrated orbit ICs
 ``moon:loveNumber.h2::``                      (future) lunar tide parameter
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -32,17 +33,13 @@ class ParameterName:
             value = getattr(self, field_name)
             text = str(value or "").strip()
             if ":" in text:
-                raise ValueError(
-                    f"ParameterName.{field_name} must not contain ':' characters."
-                )
+                raise ValueError(f"ParameterName.{field_name} must not contain ':' characters.")
             object.__setattr__(self, field_name, text)
         if not self.parameter_type:
             raise ValueError("ParameterName.parameter_type must not be empty.")
 
     def __str__(self) -> str:
-        return (
-            f"{self.object_name}:{self.parameter_type}:{self.temporal}:{self.interval}"
-        )
+        return f"{self.object_name}:{self.parameter_type}:{self.temporal}:{self.interval}"
 
     @classmethod
     def parse(cls, text: str) -> "ParameterName":

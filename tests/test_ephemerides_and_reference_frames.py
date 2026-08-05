@@ -1,11 +1,12 @@
 from dataclasses import FrozenInstanceError
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 import pytest
 
 from lunarops.base.epoch import Epoch, TimeScale
-from lunarops.classes.time_scale_converter import TimeScaleConverter
+from lunarops.classes.delays.shapiro import Iers2010ShapiroDelay
 from lunarops.classes.ephemerides import (
     BodyState,
     Ephemeris,
@@ -15,14 +16,15 @@ from lunarops.classes.ephemerides import (
     normalize_longitude_libration_correction_type,
 )
 from lunarops.classes.frames import (
-    C04EarthOrientation,
-    EarthOrientation,
+    EarthOrientationProvider,
     EarthOrientationSample,
     LunarFrameTransform,
     PolarMotion,
     ReferenceFrameSystem,
     RelativisticFrameTransform,
+    TabulatedEarthOrientation,
 )
+from lunarops.classes.time_scale_converter import TimeScaleConverter
 
 
 class _FakeEphemeris(Ephemeris):
@@ -30,7 +32,7 @@ class _FakeEphemeris(Ephemeris):
         self.closed = False
 
     @property
-    def source_file(self) -> Path:
+    def source_file_path(self) -> Path:
         return Path("fake.eph")
 
     @property
@@ -52,11 +54,7 @@ class _FakeEphemeris(Ephemeris):
             "URANUS BARYCENTER": 9,
             "NEPTUNE BARYCENTER": 10,
         }[body_name.upper()]
-        velocity = (
-            np.array([12_000.0, -18_000.0, 3_000.0])
-            if index == 3
-            else np.zeros(3)
-        )
+        velocity = np.array([12_000.0, -18_000.0, 3_000.0]) if index == 3 else np.zeros(3)
         return BodyState(
             position_m=np.array([index * 1.0e11, index * 1.0e9, 0.0]),
             velocity_mps=velocity,
@@ -77,18 +75,18 @@ class _FakeEphemeris(Ephemeris):
         self.closed = True
 
 
-class _FakeEarthOrientation(EarthOrientation):
+class _FakeEarthOrientation(EarthOrientationProvider):
     def __init__(self):
         self.installed = False
 
     @property
-    def source_file(self):
+    def source_file_path(self):
         return Path("fake.eop")
 
     def polar_motion(self, epoch_utc) -> PolarMotion:
         return PolarMotion(0.1, 0.2)
 
-    def ut1_minus_utc_sec(self, epoch_utc) -> float:
+    def ut1_minus_utc_s(self, epoch_utc) -> float:
         return 0.0
 
 
@@ -98,16 +96,16 @@ def _tdb(jd2: float = 0.0) -> Epoch:
 
 def test_epoch_and_body_state_are_frozen_and_validated():
     epoch = _tdb(0.25)
-    state = BodyState([1.0, 2.0, 3.0], [4.0, 5.0, 6.0])
+    state = BodyState(np.array([1.0, 2.0, 3.0]), np.array([4.0, 5.0, 6.0]))
 
     assert (epoch.jd1, epoch.jd2) == (2451545.0, 0.25)
     assert epoch.scale is TimeScale.TDB
     assert not state.position_m.flags.writeable
     assert not state.velocity_mps.flags.writeable
     with pytest.raises(FrozenInstanceError):
-        epoch.jd1 = 0.0
+        cast(Any, epoch).jd1 = 0.0
     with pytest.raises(ValueError):
-        BodyState([1.0, 2.0], [0.0, 0.0, 0.0])
+        BodyState(np.array([1.0, 2.0]), np.zeros(3))
 
 
 def test_lunar_frame_transform_round_trip_uses_ephemeris_orientation():
@@ -142,13 +140,13 @@ def test_reference_frame_system_owns_one_time_converter():
     earth_orientation = _FakeEarthOrientation()
     system = ReferenceFrameSystem(
         ephemeris=ephemeris,
-        earth_orientation=earth_orientation,
+        earth_orientation_provider=earth_orientation,
     )
 
     assert not earth_orientation.installed
-    assert system.ephemeris_file == Path("fake.eph")
-    assert isinstance(system.time_converter, TimeScaleConverter)
-    assert system.time_converter.ephemeris is ephemeris
+    assert system.ephemeris.source_file_path == Path("fake.eph")
+    assert isinstance(system.time_scale_converter, TimeScaleConverter)
+    assert system.time_scale_converter.ephemeris is ephemeris
     assert np.allclose(system.pa2lcrs([1.0, 0.0, 0.0], _tdb()), [0.0, 1.0, 0.0])
     lunar_bcrs = system.lcrs2bcrs([1.0, 2.0, 3.0], _tdb())
     assert np.allclose(system.bcrs2lcrs(lunar_bcrs, _tdb()), [1.0, 2.0, 3.0])
@@ -157,14 +155,12 @@ def test_reference_frame_system_owns_one_time_converter():
 
 
 def test_zero_libration_factory_and_shapiro_use_epoch():
-    from lunarops.classes.delays import Iers2010ShapiroDelay
-
     epoch = _tdb()
     correction = make_longitude_libration_correction_model("none")
     assert isinstance(correction, LongitudeLibrationCorrectionModel)
     assert correction.correction_rad(epoch, j2000_epoch_tdb=epoch) == 0.0
 
-    model = Iers2010ShapiroDelay(ephemeris=_FakeEphemeris(), bodies=("SUN",))
+    model = Iers2010ShapiroDelay(ephemeris=_FakeEphemeris())
     delay = model.path_delay_m(
         [2.0e11, 0.0, 0.0],
         [3.0e11, 0.0, 0.0],
@@ -175,46 +171,20 @@ def test_zero_libration_factory_and_shapiro_use_epoch():
 
 
 def test_longitude_libration_correction_type_normalization_is_explicit():
-    assert (
-        normalize_longitude_libration_correction_type(None)
-        is LongitudeLibrationCorrectionType.NONE
-    )
-    assert (
-        normalize_longitude_libration_correction_type(" INPOP21A ")
-        is LongitudeLibrationCorrectionType.INPOP21A
-    )
-    assert (
-        normalize_longitude_libration_correction_type(False)
-        is LongitudeLibrationCorrectionType.NONE
-    )
-    with pytest.raises(ValueError, match="True is ambiguous"):
-        normalize_longitude_libration_correction_type(True)
-    with pytest.raises(TypeError, match="must be a string"):
-        normalize_longitude_libration_correction_type(0)
+    assert normalize_longitude_libration_correction_type(None) is LongitudeLibrationCorrectionType.NONE
+    assert normalize_longitude_libration_correction_type(" INPOP21A ") is LongitudeLibrationCorrectionType.INPOP21A
+    for legacy_value in (False, True, "", "no", "off", "false", "0"):
+        with pytest.raises((TypeError, ValueError)):
+            normalize_longitude_libration_correction_type(cast(Any, legacy_value))
 
 
 def test_ephemeris_exposes_libration_selection_as_enum():
     ephemeris = _FakeEphemeris()
-    assert (
-        ephemeris.longitude_libration_correction_type
-        is LongitudeLibrationCorrectionType.NONE
-    )
+    assert ephemeris.longitude_libration_correction_type is LongitudeLibrationCorrectionType.NONE
 
 
-def test_shapiro_normalizes_body_inputs_and_validates_positions():
-    from lunarops.classes.delays import Iers2010ShapiroDelay
-
-    model = Iers2010ShapiroDelay(
-        ephemeris=_FakeEphemeris(),
-        bodies="SUN",
-    )
-    assert model.bodies == ("SUN",)
-
-    deduplicated = Iers2010ShapiroDelay(
-        ephemeris=_FakeEphemeris(),
-        bodies=("SUN", "SUN", "EARTH"),
-    )
-    assert deduplicated.bodies == ("SUN", "EARTH")
+def test_shapiro_validates_positions():
+    model = Iers2010ShapiroDelay(ephemeris=_FakeEphemeris())
     with pytest.raises(ValueError, match="transmitter_bcrs_m"):
         model.path_delay_m([1.0, 2.0], [3.0, 4.0, 5.0], _tdb())
 
@@ -226,47 +196,43 @@ def test_c04_duplicate_mjd_policy_is_explicit():
         EarthOrientationSample(60001.0, 1.0, 1.1, 1.2),
     )
     with pytest.raises(ValueError, match="duplicateMjdPolicy"):
-        C04EarthOrientation(samples)
+        TabulatedEarthOrientation(samples)
 
-    eop = C04EarthOrientation(samples, duplicate_mjd_policy="last")
+    eop = TabulatedEarthOrientation(samples, duplicate_mjd_policy="last")
     assert eop.duplicate_mjd_policy == "last"
     assert [sample.xp_arcsec for sample in eop.samples] == [0.4, 1.0]
 
-    eop_mean = C04EarthOrientation(samples, duplicate_mjd_policy="mean")
+    eop_mean = TabulatedEarthOrientation(samples, duplicate_mjd_policy="mean")
     assert [sample.xp_arcsec for sample in eop_mean.samples] == [0.25, 1.0]
 
 
 def test_parse_eop_c04_and_finals_rows(tmp_path):
-    from lunarops.classes.frames.earth_orientation import read_iers_c04
+    from lunarops.classes.frames.earth_orientation import read_iers_eop
 
     path = tmp_path / "eop.txt"
     path.write_text(
-        "\n".join(
-            [
-                "# header",
-                "1962 1 1 37665 0.123 0.456 0.789 0.0",
-                "73 1 2 41684.00 I 0.120733 0.009786 0.136966 0.015902 I 0.8084176 0.0002710 3.5563 0.1916",
-                "2020 1 1 0 58849 0.076 0.282 -0.177",
-            ]
-        ),
+        "# header\n"
+        "1962 1 1 37665 0.123 0.456 0.789 0.0\n"
+        "73 1 2 41684.00 I 0.120733 0.009786 0.136966 0.015902 I 0.8084176 0.0002710 3.5563 0.1916\n"
+        "2020 1 1 0 58849 0.076 0.282 -0.177\n",
         encoding="utf-8",
     )
-    samples = read_iers_c04(path)
+    samples = read_iers_eop(path)
     assert [sample.mjd_utc for sample in samples] == [37665.0, 41684.0, 58849.0]
     assert samples[0].xp_arcsec == 0.123
     assert samples[1].xp_arcsec == 0.120733
     assert samples[1].yp_arcsec == 0.136966
-    assert samples[1].ut1_minus_utc_sec == 0.8084176
-    assert samples[2].ut1_minus_utc_sec == -0.177
+    assert samples[1].ut1_minus_utc_s == 0.8084176
+    assert samples[2].ut1_minus_utc_s == -0.177
 
 
 def test_eop_parse_error_includes_preview(tmp_path):
-    from lunarops.classes.frames.earth_orientation import read_iers_c04
+    from lunarops.classes.frames.earth_orientation import read_iers_eop
 
     path = tmp_path / "bad_eop.txt"
     path.write_text("not an eop row\nstill not eop\n", encoding="utf-8")
     with pytest.raises(ValueError, match="First non-comment rows"):
-        read_iers_c04(path)
+        read_iers_eop(path)
 
 
 def test_c04_mpi_payload_roundtrip_uses_arrays():
@@ -274,14 +240,14 @@ def test_c04_mpi_payload_roundtrip_uses_arrays():
         EarthOrientationSample(60000.0, 0.1, 0.2, 0.3),
         EarthOrientationSample(60001.0, 0.4, 0.5, 0.6),
     )
-    original = C04EarthOrientation(samples, source_file="eop.txt")
+    original = TabulatedEarthOrientation(samples, source_file_path="eop.txt")
     payload = original.to_mpi_payload()
-    restored = C04EarthOrientation.from_mpi_payload(payload)
+    restored = TabulatedEarthOrientation.from_mpi_payload(payload)
 
-    assert restored.source_file == original.source_file
-    assert restored.mjd_range == original.mjd_range
+    assert restored.source_file_path == original.source_file_path
+    assert restored.mjd_utc_range == original.mjd_utc_range
     assert restored.samples == original.samples
-    assert payload["mjdUtc"].shape == (2,)
+    assert cast(Any, payload["mjdUtc"]).shape == (2,)
 
 
 def test_terrestrial_transform_gcrs_itrf_round_trip(monkeypatch):
@@ -294,7 +260,7 @@ def test_terrestrial_transform_gcrs_itrf_round_trip(monkeypatch):
     )
     monkeypatch.setattr(
         TerrestrialFrameTransform,
-        "celestial_to_terrestrial_matrix",
+        "gcrs2itrf_matrix",
         lambda self, epoch_utc: matrix,
     )
     gcrs = np.array([1.0, 2.0, 3.0])

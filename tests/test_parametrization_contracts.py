@@ -11,13 +11,13 @@ from lunarops.classes.parametrization.station_range_bias import StationRangeBias
 
 def _eq(station="APOLLO"):
     return ObservationEquation(
-        observed_minus_computed_m=0.0,
-        sigma_m=1.0,
-        partials={"station_range_bias": np.array([1.0])},
-        identity=station,
+        observed_minus_computed_one_way_m=0.0,
+        sigma_one_way_m=1.0,
+        design_partials={"station_range_bias": np.array([1.0])},
+        observation_id=station,
         station_key=station,
         reflector_key="REF",
-        epoch=Epoch.from_isot("2008-01-01T00:00:00", scale=TimeScale.UTC),
+        transmit_epoch_utc=Epoch.from_isot("2008-01-01T00:00:00", scale=TimeScale.UTC),
     )
 
 

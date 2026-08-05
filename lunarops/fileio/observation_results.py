@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Any, Mapping, Sequence, cast
 
 import numpy as np
 
@@ -46,15 +46,9 @@ def _field_type(values: Sequence[object]) -> str:
         return "text"
     if all(isinstance(value, bool) for value in non_null):
         return "bool"
-    if all(
-        isinstance(value, (int, np.integer)) and not isinstance(value, (bool, np.bool_))
-        for value in non_null
-    ):
+    if all(isinstance(value, (int, np.integer)) and not isinstance(value, (bool, np.bool_)) for value in non_null):
         return "int"
-    if all(
-        isinstance(value, (int, float, np.number)) and not isinstance(value, bool)
-        for value in non_null
-    ):
+    if all(isinstance(value, (int, float, np.number)) and not isinstance(value, bool) for value in non_null):
         numbers = np.asarray(non_null, dtype=float)
         if not np.all(np.isfinite(numbers)):
             raise ValueError("Observation-result numeric fields must be finite.")
@@ -70,7 +64,7 @@ def _format_value(value: object, field_type: str) -> str:
     if field_type == "bool":
         return "1" if bool(value) else "0"
     if field_type == "int":
-        return str(int(value))
+        return str(int(cast(Any, value)))
     if field_type == "float":
         return format_float(value)
     if str(value) == "":
@@ -106,9 +100,7 @@ def write_observation_results(
             if not isinstance(row, Mapping):
                 raise TypeError("Observation-result rows must be mappings.")
             if "source" in row:
-                raise ValueError(
-                    "Observation-result rows must not define reserved field 'source'."
-                )
+                raise ValueError("Observation-result rows must not define reserved field 'source'.")
             item = {"source": str(source), **dict(row)}
             rows.append(item)
     if not rows:
@@ -119,9 +111,7 @@ def write_observation_results(
     for row in rows:
         for name in row:
             if not isinstance(name, str) or not name:
-                raise ValueError(
-                    "Observation-result field names must be non-empty strings."
-                )
+                raise ValueError("Observation-result field names must be non-empty strings.")
             if name not in seen:
                 fields.append(name)
                 seen.add(name)
@@ -130,16 +120,11 @@ def write_observation_results(
     with atomic_text_writer(target, "observationResult") as stream:
         stream.write(f"fieldCount {len(fields)}\n")
         for name in fields:
-            stream.write(
-                f"field {encode_token(name)} {types[name]} {encode_token(_unit_for_field(name))}\n"
-            )
+            stream.write(f"field {encode_token(name)} {types[name]} {encode_token(_unit_for_field(name))}\n")
         stream.write(f"recordCount {len(rows)}\n")
         stream.write("data\n")
         for row in rows:
-            stream.write(
-                " ".join(_format_value(row.get(name), types[name]) for name in fields)
-                + "\n"
-            )
+            stream.write(" ".join(_format_value(row.get(name), types[name]) for name in fields) + "\n")
     return target
 
 
@@ -162,44 +147,29 @@ def read_observation_results(path: str | Path) -> list[dict[str, object]]:
             try:
                 parts = next(lines).split()
             except StopIteration as exc:
-                raise ValueError(
-                    f"Truncated observation-result schema in {source}."
-                ) from exc
+                raise ValueError(f"Truncated observation-result schema in {source}.") from exc
             if len(parts) != 4 or parts[0] != "field":
                 raise ValueError(f"Malformed observation-result field row in {source}.")
             name = decode_token(parts[1])
             field_type = parts[2]
             unit = decode_token(parts[3])
             if not name or name in {item[0] for item in fields}:
-                raise ValueError(
-                    f"Invalid or duplicate observation-result field {name!r}."
-                )
+                raise ValueError(f"Invalid or duplicate observation-result field {name!r}.")
             if field_type not in {"bool", "int", "float", "text"}:
-                raise ValueError(
-                    f"Unknown observation-result field type {field_type!r}."
-                )
+                raise ValueError(f"Unknown observation-result field type {field_type!r}.")
             if unit != _unit_for_field(name):
                 raise ValueError(
-                    f"Observation-result field {name!r} has unit {unit!r}; "
-                    f"expected {_unit_for_field(name)!r}."
+                    f"Observation-result field {name!r} has unit {unit!r}; expected {_unit_for_field(name)!r}."
                 )
             fields.append((name, field_type, unit))
         if not fields or fields[0][0] != "source" or fields[0][1] != "text":
-            raise ValueError(
-                "Observation-result schema must begin with a text 'source' field."
-            )
+            raise ValueError("Observation-result schema must begin with a text 'source' field.")
         try:
             record_parts = next(lines).split()
             marker = next(lines)
         except StopIteration as exc:
-            raise ValueError(
-                f"Truncated observation-result header in {source}."
-            ) from exc
-        if (
-            len(record_parts) != 2
-            or record_parts[0] != "recordCount"
-            or marker != "data"
-        ):
+            raise ValueError(f"Truncated observation-result header in {source}.") from exc
+        if len(record_parts) != 2 or record_parts[0] != "recordCount" or marker != "data":
             raise ValueError(f"Malformed observation-result header in {source}.")
         record_count = int(record_parts[1])
         if record_count < 0:
@@ -209,8 +179,7 @@ def read_observation_results(path: str | Path) -> list[dict[str, object]]:
             values = line.split()
             if len(values) != field_count:
                 raise ValueError(
-                    f"Observation-result row {row_number} has {len(values)} fields; "
-                    f"expected {field_count}."
+                    f"Observation-result row {row_number} has {len(values)} fields; expected {field_count}."
                 )
             rows.append(
                 {
@@ -219,9 +188,7 @@ def read_observation_results(path: str | Path) -> list[dict[str, object]]:
                 }
             )
     if len(rows) != record_count:
-        raise ValueError(
-            f"Observation-result file declares {record_count} rows, found {len(rows)}."
-        )
+        raise ValueError(f"Observation-result file declares {record_count} rows, found {len(rows)}.")
     return rows
 
 

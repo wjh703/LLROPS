@@ -96,12 +96,12 @@ globals:
   # Fixed forward-model range-bias correction
   # ---------------------------------------------------------------------------
   # Important modeling choice:
-  # - {type: inpop21} applies built-in fixed station range-bias corrections before
+  # - {type: inpop21a} applies built-in fixed station range-bias corrections before
   #   estimation.
   # - {type: none} lets estimated stationRangeBias parameters absorb these effects.
   #
   # For a pure "estimate station range bias from the data" experiment, keep this
-  # as none. For INPOP21-style O-C comparison, switch it to {type: inpop21}.
+  # as none. For INPOP21a-style O-C comparison, switch it to {type: inpop21a}.
   rangeBias:
     type: none
 

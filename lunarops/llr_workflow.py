@@ -18,17 +18,11 @@ def load_datasets(config: dict, context: RunContext):
     if not inputs:
         raise ValueError("inputFilesNormalPoints is required")
     if isinstance(inputs, (str, bytes)):
-        raise TypeError(
-            "inputFilesNormalPoints must be a list of native normal-point files."
-        )
+        raise TypeError("inputFilesNormalPoints must be a list of native normal-point files.")
     input_values = list(inputs)
-    input_files = resolve_normal_point_inputs(
-        [context.resolve_path(item) for item in input_values]
-    )
+    input_files = resolve_normal_point_inputs([context.resolve_path(item) for item in input_values])
     if not input_files:
-        raise FileNotFoundError(
-            f"No supported normal-point files found under {inputs!r}"
-        )
+        raise FileNotFoundError(f"No supported normal-point files found under {inputs!r}")
 
     datasets = {}
     for path in input_files:
@@ -40,11 +34,7 @@ def load_datasets(config: dict, context: RunContext):
             datasets[Path(path).stem] = dataset
 
     if config.get("combineInputs"):
-        datasets = {
-            config.get("combinedName", "combined"): combine_npt_datasets(
-                list(datasets.values())
-            )
-        }
+        datasets = {config.get("combinedName", "combined"): combine_npt_datasets(list(datasets.values()))}
 
     next_index = 0
     for dataset in datasets.values():
@@ -67,22 +57,20 @@ def make_processing_options(config: dict, *, include_design: bool = False):
 
     validate_observation_config(config)
     return ObservationProcessingOptions(
-        station_name=config.get("stationName"),
-        reflector_name=config.get("reflectorName"),
+        station_identifier=config.get("stationName"),
+        reflector_identifier=config.get("reflectorName"),
         min_elevation_deg=float(config.get("minElevationDeg", 0.0)),
-        include_reflector_position_partial=bool(
-            include_design or config.get("includeReflectorDesign", False)
-        ),
+        include_reflector_position_partials=bool(include_design or config.get("includeReflectorDesign", False)),
         show_progress=bool(config.get("showProgress", True)),
     )
 
 
 def output_level(config: dict, *, include_design: bool = False):
-    from lunarops.classes.observation import ObservationOutputLevel
+    from lunarops.classes.observation import ObservationResultDetail
 
     if include_design:
-        return ObservationOutputLevel.FULL
-    return ObservationOutputLevel.parse(config.get("outputLevel", "standard"))
+        return ObservationResultDetail.FULL
+    return ObservationResultDetail.parse(config.get("outputLevel", "standard"))
 
 
 def build_parametrization(config: dict, context: RunContext):
@@ -130,23 +118,26 @@ def build_equation_source(config, context, datasets, processor):
     options = make_processing_options(config, include_design=True)
     runtime = context.runtime
     use_mpi = runtime is not None and runtime.has_workers
+    spec: dict | None = None
+    chunksize = 8
     if use_mpi:
-        from lunarops.parallel.mpi import (
-            make_observation_spec,
-            mpi_observation_equations,
-            snapshot_catalog_state,
-        )
+        assert runtime is not None
+        from lunarops.parallel.mpi import make_observation_spec
 
         spec = make_observation_spec(
             config,
             context,
-            station_catalog=processor.station_catalog,
-            reflector_catalog=processor.reflector_catalog,
+            station_catalog=processor.model_state.station_catalog,
+            reflector_catalog=processor.model_state.reflector_catalog,
         )
         chunksize = int((config.get("mpi") or {}).get("chunksize", 8))
 
     def equation_source(iteration: int):
         if use_mpi:
+            assert runtime is not None
+            assert spec is not None
+            from lunarops.parallel.mpi import mpi_observation_equations, snapshot_catalog_state
+
             equations_by_source = mpi_observation_equations(
                 runtime,
                 spec,
@@ -163,11 +154,7 @@ def build_equation_source(config, context, datasets, processor):
                 source_name: processor.equations(dataset, options=iteration_options)
                 for source_name, dataset in datasets.items()
             }
-        return [
-            equation
-            for equations in equations_by_source.values()
-            for equation in equations
-        ]
+        return [equation for equations in equations_by_source.values() for equation in equations]
 
     return equation_source
 

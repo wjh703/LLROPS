@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Mapping, Sequence
+from typing import Callable, Dict, Mapping, Sequence, cast
 
 from lunarops.config.context import RunContext
 
@@ -44,15 +44,9 @@ class ProgramSpec:
         declared = [*keys, *self.required_keys, *self.optional_keys]
         duplicates = sorted({key for key in declared if declared.count(key) > 1})
         if duplicates:
-            raise ValueError(
-                f"Program {self.name} declares configuration keys more than once: {duplicates}"
-            )
-        object.__setattr__(
-            self, "required_keys", tuple(dict.fromkeys(self.required_keys))
-        )
-        object.__setattr__(
-            self, "optional_keys", tuple(dict.fromkeys(self.optional_keys))
-        )
+            raise ValueError(f"Program {self.name} declares configuration keys more than once: {duplicates}")
+        object.__setattr__(self, "required_keys", tuple(dict.fromkeys(self.required_keys)))
+        object.__setattr__(self, "optional_keys", tuple(dict.fromkeys(self.optional_keys)))
         object.__setattr__(self, "inputs", tuple(self.inputs))
         object.__setattr__(self, "outputs", tuple(self.outputs))
         if not self.name or not self.name.strip():
@@ -67,9 +61,7 @@ class ProgramSpec:
     @property
     def allowed_keys(self) -> frozenset[str]:
         return (
-            frozenset(slot.key for slot in self.slots)
-            | frozenset(self.required_keys)
-            | frozenset(self.optional_keys)
+            frozenset(slot.key for slot in self.slots) | frozenset(self.required_keys) | frozenset(self.optional_keys)
         )
 
     def describe(self) -> dict[str, object]:
@@ -133,8 +125,8 @@ def program(
         if key in _PROGRAMS:
             raise RuntimeError(f"Program {spec.name!r} is already registered.")
         _PROGRAMS[key] = RegisteredProgram(spec, func)
-        func.program_name = spec.name
-        func.program_spec = spec
+        setattr(func, "program_name", spec.name)
+        setattr(func, "program_spec", spec)
         return func
 
     return _wrap
@@ -144,9 +136,7 @@ def get_program(name: str) -> RegisteredProgram:
     try:
         return _PROGRAMS[str(name).casefold()]
     except KeyError:
-        raise KeyError(
-            f"Unknown program {name!r}. Available: {available_programs()}"
-        ) from None
+        raise KeyError(f"Unknown program {name!r}. Available: {available_programs()}") from None
 
 
 def program_specs() -> tuple[ProgramSpec, ...]:
@@ -165,9 +155,7 @@ def validate_program_config(name: str, config: Mapping[str, object]) -> ProgramS
         raise TypeError(f"Program {spec.name} configuration must be a mapping.")
     unknown = set(config) - spec.allowed_keys
     if unknown:
-        raise ValueError(
-            f"{spec.name} has unknown configuration key(s): {sorted(str(key) for key in unknown)}"
-        )
+        raise ValueError(f"{spec.name} has unknown configuration key(s): {sorted(str(key) for key in unknown)}")
     required = set(spec.required_keys)
     for slot in spec.slots:
         if slot.required:
@@ -185,10 +173,8 @@ def validate_program_config(name: str, config: Mapping[str, object]) -> ProgramS
             if not value:
                 raise ValueError(f"{spec.name}.{slot.key} must not be empty.")
         elif isinstance(value, (list, tuple, dict, set)):
-            raise TypeError(
-                f"{spec.name}.{slot.key} must be one path, not a collection."
-            )
-        values = value if slot.many else [value]
+            raise TypeError(f"{spec.name}.{slot.key} must be one path, not a collection.")
+        values: Sequence[object] = cast(Sequence[object], value) if slot.many else [value]
         if any(not isinstance(item, (str, Path)) for item in values):
             raise TypeError(f"{spec.name}.{slot.key} paths must be strings.")
     return spec
@@ -216,7 +202,11 @@ _GROUP_INFO_HEADERS = {
 
 
 def _slot_values(slot: ArtifactSlot, value: object) -> list[object]:
-    return list(value) if slot.many else [value]
+    if not slot.many:
+        return [value]
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+        raise TypeError(f"Artifact slot {slot.key} must contain a sequence of paths.")
+    return list(value)
 
 
 def validate_program_artifacts(
@@ -231,10 +221,7 @@ def validate_program_artifacts(
     from lunarops.fileio.archive import is_binary_path, is_text_path, read_artifact_type
 
     spec = get_program(name).spec
-    available = {
-        Path(path).resolve(): artifact_type
-        for path, artifact_type in (available_artifacts or {}).items()
-    }
+    available = {Path(path).resolve(): artifact_type for path, artifact_type in (available_artifacts or {}).items()}
     input_keys = {slot.key for slot in spec.inputs}
     resolved_slots: dict[Path, str] = {}
     for slot in spec.slots:
@@ -245,9 +232,7 @@ def validate_program_artifacts(
             path = context.resolve_path(raw_path)
             resolved = path.resolve()
             if resolved in resolved_slots:
-                raise ValueError(
-                    f"{spec.name} reuses path {path} in both {resolved_slots[resolved]} and {slot.key}."
-                )
+                raise ValueError(f"{spec.name} reuses path {path} in both {resolved_slots[resolved]} and {slot.key}.")
             resolved_slots[resolved] = slot.key
             is_input = slot.key in input_keys
             generated_type = available.get(resolved)
@@ -259,16 +244,12 @@ def validate_program_artifacts(
                     )
                 continue
             if is_input and require_inputs and not path.exists():
-                raise FileNotFoundError(
-                    f"{spec.name}.{slot.key} does not exist: {path}"
-                )
+                raise FileNotFoundError(f"{spec.name}.{slot.key} does not exist: {path}")
             if slot.artifact_type == "ExternalNormalPointFile":
                 continue
             if slot.artifact_type == "MatrixFile":
                 if not (is_text_path(path) or is_binary_path(path)):
-                    raise ValueError(
-                        f"{spec.name}.{slot.key} must use .txt[.gz] or .dat[.gz]: {path}"
-                    )
+                    raise ValueError(f"{spec.name}.{slot.key} must use .txt[.gz] or .dat[.gz]: {path}")
                 if is_input and require_inputs:
                     from lunarops.fileio.matrix import matrix_kind
 
@@ -276,37 +257,25 @@ def validate_program_artifacts(
                 continue
             if slot.artifact_type in _TEXT_ARTIFACT_HEADERS:
                 if not is_text_path(path):
-                    raise ValueError(
-                        f"{spec.name}.{slot.key} must use .txt or .txt.gz: {path}"
-                    )
+                    raise ValueError(f"{spec.name}.{slot.key} must use .txt or .txt.gz: {path}")
                 expected = _TEXT_ARTIFACT_HEADERS[slot.artifact_type]
                 if is_input and require_inputs:
                     actual = read_artifact_type(path)
                     if expected is not None and actual != expected:
-                        raise ValueError(
-                            f"{spec.name}.{slot.key} expects {expected!r}, found {actual!r}: {path}"
-                        )
+                        raise ValueError(f"{spec.name}.{slot.key} expects {expected!r}, found {actual!r}: {path}")
                 continue
             if slot.artifact_type in _GROUP_INFO_HEADERS:
                 if path.suffix:
-                    raise ValueError(
-                        f"{spec.name}.{slot.key} file groups require an extensionless directory: {path}"
-                    )
+                    raise ValueError(f"{spec.name}.{slot.key} file groups require an extensionless directory: {path}")
                 if is_input and require_inputs:
                     if not path.is_dir():
-                        raise ValueError(
-                            f"{spec.name}.{slot.key} must be a file-group directory: {path}"
-                        )
+                        raise ValueError(f"{spec.name}.{slot.key} must be a file-group directory: {path}")
                     actual = read_artifact_type(path / "info.txt")
                     expected = _GROUP_INFO_HEADERS[slot.artifact_type]
                     if actual != expected:
-                        raise ValueError(
-                            f"{spec.name}.{slot.key} expects {expected!r}, found {actual!r}: {path}"
-                        )
+                        raise ValueError(f"{spec.name}.{slot.key} expects {expected!r}, found {actual!r}: {path}")
                 continue
-            raise RuntimeError(
-                f"Program {spec.name} declares unknown artifact type {slot.artifact_type!r}."
-            )
+            raise RuntimeError(f"Program {spec.name} declares unknown artifact type {slot.artifact_type!r}.")
 
 
 def run_program(name: str, config: dict, context: RunContext):

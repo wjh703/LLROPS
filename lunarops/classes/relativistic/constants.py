@@ -1,12 +1,11 @@
 """Relativistic and gravitational constants used by frame/time models."""
+
 from __future__ import annotations
 
 # IAU/JPL relativistic scale constants used by coordinate transforms.
-# L_B and L_G are IAU defining constants. L_C is kept for compatibility,
-# while the actual GCRS<->BCRS scale below uses the explicit L_B-L_G form.
+# The GCRS<->BCRS scale uses the explicit L_B-L_G form.
 L_B = 1.550519768e-8
 L_G = 6.969290134e-10
-L_C = 1.48082686741e-8
 L_B_MINUS_L_G = L_B - L_G
 
 # DE440-compatible lunar surface scale constant LL from Turyshev et al.
@@ -62,14 +61,26 @@ GM_BY_BODY = {
 # External-potential body lists used in BCRS<->GCRS / BCRS<->LCRS
 # coordinate-time conversions (IERS Eq. 11.18 / 11.19; paper Eq. 21 / 23).
 EARTH_EXTERNAL_POTENTIAL_BODIES = (
-    "SUN", "MOON", "MERCURY BARYCENTER", "VENUS BARYCENTER",
-    "MARS BARYCENTER", "JUPITER BARYCENTER",
-    "SATURN BARYCENTER", "URANUS BARYCENTER", "NEPTUNE BARYCENTER",
+    "SUN",
+    "MOON",
+    "MERCURY BARYCENTER",
+    "VENUS BARYCENTER",
+    "MARS BARYCENTER",
+    "JUPITER BARYCENTER",
+    "SATURN BARYCENTER",
+    "URANUS BARYCENTER",
+    "NEPTUNE BARYCENTER",
 )
 MOON_EXTERNAL_POTENTIAL_BODIES = (
-    "SUN", "EARTH", "MERCURY BARYCENTER", "VENUS BARYCENTER",
-    "MARS BARYCENTER", "JUPITER BARYCENTER",
-    "SATURN BARYCENTER", "URANUS BARYCENTER", "NEPTUNE BARYCENTER",
+    "SUN",
+    "EARTH",
+    "MERCURY BARYCENTER",
+    "VENUS BARYCENTER",
+    "MARS BARYCENTER",
+    "JUPITER BARYCENTER",
+    "SATURN BARYCENTER",
+    "URANUS BARYCENTER",
+    "NEPTUNE BARYCENTER",
 )
 
 __all__ = [
@@ -88,7 +99,6 @@ __all__ = [
     "L_B",
     "L_B_MINUS_L_G",
     "L_B_MINUS_L_L_DE440",
-    "L_C",
     "L_G",
     "L_L_DE440",
     "MOON_EXTERNAL_POTENTIAL_BODIES",

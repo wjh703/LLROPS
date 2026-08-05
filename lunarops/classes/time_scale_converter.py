@@ -5,38 +5,30 @@ UTC<->TT is handled by the ERFA-backed routines in
 configured ephemeris target-16 table and, optionally, the topocentric
 ``v_E dot X / c^2`` term.
 """
+
 from __future__ import annotations
 
-from typing import Sequence
+from typing import TYPE_CHECKING
 
 import numpy as np
+from numpy.typing import ArrayLike
 
-from lunarops.base.constants import C2
-from lunarops.base.epoch import Epoch, TimeScale, tt2utc as _tt2utc, utc2tt as _utc2tt
 from lunarops.base.array_validation import vector3
+from lunarops.base.constants import C2
+from lunarops.base.epoch import Epoch, TimeScale
+from lunarops.base.epoch import tt2utc as _tt2utc
+from lunarops.base.epoch import utc2tt as _utc2tt
+
+if TYPE_CHECKING:
+    from lunarops.classes.ephemerides.base import Ephemeris
+
+_MAX_TDB_ITERATIONS = 6
+_TDB_TT_TOLERANCE_S = 1.0e-12
 
 
 class TimeScaleConverter:
-    def __init__(
-        self,
-        ephemeris: object | None = None,
-        max_iterations: int = 6,
-        tolerance_s: float = 1.0e-12,
-    ) -> None:
-        iterations = int(max_iterations)
-        tolerance = float(tolerance_s)
-        if iterations <= 0:
-            raise ValueError("max_iterations must be positive.")
-        if tolerance <= 0.0:
-            raise ValueError("tolerance_s must be positive.")
+    def __init__(self, ephemeris: Ephemeris) -> None:
         self.ephemeris = ephemeris
-        self.max_iterations = iterations
-        self.tolerance_s = tolerance
-
-    def _require_ephemeris(self):
-        if self.ephemeris is None:
-            raise RuntimeError("TT/TDB conversion requires an ephemeris.")
-        return self.ephemeris
 
     def utc2tt(self, epoch: Epoch) -> Epoch:
         epoch.require_scale(TimeScale.UTC)
@@ -50,15 +42,13 @@ class TimeScaleConverter:
         self,
         epoch_tdb: Epoch,
         *,
-        station_gcrs_m: Sequence[float] | None = None,
+        station_gcrs_m: ArrayLike | None = None,
     ) -> float:
         epoch_tdb.require_scale(TimeScale.TDB, name="epoch_tdb")
-        ephemeris = self._require_ephemeris()
+        ephemeris = self.ephemeris
         geocentric = ephemeris.geocentric_tdb_minus_tt_s(epoch_tdb)
         if geocentric is None:
-            raise RuntimeError(
-                "The configured ephemeris does not provide a TDB-TT table."
-            )
+            raise RuntimeError("The configured ephemeris does not provide a TDB-TT table.")
         correction = 0.0
         if station_gcrs_m is not None:
             station = vector3(station_gcrs_m, name="station_gcrs_m")
@@ -73,7 +63,7 @@ class TimeScaleConverter:
         self,
         epoch_tdb: Epoch,
         *,
-        station_gcrs_m: Sequence[float] | None = None,
+        station_gcrs_m: ArrayLike | None = None,
     ) -> Epoch:
         epoch_tdb.require_scale(TimeScale.TDB, name="epoch_tdb")
         delta_s = self.tdb_minus_tt_s(
@@ -87,18 +77,18 @@ class TimeScaleConverter:
         self,
         epoch_tt: Epoch,
         *,
-        station_gcrs_m: Sequence[float] | None = None,
+        station_gcrs_m: ArrayLike | None = None,
     ) -> Epoch:
         epoch_tt.require_scale(TimeScale.TT, name="epoch_tt")
         current = Epoch(epoch_tt.jd1, epoch_tt.jd2, TimeScale.TDB)
-        for _ in range(self.max_iterations):
+        for _ in range(_MAX_TDB_ITERATIONS):
             delta_s = self.tdb_minus_tt_s(
                 current,
                 station_gcrs_m=station_gcrs_m,
             )
             shifted = epoch_tt.shifted(delta_s)
             updated = Epoch(shifted.jd1, shifted.jd2, TimeScale.TDB)
-            if abs(current.seconds_until(updated)) < self.tolerance_s:
+            if abs(current.seconds_until(updated)) < _TDB_TT_TOLERANCE_S:
                 return updated
             current = updated
         return current
@@ -108,7 +98,7 @@ class TimeScaleConverter:
         epoch: Epoch,
         scale: TimeScale | str,
         *,
-        station_gcrs_m: Sequence[float] | None = None,
+        station_gcrs_m: ArrayLike | None = None,
     ) -> Epoch:
         target = TimeScale.parse(scale)
         if epoch.scale is target:
@@ -127,9 +117,8 @@ class TimeScaleConverter:
                 station_gcrs_m=station_gcrs_m,
             )
         if epoch.scale is TimeScale.TDB and target is TimeScale.UTC:
-            return self.tt2utc(
-                self.tdb2tt(epoch, station_gcrs_m=station_gcrs_m)
-            )
+            return self.tt2utc(self.tdb2tt(epoch, station_gcrs_m=station_gcrs_m))
         raise AssertionError("Unhandled time-scale conversion.")
+
 
 __all__ = ["TimeScaleConverter"]

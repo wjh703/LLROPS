@@ -19,9 +19,7 @@ from lunarops.programs.specs import PARAMETRIZED_OBSERVATION_KEYS
         name="LlrObservationEquations",
         summary="Freeze LLR design rows and reduced observations at one model state.",
         inputs=(ArtifactSlot("inputFilesNormalPoints", "NormalPointFile", many=True),),
-        outputs=(
-            ArtifactSlot("outputFileObservationEquations", "ObservationEquationFile"),
-        ),
+        outputs=(ArtifactSlot("outputFileObservationEquations", "ObservationEquationFile"),),
         optional_keys=PARAMETRIZED_OBSERVATION_KEYS,
     )
 )
@@ -37,9 +35,7 @@ def llr_observation_equations(config: dict, context: RunContext):
     equations = build_equation_source(config, context, datasets, processor)(1)
     parametrization.setup(equations, processor.model_state)
     source_by_identity = {
-        int(record.index): source
-        for source, dataset in datasets.items()
-        for record in dataset.records
+        int(record.index): source for source, dataset in datasets.items() for record in dataset.records
     }
     frozen = FrozenObservationEquations.from_equations(
         equations,
@@ -47,7 +43,7 @@ def llr_observation_equations(config: dict, context: RunContext):
         source_by_identity=source_by_identity,
         metadata={
             "sources": sorted(datasets),
-            "ephemeris": str(processor.ephemeris_file),
+            "ephemeris": str(processor.observation_model.ephemeris.source_file_path),
             "compatibility": model_compatibility_fingerprint(config, context),
         },
     )
@@ -64,18 +60,14 @@ def llr_observation_equations(config: dict, context: RunContext):
     ProgramSpec(
         name="ObservationEquationsToNormals",
         summary="Accumulate a frozen observation-equation file into normal equations.",
-        inputs=(
-            ArtifactSlot("inputFileObservationEquations", "ObservationEquationFile"),
-        ),
+        inputs=(ArtifactSlot("inputFileObservationEquations", "ObservationEquationFile"),),
         outputs=(ArtifactSlot("outputFileNormalEquations", "NormalEquationFile"),),
     )
 )
 def observation_equations_to_normals(config: dict, context: RunContext):
     from lunarops.fileio.observation_equation_file import read_observation_equations
 
-    frozen = read_observation_equations(
-        context.resolve_path(config["inputFileObservationEquations"])
-    )
+    frozen = read_observation_equations(context.resolve_path(config["inputFileObservationEquations"]))
     normals = frozen.normal_equations()
     output = context.resolve_path(config["outputFileNormalEquations"])
     normals.save(output)

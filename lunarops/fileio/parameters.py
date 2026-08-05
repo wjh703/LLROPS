@@ -48,9 +48,7 @@ def write_parameter_names(
     values = list(names)
     if len(set(values)) != len(values):
         raise ValueError("Parameter names must be unique.")
-    unit_values = (
-        list(units) if units is not None else [parameter_unit(name) for name in values]
-    )
+    unit_values = list(units) if units is not None else [parameter_unit(name) for name in values]
     if len(unit_values) != len(values):
         raise ValueError("Parameter units must match parameter names.")
     if any(not str(unit).strip() for unit in unit_values):
@@ -75,11 +73,7 @@ def read_parameter_names(path: str | Path) -> tuple[list[ParameterName], list[st
             marker = next(lines)
         except StopIteration as exc:
             raise ValueError(f"Truncated parameter-name file {source}.") from exc
-        if (
-            len(count_parts) != 2
-            or count_parts[0] != "parameterCount"
-            or marker != "data"
-        ):
+        if len(count_parts) != 2 or count_parts[0] != "parameterCount" or marker != "data":
             raise ValueError(f"Malformed parameter-name header in {source}.")
         count = int(count_parts[1])
         if count < 0:
@@ -117,9 +111,7 @@ class ParameterVector:
         units = tuple(str(unit) for unit in self.units)
         values = np.array(self.values, dtype=float, copy=True).reshape(-1)
         if len(names) != len(units) or len(names) != values.size:
-            raise ValueError(
-                "Parameter vector names, units, and values must have equal length."
-            )
+            raise ValueError("Parameter vector names, units, and values must have equal length.")
         if len(set(names)) != len(names):
             raise ValueError("Parameter vector names must be unique.")
         if any(not unit for unit in units):
@@ -129,32 +121,21 @@ class ParameterVector:
         uncertainties = self.uncertainties
         multiplier = self.uncertainty_sigma_multiplier
         if uncertainties is not None:
-            uncertainties = np.array(
-                uncertainties, dtype=float, copy=True
-            ).reshape(-1)
+            uncertainties = np.array(uncertainties, dtype=float, copy=True).reshape(-1)
             if (
                 uncertainties.size != values.size
                 or not np.all(np.isfinite(uncertainties))
                 or np.any(uncertainties < 0.0)
             ):
-                raise ValueError(
-                    "Parameter uncertainties must be finite, non-negative, and aligned."
-                )
+                raise ValueError("Parameter uncertainties must be finite, non-negative, and aligned.")
             if multiplier is None:
-                raise ValueError(
-                    "Parameter uncertainties require an uncertainty sigma multiplier."
-                )
+                raise ValueError("Parameter uncertainties require an uncertainty sigma multiplier.")
             multiplier = float(multiplier)
             if not np.isfinite(multiplier) or multiplier <= 0.0:
-                raise ValueError(
-                    "Parameter uncertainty sigma multiplier must be positive "
-                    "and finite."
-                )
+                raise ValueError("Parameter uncertainty sigma multiplier must be positive and finite.")
             uncertainties.setflags(write=False)
         elif multiplier is not None:
-            raise ValueError(
-                "Parameter uncertainty sigma multiplier requires uncertainties."
-            )
+            raise ValueError("Parameter uncertainty sigma multiplier requires uncertainties.")
         values.setflags(write=False)
         object.__setattr__(self, "parameter_names", names)
         object.__setattr__(self, "units", units)
@@ -163,9 +144,7 @@ class ParameterVector:
         object.__setattr__(self, "uncertainty_sigma_multiplier", multiplier)
         kind = str(self.kind)
         if kind not in {"correction", "estimate"}:
-            raise ValueError(
-                f"Parameter vector kind must be 'correction' or 'estimate', found {kind!r}."
-            )
+            raise ValueError(f"Parameter vector kind must be 'correction' or 'estimate', found {kind!r}.")
         object.__setattr__(self, "kind", kind)
 
 
@@ -174,29 +153,16 @@ def write_parameter_vector(vector: ParameterVector, path: str | Path) -> Path:
     with atomic_text_writer(target, "parameterVector") as stream:
         stream.write(f"vectorKind {encode_token(vector.kind)}\n")
         stream.write(f"parameterCount {len(vector.parameter_names)}\n")
-        stream.write(
-            f"hasUncertainty {1 if vector.uncertainties is not None else 0}\n"
-        )
+        stream.write(f"hasUncertainty {1 if vector.uncertainties is not None else 0}\n")
         multiplier = (
-            "~"
-            if vector.uncertainty_sigma_multiplier is None
-            else format_float(vector.uncertainty_sigma_multiplier)
+            "~" if vector.uncertainty_sigma_multiplier is None else format_float(vector.uncertainty_sigma_multiplier)
         )
         stream.write(f"uncertaintySigmaMultiplier {multiplier}\n")
         stream.write("# parameter_name unit value uncertainty\n")
         stream.write("data\n")
-        for index, (name, unit, value) in enumerate(
-            zip(vector.parameter_names, vector.units, vector.values)
-        ):
-            uncertainty = (
-                "~"
-                if vector.uncertainties is None
-                else format_float(vector.uncertainties[index])
-            )
-            stream.write(
-                f"{encode_token(name)} {encode_token(unit)} "
-                f"{format_float(value)} {uncertainty}\n"
-            )
+        for index, (name, unit, value) in enumerate(zip(vector.parameter_names, vector.units, vector.values)):
+            uncertainty = "~" if vector.uncertainties is None else format_float(vector.uncertainties[index])
+            stream.write(f"{encode_token(name)} {encode_token(unit)} {format_float(value)} {uncertainty}\n")
     return target
 
 
@@ -227,25 +193,17 @@ def read_parameter_vector(path: str | Path) -> ParameterVector:
             raise ValueError(f"Malformed parameter-vector header in {source}.")
         count = int(count_line[1])
         if count < 0 or uncertainty_line[1] not in {"0", "1"}:
-            raise ValueError(
-                f"Invalid parameter-vector count or hasUncertainty flag in {source}."
-            )
+            raise ValueError(f"Invalid parameter-vector count or hasUncertainty flag in {source}.")
         has_uncertainty = uncertainty_line[1] == "1"
         if has_uncertainty:
             if multiplier_line[1] == "~":
-                raise ValueError(
-                    "Parameter-vector uncertainty multiplier is missing despite "
-                    "hasUncertainty=1."
-                )
+                raise ValueError("Parameter-vector uncertainty multiplier is missing despite hasUncertainty=1.")
             uncertainty_sigma_multiplier = parse_float(
                 multiplier_line[1], field="parameter uncertainty sigma multiplier"
             )
         else:
             if multiplier_line[1] != "~":
-                raise ValueError(
-                    "Parameter-vector uncertainty multiplier is present despite "
-                    "hasUncertainty=0."
-                )
+                raise ValueError("Parameter-vector uncertainty multiplier is present despite hasUncertainty=0.")
             uncertainty_sigma_multiplier = None
         names: list[ParameterName] = []
         units: list[str] = []
@@ -254,35 +212,23 @@ def read_parameter_vector(path: str | Path) -> ParameterVector:
         for line in lines:
             fields = line.split()
             if len(fields) != 4:
-                raise ValueError(
-                    f"Malformed parameter-vector row in {source}: {line!r}"
-                )
+                raise ValueError(f"Malformed parameter-vector row in {source}: {line!r}")
             names.append(ParameterName.parse(decode_token(fields[0])))
             units.append(decode_token(fields[1]))
             values.append(parse_float(fields[2], field="parameter value"))
             if has_uncertainty:
                 if fields[3] == "~":
-                    raise ValueError(
-                        "Parameter-vector uncertainty is missing despite "
-                        "hasUncertainty=1."
-                    )
-                uncertainties.append(
-                    parse_float(fields[3], field="parameter uncertainty")
-                )
+                    raise ValueError("Parameter-vector uncertainty is missing despite hasUncertainty=1.")
+                uncertainties.append(parse_float(fields[3], field="parameter uncertainty"))
             elif fields[3] != "~":
-                raise ValueError(
-                    "Parameter-vector uncertainty is present despite "
-                    "hasUncertainty=0."
-                )
+                raise ValueError("Parameter-vector uncertainty is present despite hasUncertainty=0.")
     if len(names) != count:
         raise ValueError(f"Parameter vector declares {count}, found {len(names)}.")
     return ParameterVector(
         parameter_names=tuple(names),
         values=np.asarray(values),
         units=tuple(units),
-        uncertainties=(
-            None if not has_uncertainty else np.asarray(uncertainties)
-        ),
+        uncertainties=(None if not has_uncertainty else np.asarray(uncertainties)),
         kind=decode_token(kind_line[1]),
         uncertainty_sigma_multiplier=uncertainty_sigma_multiplier,
     )
@@ -302,9 +248,7 @@ class CovarianceMatrix:
         units = tuple(str(unit) for unit in self.units)
         matrix = np.array(self.matrix, dtype=float, copy=True)
         if len(names) != len(units) or matrix.shape != (len(names), len(names)):
-            raise ValueError(
-                "Covariance names, units, and square matrix are inconsistent."
-            )
+            raise ValueError("Covariance names, units, and square matrix are inconsistent.")
         if len(set(names)) != len(names) or not np.all(np.isfinite(matrix)):
             raise ValueError("Covariance parameters must be unique and values finite.")
         if any(not unit for unit in units):
@@ -333,9 +277,7 @@ def _atomic_directory(target: Path, writer) -> Path:
         writer(temporary)
         if target.exists():
             if not target.is_dir():
-                raise FileExistsError(
-                    f"Artifact target exists and is not a directory: {target}"
-                )
+                raise FileExistsError(f"Artifact target exists and is not a directory: {target}")
             backup = target.parent / f".{target.name}.old.{os.getpid()}"
             if backup.exists():
                 shutil.rmtree(backup)
@@ -362,20 +304,14 @@ def write_covariance(covariance: CovarianceMatrix, path: str | Path) -> Path:
             covariance.parameter_names,
             covariance.units,
         )
-        write_matrix(
-            directory / "covariance.dat.gz", covariance.matrix, kind="lowerSymmetric"
-        )
+        write_matrix(directory / "covariance.dat.gz", covariance.matrix, kind="lowerSymmetric")
         with atomic_text_writer(directory / "info.txt", "covarianceInfo") as stream:
             stream.write(f"covarianceKind {encode_token(covariance.kind)}\n")
             stream.write(f"parameterCount {len(covariance.parameter_names)}\n")
             stream.write("matrixFile covariance.dat.gz\n")
             stream.write("parameterNamesFile parameterNames.txt\n")
-            stream.write(
-                f"matrixSha256 {sha256_file(directory / 'covariance.dat.gz')}\n"
-            )
-            stream.write(
-                f"parameterNamesSha256 {sha256_file(directory / 'parameterNames.txt')}\n"
-            )
+            stream.write(f"matrixSha256 {sha256_file(directory / 'covariance.dat.gz')}\n")
+            stream.write(f"parameterNamesSha256 {sha256_file(directory / 'parameterNames.txt')}\n")
 
     return _atomic_directory(target, writer)
 
@@ -401,10 +337,7 @@ def read_covariance(path: str | Path) -> CovarianceMatrix:
         if len(parts) != 2 or parts[0] != key:
             raise ValueError(f"Malformed covariance info in {source}.")
         parsed[key] = parts[1]
-    if (
-        parsed["matrixFile"] != "covariance.dat.gz"
-        or parsed["parameterNamesFile"] != "parameterNames.txt"
-    ):
+    if parsed["matrixFile"] != "covariance.dat.gz" or parsed["parameterNamesFile"] != "parameterNames.txt":
         raise ValueError(f"Covariance group uses unexpected payload names in {source}.")
     matrix_path = source / parsed["matrixFile"]
     names_path = source / parsed["parameterNamesFile"]
@@ -416,9 +349,7 @@ def read_covariance(path: str | Path) -> CovarianceMatrix:
     if int(parsed["parameterCount"]) != len(names):
         raise ValueError("Covariance parameter count mismatch.")
     matrix = read_matrix(matrix_path, expected_kind="lowerSymmetric")
-    return CovarianceMatrix(
-        tuple(names), matrix, tuple(units), decode_token(parsed["covarianceKind"])
-    )
+    return CovarianceMatrix(tuple(names), matrix, tuple(units), decode_token(parsed["covarianceKind"]))
 
 
 __all__ = [

@@ -1,40 +1,36 @@
-"""LLR observation modelling, processing, and linearized equations.
+"""LLR observation modelling, processing, and linearized equations."""
 
-Heavy model modules are imported lazily so the generic estimation framework can
-use :class:`ObservationEquation` in minimal environments.
-"""
-from __future__ import annotations
+from .equations import ObservationEquation, ObservationResultDetail
+from .light_time import (
+    LightTimeLeg,
+    LightTimeRequest,
+    LightTimeSolution,
+    LightTimeSolver,
+    TroposphereEnvironment,
+)
+from .measurement import LlrObservationEvaluation, LlrObservationModel
+from .processor import LlrObservationProcessor, ObservationProcessingOptions
+from .resolver import (
+    ObservationCatalogSelection,
+    ObservationCatalogState,
+    ObservationResolver,
+    ResolvedObservation,
+)
 
-from importlib import import_module
-
-from .equations import ObservationEquation
-
-_LAZY_EXPORTS = {
-    "CatalogSelection": ("resolver", "CatalogSelection"),
-    "ResolvedObservation": ("resolver", "ResolvedObservation"),
-    "ObservationModelState": ("resolver", "ObservationModelState"),
-    "ObservationResolver": ("resolver", "ObservationResolver"),
-    "LightTimeLeg": ("light_time", "LightTimeLeg"),
-    "LightTimeRequest": ("light_time", "LightTimeRequest"),
-    "LightTimeSolution": ("light_time", "LightTimeSolution"),
-    "LightTimeSolver": ("light_time", "LightTimeSolver"),
-    "OpticalAtmosphere": ("light_time", "OpticalAtmosphere"),
-    "LlrMeasurement": ("measurement", "LlrMeasurement"),
-    "ObservationEvaluation": ("measurement", "ObservationEvaluation"),
-    "LlrObservationProcessor": ("processor", "LlrObservationProcessor"),
-    "ObservationProcessingOptions": ("processor", "ObservationProcessingOptions"),
-    "ObservationOutputLevel": ("equations", "ObservationOutputLevel"),
-}
-
-
-def __getattr__(name: str):
-    try:
-        module_name, attribute_name = _LAZY_EXPORTS[name]
-    except KeyError as exc:
-        raise AttributeError(name) from exc
-    value = getattr(import_module(f"{__name__}.{module_name}"), attribute_name)
-    globals()[name] = value
-    return value
-
-
-__all__ = ["ObservationEquation", *_LAZY_EXPORTS]
+__all__ = [
+    "LightTimeLeg",
+    "LightTimeRequest",
+    "LightTimeSolution",
+    "LightTimeSolver",
+    "LlrObservationEvaluation",
+    "LlrObservationModel",
+    "LlrObservationProcessor",
+    "ObservationCatalogSelection",
+    "ObservationCatalogState",
+    "ObservationEquation",
+    "ObservationProcessingOptions",
+    "ObservationResolver",
+    "ObservationResultDetail",
+    "ResolvedObservation",
+    "TroposphereEnvironment",
+]

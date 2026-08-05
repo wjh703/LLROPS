@@ -119,11 +119,7 @@ def write_matrix(path: str | Path, values, *, kind: str = "dense") -> Path:
                     payload.size,
                 )
             )
-            stream.write(
-                np.asarray(payload, dtype=array.dtype.newbyteorder("<")).tobytes(
-                    order="C"
-                )
-            )
+            stream.write(np.asarray(payload, dtype=array.dtype.newbyteorder("<")).tobytes(order="C"))
         return target
 
     with atomic_text_writer(target, "matrix") as stream:
@@ -136,25 +132,14 @@ def write_matrix(path: str | Path, values, *, kind: str = "dense") -> Path:
         stream.write("data\n")
         if matrix_kind == "vector":
             for value in payload:
-                stream.write(
-                    (str(int(value)) if dtype_name == "int64" else format_float(value))
-                    + "\n"
-                )
+                stream.write((str(int(value)) if dtype_name == "int64" else format_float(value)) + "\n")
         elif matrix_kind == "lowerSymmetric":
             for row in range(rows):
                 values_row = array[row, : row + 1]
-                formatter = (
-                    (lambda value: str(int(value)))
-                    if dtype_name == "int64"
-                    else format_float
-                )
+                formatter = (lambda value: str(int(value))) if dtype_name == "int64" else format_float
                 stream.write(" ".join(formatter(value) for value in values_row) + "\n")
         else:
-            formatter = (
-                (lambda value: str(int(value)))
-                if dtype_name == "int64"
-                else format_float
-            )
+            formatter = (lambda value: str(int(value))) if dtype_name == "int64" else format_float
             for row in array:
                 stream.write(" ".join(formatter(value) for value in row) + "\n")
     return target
@@ -168,9 +153,7 @@ def _read_binary_matrix(path: Path) -> tuple[np.ndarray, str]:
         header = stream.read(struct.calcsize("<IIIIQQQ"))
         if len(header) != struct.calcsize("<IIIIQQQ"):
             raise ValueError(f"Truncated LunarOps binary matrix header in {path}.")
-        version, dtype_code, kind_code, reserved, rows, columns, count = struct.unpack(
-            "<IIIIQQQ", header
-        )
+        version, dtype_code, kind_code, reserved, rows, columns, count = struct.unpack("<IIIIQQQ", header)
         if version != 1:
             raise ValueError(f"Unsupported LunarOps binary matrix version {version}.")
         dtype = _CODE_TO_DTYPE.get(dtype_code)
@@ -218,9 +201,7 @@ def _read_text_matrix(path: Path) -> tuple[np.ndarray, str]:
             or marker != "data"
         ):
             raise ValueError(f"Malformed text matrix header in {path}.")
-        dtype = {"float64": np.dtype("<f8"), "int64": np.dtype("<i8")}.get(
-            dtype_line[1]
-        )
+        dtype = {"float64": np.dtype("<f8"), "int64": np.dtype("<i8")}.get(dtype_line[1])
         if dtype is None:
             raise ValueError(f"Unsupported text matrix dtype {dtype_line[1]!r}.")
         kind = kind_line[1]
@@ -238,44 +219,28 @@ def _read_text_matrix(path: Path) -> tuple[np.ndarray, str]:
             raise ValueError(f"Text matrix dimensions must be non-negative in {path}.")
         tokens = [token for line in lines for token in line.split()]
         if len(tokens) != count:
-            raise ValueError(
-                f"Text matrix declares {count} values but contains {len(tokens)} in {path}."
-            )
+            raise ValueError(f"Text matrix declares {count} values but contains {len(tokens)} in {path}.")
         if dtype.kind == "f":
-            payload = np.asarray(
-                [parse_float(token, field="matrix") for token in tokens], dtype=dtype
-            )
+            payload = np.asarray([parse_float(token, field="matrix") for token in tokens], dtype=dtype)
         else:
             try:
                 payload = np.asarray([int(token) for token in tokens], dtype=dtype)
             except ValueError as exc:
                 raise ValueError(f"Invalid integer matrix value in {path}.") from exc
-    return _restore_payload(
-        payload, rows=rows, columns=columns, kind=kind, dtype=dtype
-    ), kind
+    return _restore_payload(payload, rows=rows, columns=columns, kind=kind, dtype=dtype), kind
 
 
 def read_matrix(path: str | Path, *, expected_kind: str | None = None) -> np.ndarray:
     source = Path(path).expanduser()
-    array, kind = (
-        _read_binary_matrix(source)
-        if is_binary_path(source)
-        else _read_text_matrix(source)
-    )
+    array, kind = _read_binary_matrix(source) if is_binary_path(source) else _read_text_matrix(source)
     if expected_kind is not None and kind != expected_kind:
-        raise ValueError(
-            f"Expected matrix kind {expected_kind!r}, found {kind!r} in {source}."
-        )
+        raise ValueError(f"Expected matrix kind {expected_kind!r}, found {kind!r} in {source}.")
     return array
 
 
 def matrix_kind(path: str | Path) -> str:
     source = Path(path).expanduser()
-    _array, kind = (
-        _read_binary_matrix(source)
-        if is_binary_path(source)
-        else _read_text_matrix(source)
-    )
+    _array, kind = _read_binary_matrix(source) if is_binary_path(source) else _read_text_matrix(source)
     return kind
 
 

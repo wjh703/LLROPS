@@ -10,4 +10,5 @@ Layers (see docs/ARCHITECTURE.md):
   programs/  one task per program, driven by a run config
   parallel/  MPI observation processing and worker caches
 """
+
 __version__ = "0.1.0"

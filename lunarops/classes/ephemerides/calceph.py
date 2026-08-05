@@ -1,4 +1,5 @@
 """CALCEPH implementation of the LLR ephemeris interface."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -69,9 +70,7 @@ class CalcephEphemeris(Ephemeris):
         self,
         ephemeris_file: str | Path,
         *,
-        longitude_libration_correction_type: (
-            LongitudeLibrationCorrectionType | str | bool | None
-        ) = None,
+        longitude_libration_correction_type: (LongitudeLibrationCorrectionType | str | None) = None,
     ) -> None:
         path = Path(ephemeris_file).expanduser()
         if not path.is_file():
@@ -80,31 +79,24 @@ class CalcephEphemeris(Ephemeris):
             from calcephpy import CalcephBin, Constants
         except (ImportError, OSError) as exc:  # pragma: no cover
             raise ImportError(
-                "The CALCEPH ephemeris requires a working calcephpy installation. "
-                f"Original import error: {exc}"
+                f"The CALCEPH ephemeris requires a working calcephpy installation. Original import error: {exc}"
             ) from exc
 
         self._source_file = path
         self._l_b_minus_l_l = float(l_b_minus_l_l_for_ephemeris(path))
-        self._longitude_libration_correction_type = (
-            normalize_longitude_libration_correction_type(
-                longitude_libration_correction_type
-            )
+        self._longitude_libration_correction_type = normalize_longitude_libration_correction_type(
+            longitude_libration_correction_type
         )
-        self._longitude_libration_correction_model: (
-            LongitudeLibrationCorrectionModel
-        ) = make_longitude_libration_correction_model(
-            self._longitude_libration_correction_type
+        self._longitude_libration_correction_model: LongitudeLibrationCorrectionModel = (
+            make_longitude_libration_correction_model(self._longitude_libration_correction_type)
         )
         self._j2000_tdb: Epoch | None = None
         self._handle = CalcephBin.open(str(path))
-        self._state_units = (
-            Constants.UNIT_KM + Constants.UNIT_SEC + Constants.USE_NAIFID
-        )
+        self._state_units = Constants.UNIT_KM + Constants.UNIT_SEC + Constants.USE_NAIFID
         self._angle_units = Constants.UNIT_RAD + Constants.UNIT_SEC
 
     @property
-    def source_file(self) -> Path:
+    def source_file_path(self) -> Path:
         return self._source_file
 
     @property
@@ -148,9 +140,7 @@ class CalcephEphemeris(Ephemeris):
         state = np.asarray(values, dtype=float)
         if state.size < 6:
             raise RuntimeError(
-                "CALCEPH returned "
-                f"{state.size} state values for {normalized_body_name}; "
-                "expected at least six."
+                f"CALCEPH returned {state.size} state values for {normalized_body_name}; expected at least six."
             )
         return BodyState(
             position_m=state[:3] * 1000.0,
@@ -168,9 +158,7 @@ class CalcephEphemeris(Ephemeris):
         )
         angles = np.asarray(values, dtype=float)
         if angles.size < 3:
-            raise RuntimeError(
-                "CALCEPH libration target returned fewer than three angles."
-            )
+            raise RuntimeError("CALCEPH libration target returned fewer than three angles.")
         result = np.array(angles[:3], dtype=float, copy=True)
         result.setflags(write=False)
         return result
@@ -178,17 +166,12 @@ class CalcephEphemeris(Ephemeris):
     def _j2000_tdb_epoch(self) -> Epoch:
         if self._j2000_tdb is None:
             converter = TimeScaleConverter(self)
-            self._j2000_tdb = converter.tt2tdb(
-                Epoch(_J2000_TT_JD1, _J2000_TT_JD2, TimeScale.TT)
-            )
+            self._j2000_tdb = converter.tt2tdb(Epoch(_J2000_TT_JD1, _J2000_TT_JD2, TimeScale.TT))
         return self._j2000_tdb
 
     def longitude_libration_correction_rad(self, epoch_tdb: Epoch) -> float:
         epoch_tdb = require_tdb_epoch(epoch_tdb, name="epoch_tdb")
-        if (
-            self.longitude_libration_correction_type
-            is LongitudeLibrationCorrectionType.NONE
-        ):
+        if self.longitude_libration_correction_type is LongitudeLibrationCorrectionType.NONE:
             return 0.0
         return self._longitude_libration_correction_model.correction_rad(
             epoch_tdb,
@@ -199,34 +182,13 @@ class CalcephEphemeris(Ephemeris):
         epoch_tdb = require_tdb_epoch(epoch_tdb, name="epoch_tdb")
         phi, theta, psi = self._lunar_orientation_angles_rad(epoch_tdb)
         psi += self.longitude_libration_correction_rad(epoch_tdb)
-        lcrs_to_pa_matrix = (
-            _passive_rotation_z(psi)
-            @ _passive_rotation_x(theta)
-            @ _passive_rotation_z(phi)
-        )
+        lcrs_to_pa_matrix = _passive_rotation_z(psi) @ _passive_rotation_x(theta) @ _passive_rotation_z(phi)
         return readonly_matrix3x3(
             lcrs_to_pa_matrix.T,
             name="pa2lcrs_matrix",
         )
 
-    @staticmethod
-    def _looks_like_missing_target_error(exc: Exception) -> bool:
-        text = str(exc).lower()
-        return (
-            "target" in text
-            and any(
-                token in text
-                for token in (
-                    "missing",
-                    "not found",
-                    "available",
-                    "unknown",
-                    "invalid",
-                )
-            )
-        ) or ("body" in text and "not" in text and "found" in text)
-
-    def geocentric_tdb_minus_tt_s(self, epoch_tdb: Epoch) -> float | None:
+    def geocentric_tdb_minus_tt_s(self, epoch_tdb: Epoch) -> float:
         epoch_tdb = require_tdb_epoch(epoch_tdb, name="epoch_tdb")
         try:
             values = self._require_open_handle().compute_unit(
@@ -237,11 +199,8 @@ class CalcephEphemeris(Ephemeris):
                 self._angle_units,
             )
         except Exception as exc:
-            if self._looks_like_missing_target_error(exc):
-                return None
             raise RuntimeError(
-                "CALCEPH failed while reading target 16 (TT−TDB) at "
-                f"jd=({epoch_tdb.jd1}, {epoch_tdb.jd2})."
+                f"CALCEPH failed while reading target 16 (TT−TDB) at jd=({epoch_tdb.jd1}, {epoch_tdb.jd2})."
             ) from exc
         values = np.asarray(values, dtype=float)
         if values.size < 1 or not np.isfinite(values[0]):
@@ -250,23 +209,13 @@ class CalcephEphemeris(Ephemeris):
         return -float(values[0])
 
     def require_tdb_minus_tt_support(self) -> None:
-        if (
-            self.geocentric_tdb_minus_tt_s(
-                Epoch(2451545.0, 0.0, TimeScale.TDB)
-            )
-            is None
-        ):
-            raise RuntimeError(
-                "The loaded CALCEPH ephemeris does not provide target 16 (TT−TDB)."
-            )
+        self.geocentric_tdb_minus_tt_s(Epoch(2451545.0, 0.0, TimeScale.TDB))
 
 
 def load_calceph_ephemeris(
     ephemeris_file: str | Path,
     *,
-    longitude_libration_correction_type: (
-        LongitudeLibrationCorrectionType | str | bool | None
-    ) = None,
+    longitude_libration_correction_type: (LongitudeLibrationCorrectionType | str | None) = None,
 ) -> CalcephEphemeris:
     ephemeris = CalcephEphemeris(
         ephemeris_file,

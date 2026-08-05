@@ -100,10 +100,7 @@ def _parse_set_value(value: str) -> Any:
             import yaml
 
             parsed = yaml.safe_load(text)
-            if (
-                isinstance(parsed, (str, int, float, bool, list, dict))
-                or parsed is None
-            ):
+            if isinstance(parsed, (str, int, float, bool, list, dict)) or parsed is None:
                 return parsed
         except Exception:
             pass
@@ -113,9 +110,7 @@ def _parse_set_value(value: str) -> Any:
             return int(text)
         except ValueError:
             pass
-    if re.fullmatch(
-        r"[+-]?(?:(?:[0-9]+\.[0-9]*)|(?:\.[0-9]+)|(?:[0-9]+))(?:[eE][+-]?[0-9]+)?", text
-    ):
+    if re.fullmatch(r"[+-]?(?:(?:[0-9]+\.[0-9]*)|(?:\.[0-9]+)|(?:[0-9]+))(?:[eE][+-]?[0-9]+)?", text):
         try:
             return float(text)
         except ValueError:
@@ -137,9 +132,7 @@ def parse_set_overrides(pairs: List[str]) -> Dict[str, Any]:
     return overrides
 
 
-def iter_program_calls(
-    config: dict, overrides: Dict[str, Any] | None = None
-) -> Iterator[Tuple[str, dict, dict]]:
+def iter_program_calls(config: dict, overrides: Dict[str, Any] | None = None) -> Iterator[Tuple[str, dict, dict]]:
     """Yield ``(program_name, resolved_program_config, resolved_globals)``.
 
     Loop entries are expanded; ``enabled: false`` entries are skipped.
@@ -171,22 +164,15 @@ def iter_program_calls(
             raise ValueError("Program names must be non-empty strings.")
         name = entry["program"].strip()
         loop = entry.get("loop")
-        body = {
-            k: v for k, v in entry.items() if k not in ("program", "loop", "enabled")
-        }
+        body = {k: v for k, v in entry.items() if k not in ("program", "loop", "enabled")}
         if loop is not None:
             if not isinstance(loop, Mapping):
                 raise TypeError("Program loop must be a mapping.")
             if set(loop) != {"variable", "values"}:
-                raise ValueError(
-                    "Program loop requires exactly 'variable' and 'values'."
-                )
+                raise ValueError("Program loop requires exactly 'variable' and 'values'.")
             loop_var = loop["variable"]
             loop_values = loop["values"]
-            if (
-                not isinstance(loop_var, str)
-                or _PLACEHOLDER.fullmatch("{" + loop_var + "}") is None
-            ):
+            if not isinstance(loop_var, str) or _PLACEHOLDER.fullmatch("{" + loop_var + "}") is None:
                 raise ValueError("Program loop variable must be a valid identifier.")
             if not isinstance(loop_values, list) or not loop_values:
                 raise ValueError("Program loop values must be a non-empty list.")

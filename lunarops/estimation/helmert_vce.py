@@ -1,13 +1,13 @@
 """Helmert variance-component estimation for LLR observations."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Mapping, cast
 
 import numpy as np
 
 from lunarops.estimation.variance_components import VarianceComponentDefinition
-from lunarops.fileio.normal_equations import NormalEquations
 
 
 @dataclass(frozen=True)
@@ -43,14 +43,8 @@ class HelmertVceEstimator:
         if not 0.0 < self.minimum_nonzero_factor < 1.0:
             raise ValueError("Helmert VCE active-factor threshold must be in (0, 1).")
         if self.minimum_effective_redundancy < 0.0:
-            raise ValueError(
-                "Helmert VCE minimum effective redundancy must be non-negative."
-            )
-        if not (
-            0.0
-            < self.minimum_variance_ratio_per_iteration
-            <= self.maximum_variance_ratio_per_iteration
-        ):
+            raise ValueError("Helmert VCE minimum effective redundancy must be non-negative.")
+        if not (0.0 < self.minimum_variance_ratio_per_iteration <= self.maximum_variance_ratio_per_iteration):
             raise ValueError("Helmert VCE variance-ratio limits are invalid.")
 
     def _finalize(
@@ -68,9 +62,7 @@ class HelmertVceEstimator:
         diagnostics: dict[str, dict[str, object]] = {}
         for component in self.components:
             component_id = component.id
-            consumed = float(
-                np.trace(covariance @ component_normal_matrices[component_id])
-            )
+            consumed = float(np.trace(covariance @ component_normal_matrices[component_id]))
             count = counts[component_id]
             redundancy = float(count - consumed)
             current_variance = float(scales[component_id]) ** 2
@@ -83,8 +75,7 @@ class HelmertVceEstimator:
                 raw_variance = numerators[component_id] / redundancy
                 if not np.isfinite(raw_variance) or raw_variance <= 0.0:
                     raise RuntimeError(
-                        f"Invalid Helmert VCE estimate for component "
-                        f"{component_id!r}: {raw_variance!r}."
+                        f"Invalid Helmert VCE estimate for component {component_id!r}: {raw_variance!r}."
                     )
                 raw_ratio = raw_variance / current_variance
                 limited_ratio = float(
@@ -112,15 +103,9 @@ class HelmertVceEstimator:
                 "update_status": status,
             }
         expected = float(active_count - np.linalg.matrix_rank(normal_matrix))
-        actual = sum(
-            float(item["effective_redundancy"])
-            for item in diagnostics.values()
-        )
+        actual = sum(cast(float, item["effective_redundancy"]) for item in diagnostics.values())
         if not np.isclose(actual, expected, rtol=1.0e-10, atol=1.0e-8):
-            raise RuntimeError(
-                f"Helmert redundancy check failed: {actual:.12g} != "
-                f"{expected:.12g}."
-            )
+            raise RuntimeError(f"Helmert redundancy check failed: {actual:.12g} != {expected:.12g}.")
         return VarianceComponentEstimate(updates, diagnostics)
 
     def estimate(
@@ -153,9 +138,7 @@ class HelmertVceEstimator:
             weight = factor / (float(scales[component.id]) ** 2 * sigma**2)
             component_normal_matrices[component.id] = A.T @ (weight[:, None] * A)
             counts[component.id] = int(np.count_nonzero(mask))
-            numerators[component.id] = float(
-                np.sum(factor * residuals[mask] ** 2 / sigma**2)
-            )
+            numerators[component.id] = float(np.sum(factor * residuals[mask] ** 2 / sigma**2))
 
         return self._finalize(
             covariance=covariance,

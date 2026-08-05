@@ -98,9 +98,7 @@ def _blank_to_none(text: str) -> Optional[str]:
     return value if value else None
 
 
-def _parse_int(
-    text: str, *, field: str, line_no: int, required: bool = True
-) -> Optional[int]:
+def _parse_int(text: str, *, field: str, line_no: int, required: bool = True) -> Optional[int]:
     value = _blank_to_none(text)
     if value is None:
         if required:
@@ -109,9 +107,7 @@ def _parse_int(
     try:
         return int(value)
     except ValueError as exc:
-        raise ValueError(
-            f"line {line_no}: invalid MINI integer field {field!r}: {text!r}"
-        ) from exc
+        raise ValueError(f"line {line_no}: invalid MINI integer field {field!r}: {text!r}") from exc
 
 
 def looks_like_mini_line(raw_line: str) -> bool:
@@ -248,13 +244,9 @@ def _parse_launch_epoch(
     time_value = time_text.strip()
 
     if len(date_value) != 8 or not date_value.isdigit():
-        raise ValueError(
-            f"line {line_no}: invalid MINI launch date {date_text!r}; expected YYYYMMDD"
-        )
+        raise ValueError(f"line {line_no}: invalid MINI launch date {date_text!r}; expected YYYYMMDD")
     if len(time_value) != 13 or not time_value.isdigit():
-        raise ValueError(
-            f"line {line_no}: invalid MINI launch time {time_text!r}; expected HHMMSSsssssss"
-        )
+        raise ValueError(f"line {line_no}: invalid MINI launch time {time_text!r}; expected HHMMSSsssssss")
 
     hour = int(time_value[0:2])
     minute = int(time_value[2:4])
@@ -273,16 +265,13 @@ def parse_mini_line(raw_line: str, *, line_no: int = 0, index: int = 0) -> MiniR
     raw = raw_line.rstrip("\r\n")
     if len(raw) < MINI_LINE_MIN_LENGTH:
         raise ValueError(
-            f"line {line_no}: MINI line is too short "
-            f"({len(raw)} chars; expected at least {MINI_LINE_MIN_LENGTH})"
+            f"line {line_no}: MINI line is too short ({len(raw)} chars; expected at least {MINI_LINE_MIN_LENGTH})"
         )
     padded = raw.ljust(MINI_LINE_FULL_LENGTH)
 
     launch_date = padded[2:10].strip()
     launch_time = padded[10:23].strip()
-    launch_epoch, seconds_of_day = _parse_launch_epoch(
-        launch_date, launch_time, line_no=line_no
-    )
+    launch_epoch, seconds_of_day = _parse_launch_epoch(launch_date, launch_time, line_no=line_no)
 
     station_id_raw = padded[38:43].strip()
     if not station_id_raw:
@@ -295,57 +284,64 @@ def parse_mini_line(raw_line: str, *, line_no: int = 0, index: int = 0) -> MiniR
     # Fields the downstream computation depends on are *required*: a blank
     # value raises here, with the offending line number, so that no later
     # stage ever needs to handle missing MINI-owned data.
+    format_code = _parse_int(padded[0:1], field="format_code", line_no=line_no)
+    light_time_raw = _parse_int(padded[23:37], field="light_time", line_no=line_no)
+    reflector_id = _parse_int(padded[37:38], field="reflector_id", line_no=line_no)
     uncertainty_raw = _parse_int(padded[46:52], field="uncertainty", line_no=line_no)
     pressure_raw = _parse_int(padded[56:62], field="pressure", line_no=line_no)
     temperature_raw = _parse_int(padded[62:66], field="temperature", line_no=line_no)
     humidity_percent = _parse_int(padded[66:68], field="humidity", line_no=line_no)
     wavelength_raw = _parse_int(padded[68:73], field="wavelength", line_no=line_no)
+    required_values = (
+        format_code,
+        light_time_raw,
+        reflector_id,
+        uncertainty_raw,
+        pressure_raw,
+        temperature_raw,
+        humidity_percent,
+        wavelength_raw,
+    )
+    if any(value is None for value in required_values):
+        raise AssertionError("Required MINI fields must not be None after parsing.")
+    assert format_code is not None
+    assert light_time_raw is not None
+    assert reflector_id is not None
+    assert uncertainty_raw is not None
+    assert pressure_raw is not None
+    assert temperature_raw is not None
+    assert humidity_percent is not None
+    assert wavelength_raw is not None
 
     # Physical sanity: zero / negative values in these fields are placeholders
     # for missing data and must be rejected just like blanks.
     if uncertainty_raw <= 0:
-        raise ValueError(
-            f"line {line_no}: MINI uncertainty must be > 0 (0.1 ps), got {uncertainty_raw}"
-        )
+        raise ValueError(f"line {line_no}: MINI uncertainty must be > 0 (0.1 ps), got {uncertainty_raw}")
     if pressure_raw <= 0:
-        raise ValueError(
-            f"line {line_no}: MINI pressure must be > 0 (hPa*100), got {pressure_raw}"
-        )
+        raise ValueError(f"line {line_no}: MINI pressure must be > 0 (hPa*100), got {pressure_raw}")
     if not (0 <= humidity_percent <= 100):
-        raise ValueError(
-            f"line {line_no}: MINI humidity must be within 0..100 %, got {humidity_percent}"
-        )
+        raise ValueError(f"line {line_no}: MINI humidity must be within 0..100 %, got {humidity_percent}")
     if wavelength_raw <= 0:
-        raise ValueError(
-            f"line {line_no}: MINI wavelength must be > 0 (0.1 nm), got {wavelength_raw}"
-        )
+        raise ValueError(f"line {line_no}: MINI wavelength must be > 0 (0.1 nm), got {wavelength_raw}")
 
     return MiniRecord(
-        format_code=_parse_int(padded[0:1], field="format_code", line_no=line_no),
-        laser_color_code=_parse_int(
-            padded[1:2], field="laser_color_code", line_no=line_no, required=False
-        ),
+        format_code=format_code,
+        laser_color_code=_parse_int(padded[1:2], field="laser_color_code", line_no=line_no, required=False),
         launch_date=launch_date,
         launch_time=launch_time,
-        light_time_raw=_parse_int(padded[23:37], field="light_time", line_no=line_no),
-        reflector_id=_parse_int(padded[37:38], field="reflector_id", line_no=line_no),
+        light_time_raw=light_time_raw,
+        reflector_id=reflector_id,
         station_id=station_id,
-        number_of_returns=_parse_int(
-            padded[43:46], field="number_of_returns", line_no=line_no, required=False
-        ),
+        number_of_returns=_parse_int(padded[43:46], field="number_of_returns", line_no=line_no, required=False),
         uncertainty_raw=uncertainty_raw,
-        signal_noise_ratio_raw=_parse_int(
-            padded[52:55], field="signal_noise_ratio", line_no=line_no, required=False
-        ),
+        signal_noise_ratio_raw=_parse_int(padded[52:55], field="signal_noise_ratio", line_no=line_no, required=False),
         quality_code=_blank_to_none(padded[55:56]),
         pressure_raw=pressure_raw,
         temperature_raw=temperature_raw,
         humidity_percent=humidity_percent,
         wavelength_raw=wavelength_raw,
         version_code=_blank_to_none(padded[73:74]),
-        duration_s=_parse_int(
-            padded[74:78], field="duration", line_no=line_no, required=False
-        ),
+        duration_s=_parse_int(padded[74:78], field="duration", line_no=line_no, required=False),
         source_format=_blank_to_none(padded[80:89]),
         launch_epoch=launch_epoch,
         seconds_of_day=seconds_of_day,
@@ -369,9 +365,7 @@ def parse_mini_file(path):
     """
     path = Path(path)
     if not looks_like_mini_file(path):
-        raise ValueError(
-            f"Input does not look like a MINI fixed-width normal-point file: {path}"
-        )
+        raise ValueError(f"Input does not look like a MINI fixed-width normal-point file: {path}")
 
     records: List[MiniRecord] = []
     n_input_records = 0

@@ -1,7 +1,8 @@
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 
-from lunarops.classes.observation import ObservationOutputLevel
+from lunarops.classes.observation import ObservationResultDetail
 from lunarops.classes.parametrization.station_range_bias import (
     StationRangeBiasParametrization,
 )
@@ -66,7 +67,7 @@ def test_load_datasets_uses_working_directory_and_assigns_global_indices(
     assert list(datasets) == ["a", "b"]
     assert [record.index for record in datasets["a"].records] == [0, 1]
     assert [record.index for record in datasets["b"].records] == [2]
-    assert datasets["a"].filter_args == ("2020-01-01", "2021-01-01")
+    assert cast(Any, datasets["a"]).filter_args == ("2020-01-01", "2021-01-01")
 
 
 def test_workflow_builds_canonical_options_and_parametrization():
@@ -83,12 +84,12 @@ def test_workflow_builds_canonical_options_and_parametrization():
     options = make_processing_options(config, include_design=True)
     blocks = build_parametrization(config, context)
 
-    assert options.station_name == "APOLLO"
-    assert options.reflector_name == "APOLLO15"
+    assert options.station_identifier == "APOLLO"
+    assert options.reflector_identifier == "APOLLO15"
     assert options.min_elevation_deg == 12.5
-    assert options.include_reflector_position_partial
-    assert output_level(config) is ObservationOutputLevel.FULL
-    assert output_level(config, include_design=True) is ObservationOutputLevel.FULL
+    assert options.include_reflector_position_partials
+    assert output_level(config) is ObservationResultDetail.FULL
+    assert output_level(config, include_design=True) is ObservationResultDetail.FULL
     assert len(blocks.blocks) == 1
     assert isinstance(blocks.blocks[0], StationRangeBiasParametrization)
 
@@ -114,5 +115,5 @@ def test_serial_equation_source_reuses_processor_and_sets_iteration_progress():
 
     assert equations == list(datasets.values())
     assert [item[0] for item in calls] == list(datasets.values())
-    assert all(item[1].include_reflector_position_partial for item in calls)
+    assert all(item[1].include_reflector_position_partials for item in calls)
     assert all(item[1].progress_description == "linearization 4" for item in calls)

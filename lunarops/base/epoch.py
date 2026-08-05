@@ -7,6 +7,7 @@ conversion intentionally lives outside ``lunarops.base`` in
 :class:`lunarops.classes.time_scale_converter.TimeScaleConverter`, because that step depends on
 the configured ephemeris.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -237,11 +238,7 @@ class Epoch:
         if parsed_scale is TimeScale.TDB:
             raise ValueError("TDB has no direct civil date/seconds constructor in LunarOps.")
         seconds = float(seconds_of_day)
-        day_length_limit = (
-            SECONDS_PER_DAY + 1.0
-            if parsed_scale is TimeScale.UTC
-            else SECONDS_PER_DAY
-        )
+        day_length_limit = SECONDS_PER_DAY + 1.0 if parsed_scale is TimeScale.UTC else SECONDS_PER_DAY
         if not np.isfinite(seconds) or seconds < 0.0 or seconds >= day_length_limit:
             raise ValueError("seconds_of_day must be finite and within one UTC day.")
         if seconds < SECONDS_PER_DAY:
@@ -265,10 +262,7 @@ class Epoch:
     def require_scale(self, scale: TimeScale | str, *, name: str = "epoch") -> "Epoch":
         expected = TimeScale.parse(scale)
         if self.scale is not expected:
-            raise ValueError(
-                f"{name} must use the {expected.value.upper()} scale, "
-                f"got {self.scale.value.upper()}."
-            )
+            raise ValueError(f"{name} must use the {expected.value.upper()} scale, got {self.scale.value.upper()}.")
         return self
 
     @property
@@ -298,10 +292,7 @@ class Epoch:
         if self.scale is TimeScale.UTC:
             self_tai = _erfa_call("utctai", self.jd1, self.jd2)
             other_tai = _erfa_call("utctai", other.jd1, other.jd2)
-            return float(
-                ((other_tai[0] - self_tai[0]) + (other_tai[1] - self_tai[1]))
-                * SECONDS_PER_DAY
-            )
+            return float(((other_tai[0] - self_tai[0]) + (other_tai[1] - self_tai[1])) * SECONDS_PER_DAY)
         return float(((other.jd1 - self.jd1) + (other.jd2 - self.jd2)) * SECONDS_PER_DAY)
 
     def date_iso(self) -> str:
@@ -334,8 +325,7 @@ class Epoch:
         target = TimeScale.parse(scale)
         if target is TimeScale.TDB:
             raise ValueError(
-                "ISOT output is limited to UTC or TT. Format TDB as jd1/jd2, "
-                "or convert it through the ephemeris first."
+                "ISOT output is limited to UTC or TT. Format TDB as jd1/jd2, or convert it through the ephemeris first."
             )
         if self.scale is target:
             epoch = self
@@ -354,10 +344,7 @@ class Epoch:
         second_text = f"{second:02d}"
         if prec:
             second_text += f".{fraction:0{prec}d}"
-        return (
-            f"{year:04d}-{month:02d}-{day:02d}"
-            f"T{hour:02d}:{minute:02d}:{second_text}"
-        )
+        return f"{year:04d}-{month:02d}-{day:02d}T{hour:02d}:{minute:02d}:{second_text}"
 
     def _comparison_key(self, other: object) -> tuple[float, float]:
         if not isinstance(other, Epoch):

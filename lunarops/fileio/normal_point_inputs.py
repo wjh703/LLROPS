@@ -43,9 +43,7 @@ def iter_input_files(path: Path) -> Iterable[Path]:
     source = path.expanduser()
     if source.is_file():
         if not is_normal_point_file(source):
-            raise ValueError(
-                f"Input is not a native LunarOps normal-point file: {source}"
-            )
+            raise ValueError(f"Input is not a native LunarOps normal-point file: {source}")
         yield source
         return
     if source.is_dir():
@@ -64,9 +62,7 @@ def iter_source_files(path: Path) -> Iterable[Path]:
         return
     if source.is_dir():
         for child in sorted(source.rglob("*")):
-            if child.is_file() and (
-                is_normal_point_file(child) or is_crd_file(child) or is_mini_file(child)
-            ):
+            if child.is_file() and (is_normal_point_file(child) or is_crd_file(child) or is_mini_file(child)):
                 yield child
         return
     raise FileNotFoundError(f"Input path does not exist: {source}")

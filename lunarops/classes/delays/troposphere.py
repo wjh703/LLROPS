@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from lunarops import _iers2010
+from lunarops import _iers2010  # pyright: ignore[reportMissingModuleSource]
 from lunarops.classes.delays.base import TroposphereDelay, TroposphereInput
+
+_ELEVATION_FLOOR_DEG = 3.0
 
 
 def _finite_float(value: float, *, name: str) -> float:
@@ -24,15 +26,9 @@ class Iers2010MendesPavlisTroposphere(TroposphereDelay):
     value object.
     """
 
-    def __init__(self, elevation_floor_deg: float = 3.0) -> None:
-        minimum = _finite_float(elevation_floor_deg, name="elevation_floor_deg")
-        if not 0.0 <= minimum <= 90.0:
-            raise ValueError("elevation_floor_deg must be in [0, 90].")
-        self.elevation_floor_deg = minimum
-
     @property
     def elevation_floor_rad(self) -> float:
-        return float(np.deg2rad(self.elevation_floor_deg))
+        return float(np.deg2rad(_ELEVATION_FLOOR_DEG))
 
     @staticmethod
     def _water_vapor_pressure_hpa(
@@ -56,68 +52,12 @@ class Iers2010MendesPavlisTroposphere(TroposphereDelay):
             raise ValueError("temperature_k is outside the water-vapour conversion domain.")
         return result
 
-    @staticmethod
-    def fculzd_hpa(
-        latitude_deg: float,
-        ellip_ht_m: float,
-        pressure_hpa: float,
-        water_vapor_pressure_hpa: float,
-        lambda_um: float,
-    ) -> tuple[float, float, float]:
-        latitude_deg = _finite_float(latitude_deg, name="latitude_deg")
-        ellip_ht_m = _finite_float(ellip_ht_m, name="ellip_ht_m")
-        pressure_hpa = _finite_float(pressure_hpa, name="pressure_hpa")
-        water_vapor_pressure_hpa = _finite_float(
-            water_vapor_pressure_hpa,
-            name="water_vapor_pressure_hpa",
-        )
-        lambda_um = _finite_float(lambda_um, name="lambda_um")
-        if not -90.0 <= latitude_deg <= 90.0:
-            raise ValueError("latitude_deg must be in [-90, 90].")
-        if pressure_hpa <= 0.0:
-            raise ValueError("pressure_hpa must be positive.")
-        if water_vapor_pressure_hpa < 0.0:
-            raise ValueError("water_vapor_pressure_hpa must be non-negative.")
-        if lambda_um <= 0.0:
-            raise ValueError("lambda_um must be positive.")
-        return _iers2010.fculzd_hpa(
-            latitude_deg,
-            ellip_ht_m,
-            pressure_hpa,
-            water_vapor_pressure_hpa,
-            lambda_um,
-        )
-
-    @staticmethod
-    def fcul_a(
-        latitude_deg: float,
-        height_m: float,
-        temperature_k: float,
-        elevation_deg: float,
-    ) -> float:
-        latitude_deg = _finite_float(latitude_deg, name="latitude_deg")
-        height_m = _finite_float(height_m, name="height_m")
-        temperature_k = _finite_float(temperature_k, name="temperature_k")
-        elevation_deg = _finite_float(elevation_deg, name="elevation_deg")
-        if not -90.0 <= latitude_deg <= 90.0:
-            raise ValueError("latitude_deg must be in [-90, 90].")
-        if temperature_k <= 0.0:
-            raise ValueError("temperature_k must be positive.")
-        if not 0.0 <= elevation_deg <= 90.0:
-            raise ValueError("elevation_deg must be in [0, 90].")
-        return _iers2010.fcul_a(
-            latitude_deg,
-            height_m,
-            temperature_k,
-            elevation_deg,
-        )
-
     def slant_delay_m(self, data: TroposphereInput) -> float:
         if not isinstance(data, TroposphereInput):
             raise TypeError("data must be a TroposphereInput.")
         elevation_deg = max(
             float(np.rad2deg(data.elevation_rad)),
-            self.elevation_floor_deg,
+            _ELEVATION_FLOOR_DEG,
         )
         latitude_deg = float(np.rad2deg(data.latitude_rad))
         wvp_hpa = self._water_vapor_pressure_hpa(
@@ -126,17 +66,17 @@ class Iers2010MendesPavlisTroposphere(TroposphereDelay):
         )
         ellipsoidal_height_m = data.height_m
         mean_sea_level_height_m = data.height_m
-        ztd, _, _ = self.fculzd_hpa(
-            latitude_deg=latitude_deg,
-            ellip_ht_m=ellipsoidal_height_m,
-            pressure_hpa=data.pressure_hpa,
-            water_vapor_pressure_hpa=wvp_hpa,
-            lambda_um=data.wavelength_um,
+        ztd, _, _ = _iers2010.fculzd_hpa(
+            latitude_deg,
+            ellipsoidal_height_m,
+            data.pressure_hpa,
+            wvp_hpa,
+            data.wavelength_um,
         )
-        mapping = self.fcul_a(
-            latitude_deg=latitude_deg,
-            height_m=mean_sea_level_height_m,
-            temperature_k=data.temperature_k,
-            elevation_deg=elevation_deg,
+        mapping = _iers2010.fcul_a(
+            latitude_deg,
+            mean_sea_level_height_m,
+            data.temperature_k,
+            elevation_deg,
         )
         return float(ztd * mapping)

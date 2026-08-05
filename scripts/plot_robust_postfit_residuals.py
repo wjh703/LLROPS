@@ -9,7 +9,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Any, Mapping, Sequence, cast
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
@@ -18,9 +18,7 @@ from matplotlib.ticker import MultipleLocator
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_IGG3_REPORT = PROJECT_ROOT / "output" / "reflector_bias_adjustment_report.txt"
-DEFAULT_DIRECT_REJECTION_REPORT = (
-    PROJECT_ROOT / "output" / "reflector_bias_adjustment_report_directRejection.txt"
-)
+DEFAULT_DIRECT_REJECTION_REPORT = PROJECT_ROOT / "output" / "reflector_bias_adjustment_report_directRejection.txt"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "output" / "robust_postfit_residuals"
 
 STATION_ORDER = (
@@ -69,10 +67,7 @@ def parse_args() -> argparse.Namespace:
         "--direct-rejection-report",
         type=Path,
         default=DEFAULT_DIRECT_REJECTION_REPORT,
-        help=(
-            "direct-rejection adjustment report "
-            f"(default: {DEFAULT_DIRECT_REJECTION_REPORT})"
-        ),
+        help=(f"direct-rejection adjustment report (default: {DEFAULT_DIRECT_REJECTION_REPORT})"),
     )
     parser.add_argument(
         "--output-dir",
@@ -90,10 +85,7 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=None,
         metavar="CM",
-        help=(
-            "symmetric y-axis limit in cm; by default a common limit is "
-            "computed from both plotted data sets"
-        ),
+        help=("symmetric y-axis limit in cm; by default a common limit is computed from both plotted data sets"),
     )
     return parser.parse_args()
 
@@ -104,9 +96,7 @@ def parse_timestamp(value: object, *, path: Path, row_number: int) -> datetime:
     try:
         timestamp = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
     except ValueError as exc:
-        raise ValueError(
-            f"{path}: observation {row_number} has invalid epoch {value!r}."
-        ) from exc
+        raise ValueError(f"{path}: observation {row_number} has invalid epoch {value!r}.") from exc
     if timestamp.tzinfo is None:
         return timestamp.replace(tzinfo=UTC)
     return timestamp.astimezone(UTC)
@@ -120,34 +110,22 @@ def finite_float(
     field: str,
 ) -> float:
     try:
-        result = float(value)
+        result = float(cast(Any, value))
     except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"{path}: observation {row_number} has invalid {field} value {value!r}."
-        ) from exc
+        raise ValueError(f"{path}: observation {row_number} has invalid {field} value {value!r}.") from exc
     if not math.isfinite(result):
-        raise ValueError(
-            f"{path}: observation {row_number} has non-finite {field} value {value!r}."
-        )
+        raise ValueError(f"{path}: observation {row_number} has non-finite {field} value {value!r}.")
     return result
 
 
-def robust_factor(
-    record: Mapping[str, object], *, path: Path, row_number: int
-) -> float:
+def robust_factor(record: Mapping[str, object], *, path: Path, row_number: int) -> float:
     for field in ("applied_robust_factor", "applied_igg3_factor"):
         if field in record:
-            factor = finite_float(
-                record[field], path=path, row_number=row_number, field=field
-            )
+            factor = finite_float(record[field], path=path, row_number=row_number, field=field)
             if not 0.0 <= factor <= 1.0:
-                raise ValueError(
-                    f"{path}: observation {row_number} has {field} outside [0, 1]."
-                )
+                raise ValueError(f"{path}: observation {row_number} has {field} outside [0, 1].")
             return factor
-    raise ValueError(
-        f"{path}: observation {row_number} is missing an applied robust factor."
-    )
+    raise ValueError(f"{path}: observation {row_number} is missing an applied robust factor.")
 
 
 def scalar_text(value: str) -> str:
@@ -212,9 +190,7 @@ def iter_observation_records(path: Path):
         yield record_start, record
 
 
-def load_postfit_residuals(
-    spec: ReportSpec, *, include_rejected: bool
-) -> LoadedReport:
+def load_postfit_residuals(spec: ReportSpec, *, include_rejected: bool) -> LoadedReport:
     observations: list[PostfitResidual] = []
     rejected_count = 0
     total_observation_count = 0
@@ -222,9 +198,7 @@ def load_postfit_residuals(
         total_observation_count += 1
         station_id = raw_record.get("station_id")
         if not isinstance(station_id, str) or not station_id.strip():
-            raise ValueError(
-                f"{spec.path}: observation {row_number} has invalid station_id."
-            )
+            raise ValueError(f"{spec.path}: observation {row_number} has invalid station_id.")
         factor = robust_factor(raw_record, path=spec.path, row_number=row_number)
         if factor == 0.0:
             rejected_count += 1
@@ -238,9 +212,7 @@ def load_postfit_residuals(
         )
         observations.append(
             PostfitResidual(
-                timestamp=parse_timestamp(
-                    raw_record.get("epoch"), path=spec.path, row_number=row_number
-                ),
+                timestamp=parse_timestamp(raw_record.get("epoch"), path=spec.path, row_number=row_number),
                 station_id=station_id.strip(),
                 residual_cm=residual_m * 100.0,
             )
@@ -268,33 +240,22 @@ def nice_positive(value: float) -> float:
     raise AssertionError("unreachable")
 
 
-def resolve_y_limit_cm(
-    reports: Sequence[LoadedReport], configured_limit_cm: float | None
-) -> float:
+def resolve_y_limit_cm(reports: Sequence[LoadedReport], configured_limit_cm: float | None) -> float:
     if configured_limit_cm is not None:
         if not math.isfinite(configured_limit_cm) or configured_limit_cm <= 0.0:
             raise ValueError("--y-limit-cm must be finite and positive.")
         return configured_limit_cm
-    maximum = max(
-        abs(observation.residual_cm)
-        for report in reports
-        for observation in report.observations
-    )
+    maximum = max(abs(observation.residual_cm) for report in reports for observation in report.observations)
     return nice_positive(maximum * 1.05)
 
 
 def station_colors(reports: Sequence[LoadedReport]) -> dict[str, object]:
-    stations = {
-        observation.station_id
-        for report in reports
-        for observation in report.observations
-    }
+    stations = {observation.station_id for report in reports for observation in report.observations}
     ordered = [station for station in STATION_ORDER if station in stations]
     ordered.extend(sorted(stations - set(ordered)))
-    palette = plt.get_cmap("tab10").colors
-    return {
-        station: palette[index % len(palette)] for index, station in enumerate(ordered)
-    }
+    colormap = plt.get_cmap("tab10")
+    palette = [colormap(index) for index in range(colormap.N)]
+    return {station: palette[index % len(palette)] for index, station in enumerate(ordered)}
 
 
 def render_report(
@@ -315,8 +276,9 @@ def render_report(
         if not observations:
             continue
         observations.sort(key=lambda item: item.timestamp)
+        plot_dates = mdates.date2num([item.timestamp for item in observations])
         ax.scatter(
-            [item.timestamp for item in observations],
+            plot_dates,
             [item.residual_cm for item in observations],
             s=10,
             alpha=1,
@@ -362,10 +324,7 @@ def main() -> int:
             "llr_postfit_residuals_direct_rejection.png",
         ),
     )
-    reports = tuple(
-        load_postfit_residuals(spec, include_rejected=args.include_rejected)
-        for spec in specs
-    )
+    reports = tuple(load_postfit_residuals(spec, include_rejected=args.include_rejected) for spec in specs)
     y_limit_cm = resolve_y_limit_cm(reports, args.y_limit_cm)
     colors = station_colors(reports)
 

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Mapping
+from collections.abc import Hashable
+from typing import Any, Mapping, cast
 
 from lunarops.config.context import RunContext
 from lunarops.llr_workflow import (
@@ -41,7 +42,7 @@ def _restore_state(state: Mapping[str, object], parametrization, processor) -> N
     positions = state.get("reflectorPositions") or {}
     if not isinstance(positions, Mapping):
         raise ValueError("Adjustment state reflectorPositions must be a mapping.")
-    processor.model_state.apply_reflector_positions(positions)
+    processor.model_state.apply_reflector_positions_pa_m(positions)
     parameter_state = state.get("parametrization") or {}
     if not isinstance(parameter_state, Mapping):
         raise ValueError("Adjustment state parametrization must be a mapping.")
@@ -53,9 +54,7 @@ def _restore_state(state: Mapping[str, object], parametrization, processor) -> N
         if values is not None:
             if not isinstance(values, Mapping) or not hasattr(block, "values"):
                 raise ValueError(f"Invalid restart values for {block.block_id}.")
-            block.values.update(
-                {str(key): float(value) for key, value in values.items()}
-            )
+            block.values.update({str(key): float(value) for key, value in values.items()})
 
 
 def _estimated_values(names, parametrization, processor):
@@ -64,22 +63,16 @@ def _estimated_values(names, parametrization, processor):
         block_names = block.parameter_names()
         if block.block_id == "reflectorPosition":
             for name in block_names:
-                axis = {"position.x": 0, "position.y": 1, "position.z": 2}[
-                    name.parameter_type
-                ]
+                axis = {"position.x": 0, "position.y": 1, "position.z": 2}[name.parameter_type]
                 values_by_name[name] = float(
-                    processor.model_state.reflector_catalog[
-                        name.object_name
-                    ].moon_fixed_xyz_m[axis]
+                    processor.model_state.reflector_catalog[name.object_name].moon_fixed_xyz_m[axis]
                 )
         elif block.block_id == "stationRangeBias":
             keys = list(getattr(block, "keys", ()))
             for name, key in zip(block_names, keys):
                 values_by_name[name] = float(block.values[key])
         elif block_names:
-            raise ValueError(
-                f"Adjustment output does not define absolute-state semantics for {block.block_id!r}."
-            )
+            raise ValueError(f"Adjustment output does not define absolute-state semantics for {block.block_id!r}.")
     return [values_by_name[name] for name in names]
 
 
@@ -136,23 +129,18 @@ def llr_adjustment(config: dict, context: RunContext):
     fingerprint = _scientific_fingerprint(config, context)
 
     previous_scales: dict[str, float] = {}
-    previous_factors: dict[int, float] = {}
+    previous_factors: dict[Hashable, float] = {}
     if config.get("inputFileAdjustmentState"):
-        state = read_adjustment_state(
-            context.resolve_path(config["inputFileAdjustmentState"])
-        )
+        state = read_adjustment_state(context.resolve_path(config["inputFileAdjustmentState"]))
         if state["fingerprint"] != fingerprint:
-            raise ValueError(
-                "Adjustment-state fingerprint does not match the current inputs and model configuration."
-            )
+            raise ValueError("Adjustment-state fingerprint does not match the current inputs and model configuration.")
         _restore_state(state, parametrization, processor)
-        previous_scales = {
-            str(key): float(value) for key, value in (state.get("scales") or {}).items()
-        }
-        previous_factors = {
-            int(key): float(value)
-            for key, value in (state.get("robustFactors") or {}).items()
-        }
+        scales_state = state.get("scales")
+        factors_state = state.get("robustFactors")
+        if not isinstance(scales_state, Mapping) or not isinstance(factors_state, Mapping):
+            raise TypeError("Adjustment state scales and robustFactors must be mappings.")
+        previous_scales = {str(key): float(cast(Any, value)) for key, value in scales_state.items()}
+        previous_factors = {int(cast(Any, key)): float(cast(Any, value)) for key, value in factors_state.items()}
 
     active_stage = {"name": "joint"}
 
@@ -174,9 +162,7 @@ def llr_adjustment(config: dict, context: RunContext):
     for stage_index, stage in enumerate(plan.stages):
         active_stage["name"] = stage.name
         stage_parametrization = (
-            parametrization
-            if not stage.parametrizations
-            else parametrization.select_blocks(stage.parametrizations)
+            parametrization if not stage.parametrizations else parametrization.select_blocks(stage.parametrizations)
         )
         warm = stage_index == 0 and bool(config.get("inputFileAdjustmentState"))
         warm = warm or plan.warm_start_stochastic_model_across_stages
@@ -187,29 +173,21 @@ def llr_adjustment(config: dict, context: RunContext):
             model_state=processor.model_state,
             initial_scales=(previous_scales if warm else None),
             initial_factors=(previous_factors if warm else None),
-            iteration_callback=(
-                report_iteration if bool(config.get("showProgress", True)) else None
-            ),
+            iteration_callback=(report_iteration if bool(config.get("showProgress", True)) else None),
         ).run()
         previous_scales = dict(result.scales)
-        previous_factors = {
-            int(key): float(value) for key, value in result.robust_factors.items()
-        }
+        previous_factors = {int(cast(Any, key)): float(value) for key, value in result.robust_factors.items()}
         stage_results.append(
             {
                 "name": stage.name,
-                "parametrizations": [
-                    block.block_id for block in stage_parametrization.blocks
-                ],
+                "parametrizations": [block.block_id for block in stage_parametrization.blocks],
                 "summary": result.summary,
                 "state": result.state,
             }
         )
     if result is None or result.normals is None:
         raise RuntimeError("Adjustment produced no final normal equations.")
-    result.normals.meta["compatibility"] = model_compatibility_fingerprint(
-        config, context
-    )
+    result.normals.meta["compatibility"] = model_compatibility_fingerprint(config, context)
 
     correction, cofactor, sigma0 = result.normals.solve()
     names = tuple(result.normals.parameter_names)
@@ -235,9 +213,7 @@ def llr_adjustment(config: dict, context: RunContext):
         {
             "fingerprint": fingerprint,
             "processingSteps": stage_results,
-            "finalRemainingCorrection": {
-                str(name): float(value) for name, value in zip(names, correction)
-            },
+            "finalRemainingCorrection": {str(name): float(value) for name, value in zip(names, correction)},
         }
     )
     state_payload = {
@@ -245,18 +221,12 @@ def llr_adjustment(config: dict, context: RunContext):
         "lastStage": active_stage["name"],
         "converged": result.converged,
         "parametrization": parametrization.state(),
-        "reflectorPositions": processor.model_state.reflector_positions(),
+        "reflectorPositions": processor.model_state.reflector_positions_pa_m(),
         "scales": result.scales,
-        "robustFactors": {
-            str(key): float(value) for key, value in result.robust_factors.items()
-        },
+        "robustFactors": {str(key): float(value) for key, value in result.robust_factors.items()},
     }
-    write_adjustment_report(
-        context.resolve_path(config["outputFileAdjustmentReport"]), report_payload
-    )
-    write_adjustment_state(
-        context.resolve_path(config["outputFileAdjustmentState"]), state_payload
-    )
+    write_adjustment_report(context.resolve_path(config["outputFileAdjustmentReport"]), report_payload)
+    write_adjustment_state(context.resolve_path(config["outputFileAdjustmentState"]), state_payload)
     write_parameter_vector(solution, context.resolve_path(config["outputFileSolution"]))
     write_covariance(covariance, context.resolve_path(config["outputFileCovariance"]))
     result.normals.save(context.resolve_path(config["outputFileNormalEquations"]))

@@ -1,22 +1,22 @@
 """IERS 2010 ocean tidal loading from external Onsala BLQ coefficients."""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
 import gzip
-from pathlib import Path
 import re
+from dataclasses import dataclass
+from pathlib import Path
 from typing import TextIO
 
 import numpy as np
 
-from lunarops import _iers2010
+from lunarops import _iers2010  # pyright: ignore[reportMissingModuleSource]
 from lunarops.base.array_validation import readonly_vector3
 from lunarops.base.epoch import Epoch, TimeScale
 from lunarops.base.station_identity import canonical_station_id, normalize_station_key
 
 from .base import StationDisplacementInput
 from .terrestrial_geometry import enu2itrf, itrf2geodetic
-
 
 BLQ_TIDE_NAMES = ("M2", "S2", "N2", "K2", "K1", "O1", "P1", "Q1", "MF", "MM", "SSA")
 BLQ_NATIVE_COMPONENT_NAMES = ("up", "west", "south")
@@ -120,7 +120,7 @@ class OceanTidalLoadingCatalog:
     declaration is present, it must exactly match the 11 HARDISP constituents.
     """
 
-    __slots__ = ("coefficient_file", "_coefficients", "_info")
+    __slots__ = ("_coefficients", "_info", "coefficient_file")
 
     def __init__(self, coefficient_file: str | Path) -> None:
         path = Path(coefficient_file).expanduser()
@@ -146,8 +146,7 @@ class OceanTidalLoadingCatalog:
             return None
         if len(fields) != len(BLQ_TIDE_NAMES):
             raise ValueError(
-                f"{path}:{line_number}: BLQ numeric row must contain "
-                f"{len(BLQ_TIDE_NAMES)} values, got {len(fields)}."
+                f"{path}:{line_number}: BLQ numeric row must contain {len(BLQ_TIDE_NAMES)} values, got {len(fields)}."
             )
         try:
             values = np.asarray([float(field) for field in fields], dtype=float)
@@ -181,9 +180,7 @@ class OceanTidalLoadingCatalog:
                 )
             station_id = canonical_station_id(current_name)
             if station_id in coefficients:
-                raise ValueError(
-                    f"{path}:{current_line_number}: duplicate BLQ station {station_id!r}."
-                )
+                raise ValueError(f"{path}:{current_line_number}: duplicate BLQ station {station_id!r}.")
             values = np.asarray(current_rows, dtype=float)
             coefficients[station_id] = OceanTidalLoadingCoefficients(
                 station_id=station_id,
@@ -203,9 +200,7 @@ class OceanTidalLoadingCatalog:
                 if text.startswith(("$", "#", "%", "!", "//")):
                     column_order_match = _COLUMN_ORDER_LINE.search(text)
                     if column_order_match is not None:
-                        parsed_order = tuple(
-                            value.upper() for value in column_order_match.group(1).split()
-                        )
+                        parsed_order = tuple(value.upper() for value in column_order_match.group(1).split())
                         if parsed_order != BLQ_TIDE_NAMES:
                             raise ValueError(
                                 f"{path}:{line_number}: BLQ column order {parsed_order!r} "
@@ -218,8 +213,7 @@ class OceanTidalLoadingCatalog:
                             tidal_model = parsed_model
                         elif tidal_model.casefold() != parsed_model.casefold():
                             raise ValueError(
-                                f"{path}:{line_number}: conflicting tidal models "
-                                f"{tidal_model!r} and {parsed_model!r}."
+                                f"{path}:{line_number}: conflicting tidal models {tidal_model!r} and {parsed_model!r}."
                             )
                     cmc_match = _CMC_LINE.search(text)
                     if cmc_match is not None:
@@ -227,9 +221,7 @@ class OceanTidalLoadingCatalog:
                         if center_of_mass_correction is None:
                             center_of_mass_correction = parsed_cmc
                         elif center_of_mass_correction != parsed_cmc:
-                            raise ValueError(
-                                f"{path}:{line_number}: conflicting CMC declarations."
-                            )
+                            raise ValueError(f"{path}:{line_number}: conflicting CMC declarations.")
                     if "END TABLE" in text.upper():
                         finish_current()
                         table_ended = True
@@ -240,13 +232,9 @@ class OceanTidalLoadingCatalog:
                 numeric_values = cls._numeric_row(text, path=path, line_number=line_number)
                 if numeric_values is not None:
                     if current_name is None:
-                        raise ValueError(
-                            f"{path}:{line_number}: BLQ numeric row has no preceding station name."
-                        )
+                        raise ValueError(f"{path}:{line_number}: BLQ numeric row has no preceding station name.")
                     if len(current_rows) >= 2 * len(BLQ_NATIVE_COMPONENT_NAMES):
-                        raise ValueError(
-                            f"{path}:{line_number}: station {current_name!r} has more than six BLQ rows."
-                        )
+                        raise ValueError(f"{path}:{line_number}: station {current_name!r} has more than six BLQ rows.")
                     current_rows.append(numeric_values)
                     continue
 
@@ -317,9 +305,7 @@ class Iers2010OceanTidalLoading:
         coefficients: OceanTidalLoadingCoefficients,
         epoch_utc: Epoch,
     ) -> np.ndarray:
-        year, month, day, hour, minute, second = Iers2010OceanTidalLoading._utc_calendar_second(
-            epoch_utc
-        )
+        year, month, day, hour, minute, second = Iers2010OceanTidalLoading._utc_calendar_second(epoch_utc)
         if second == 60:
             raise ValueError(
                 "Iers2010OceanTidalLoading cannot evaluate an exact UTC leap-second "
@@ -351,9 +337,7 @@ class Iers2010OceanTidalLoading:
 
     def evaluate(self, data: StationDisplacementInput) -> OceanTidalLoadingResult:
         if data.station_id is None:
-            raise ValueError(
-                "Iers2010OceanTidalLoading requires StationDisplacementInput.station_id."
-            )
+            raise ValueError("Iers2010OceanTidalLoading requires StationDisplacementInput.station_id.")
         coefficients = self.catalog.coefficients_for(data.station_id)
         up_south_west_m = self._native_up_south_west_m(coefficients, data.epoch_utc)
         # HARDISP returns positive Up, South, West.  LunarOps uses East, North, Up.
