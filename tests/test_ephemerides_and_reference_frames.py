@@ -183,14 +183,9 @@ def test_longitude_libration_correction_type_normalization_is_explicit():
         normalize_longitude_libration_correction_type(" INPOP21A ")
         is LongitudeLibrationCorrectionType.INPOP21A
     )
-    assert (
-        normalize_longitude_libration_correction_type(False)
-        is LongitudeLibrationCorrectionType.NONE
-    )
-    with pytest.raises(ValueError, match="True is ambiguous"):
-        normalize_longitude_libration_correction_type(True)
-    with pytest.raises(TypeError, match="must be a string"):
-        normalize_longitude_libration_correction_type(0)
+    for legacy_value in (False, True, "", "no", "off", "false", "0"):
+        with pytest.raises((TypeError, ValueError)):
+            normalize_longitude_libration_correction_type(legacy_value)
 
 
 def test_ephemeris_exposes_libration_selection_as_enum():

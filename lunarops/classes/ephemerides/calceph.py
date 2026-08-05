@@ -70,7 +70,7 @@ class CalcephEphemeris(Ephemeris):
         ephemeris_file: str | Path,
         *,
         longitude_libration_correction_type: (
-            LongitudeLibrationCorrectionType | str | bool | None
+            LongitudeLibrationCorrectionType | str | None
         ) = None,
     ) -> None:
         path = Path(ephemeris_file).expanduser()
@@ -209,24 +209,7 @@ class CalcephEphemeris(Ephemeris):
             name="pa2lcrs_matrix",
         )
 
-    @staticmethod
-    def _looks_like_missing_target_error(exc: Exception) -> bool:
-        text = str(exc).lower()
-        return (
-            "target" in text
-            and any(
-                token in text
-                for token in (
-                    "missing",
-                    "not found",
-                    "available",
-                    "unknown",
-                    "invalid",
-                )
-            )
-        ) or ("body" in text and "not" in text and "found" in text)
-
-    def geocentric_tdb_minus_tt_s(self, epoch_tdb: Epoch) -> float | None:
+    def geocentric_tdb_minus_tt_s(self, epoch_tdb: Epoch) -> float:
         epoch_tdb = require_tdb_epoch(epoch_tdb, name="epoch_tdb")
         try:
             values = self._require_open_handle().compute_unit(
@@ -237,8 +220,6 @@ class CalcephEphemeris(Ephemeris):
                 self._angle_units,
             )
         except Exception as exc:
-            if self._looks_like_missing_target_error(exc):
-                return None
             raise RuntimeError(
                 "CALCEPH failed while reading target 16 (TT−TDB) at "
                 f"jd=({epoch_tdb.jd1}, {epoch_tdb.jd2})."
@@ -250,22 +231,14 @@ class CalcephEphemeris(Ephemeris):
         return -float(values[0])
 
     def require_tdb_minus_tt_support(self) -> None:
-        if (
-            self.geocentric_tdb_minus_tt_s(
-                Epoch(2451545.0, 0.0, TimeScale.TDB)
-            )
-            is None
-        ):
-            raise RuntimeError(
-                "The loaded CALCEPH ephemeris does not provide target 16 (TT−TDB)."
-            )
+        self.geocentric_tdb_minus_tt_s(Epoch(2451545.0, 0.0, TimeScale.TDB))
 
 
 def load_calceph_ephemeris(
     ephemeris_file: str | Path,
     *,
     longitude_libration_correction_type: (
-        LongitudeLibrationCorrectionType | str | bool | None
+        LongitudeLibrationCorrectionType | str | None
     ) = None,
 ) -> CalcephEphemeris:
     ephemeris = CalcephEphemeris(

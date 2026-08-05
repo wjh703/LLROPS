@@ -15,25 +15,18 @@ _JULIAN_CENTURY_DAYS = 36525.0
 
 
 def normalize_longitude_libration_correction_type(
-    value: LongitudeLibrationCorrectionType | str | bool | None,
+    value: LongitudeLibrationCorrectionType | str | None,
 ) -> LongitudeLibrationCorrectionType:
     if isinstance(value, LongitudeLibrationCorrectionType):
         return value
-    if value is None or value is False:
+    if value is None:
         return LongitudeLibrationCorrectionType.NONE
-    if value is True:
-        raise ValueError(
-            "longitude-libration correction must name a correction type; "
-            "True is ambiguous."
-        )
     if not isinstance(value, str):
         raise TypeError(
-            "longitude-libration correction type must be a string, bool, "
+            "longitude-libration correction type must be a string, "
             "LongitudeLibrationCorrectionType, or None."
         )
     text = value.strip().lower()
-    if text in {"", "no", "off", "false", "0"}:
-        return LongitudeLibrationCorrectionType.NONE
     try:
         return LongitudeLibrationCorrectionType(text)
     except ValueError:
@@ -103,7 +96,7 @@ class Inpop21aLongitudeLibrationCorrection:
 
 
 def make_longitude_libration_correction_model(
-    correction_type: LongitudeLibrationCorrectionType | str | bool | None,
+    correction_type: LongitudeLibrationCorrectionType | str | None,
 ) -> LongitudeLibrationCorrectionModel:
     normalized_type = normalize_longitude_libration_correction_type(correction_type)
     if normalized_type is LongitudeLibrationCorrectionType.NONE:

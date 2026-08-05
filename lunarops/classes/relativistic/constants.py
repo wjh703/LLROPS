@@ -2,11 +2,9 @@
 from __future__ import annotations
 
 # IAU/JPL relativistic scale constants used by coordinate transforms.
-# L_B and L_G are IAU defining constants. L_C is kept for compatibility,
-# while the actual GCRS<->BCRS scale below uses the explicit L_B-L_G form.
+# The GCRS<->BCRS scale uses the explicit L_B-L_G form.
 L_B = 1.550519768e-8
 L_G = 6.969290134e-10
-L_C = 1.48082686741e-8
 L_B_MINUS_L_G = L_B - L_G
 
 # DE440-compatible lunar surface scale constant LL from Turyshev et al.
@@ -88,7 +86,6 @@ __all__ = [
     "L_B",
     "L_B_MINUS_L_G",
     "L_B_MINUS_L_L_DE440",
-    "L_C",
     "L_G",
     "L_L_DE440",
     "MOON_EXTERNAL_POTENTIAL_BODIES",
