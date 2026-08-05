@@ -1,5 +1,6 @@
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 
 from lunarops.classes.observation import ObservationResultDetail
 from lunarops.classes.parametrization.station_range_bias import (
@@ -66,7 +67,7 @@ def test_load_datasets_uses_working_directory_and_assigns_global_indices(
     assert list(datasets) == ["a", "b"]
     assert [record.index for record in datasets["a"].records] == [0, 1]
     assert [record.index for record in datasets["b"].records] == [2]
-    assert datasets["a"].filter_args == ("2020-01-01", "2021-01-01")
+    assert cast(Any, datasets["a"]).filter_args == ("2020-01-01", "2021-01-01")
 
 
 def test_workflow_builds_canonical_options_and_parametrization():

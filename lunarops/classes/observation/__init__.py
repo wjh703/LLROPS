@@ -61,4 +61,20 @@ def __dir__() -> list[str]:
     return sorted(set(globals()) | set(__all__))
 
 
-__all__ = ["ObservationEquation", *_LAZY_EXPORTS]
+__all__ = [
+    "ObservationEquation",
+    "ObservationCatalogSelection",
+    "ResolvedObservation",
+    "ObservationCatalogState",
+    "ObservationResolver",
+    "LightTimeLeg",
+    "LightTimeRequest",
+    "LightTimeSolution",
+    "LightTimeSolver",
+    "TroposphereEnvironment",
+    "LlrObservationModel",
+    "LlrObservationEvaluation",
+    "LlrObservationProcessor",
+    "ObservationProcessingOptions",
+    "ObservationResultDetail",
+]

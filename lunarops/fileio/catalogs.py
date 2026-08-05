@@ -310,7 +310,7 @@ def read_reflector_catalog(path: str | Path) -> Dict[str, ReflectorRecord]:
     return catalog
 
 
-def load_station_catalog(source) -> Dict[str, StationRecord]:
+def load_station_catalog(source: object) -> Dict[str, StationRecord]:
     """Build a station catalog.
 
     ``source`` may be
@@ -327,10 +327,12 @@ def load_station_catalog(source) -> Dict[str, StationRecord]:
         # graph so estimator/model-state updates cannot pollute later programs
         # or a fresh RunContext in the same Python process.
         return copy.deepcopy(STATIONS)
+    if not isinstance(source, (str, Path)):
+        raise TypeError("Station catalog source must be a path, 'builtin', or a station mapping.")
     return read_station_catalog(source)
 
 
-def load_reflector_catalog(source) -> Dict[str, ReflectorRecord]:
+def load_reflector_catalog(source: object) -> Dict[str, ReflectorRecord]:
     """Build a reflector catalog; see :func:`load_station_catalog`."""
     if isinstance(source, dict) and all(isinstance(v, ReflectorRecord) for v in source.values()):
         return source
@@ -340,6 +342,8 @@ def load_reflector_catalog(source) -> Dict[str, ReflectorRecord]:
         # See load_station_catalog: reflector coordinates are mutable model
         # state during fitting, so builtin globals must never be handed out.
         return copy.deepcopy(REFLECTORS)
+    if not isinstance(source, (str, Path)):
+        raise TypeError("Reflector catalog source must be a path, 'builtin', or a reflector mapping.")
     return read_reflector_catalog(source)
 
 

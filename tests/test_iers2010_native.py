@@ -6,11 +6,13 @@ import os
 import shutil
 import subprocess
 import sys
+from importlib import import_module
+from typing import Any, cast
 
 import numpy as np
 import pytest
 
-import lunarops._iers2010 as _iers2010
+_iers2010 = cast(Any, import_module("lunarops._iers2010"))
 
 
 _FCUL_ZD_EXPECTED_M = np.array(

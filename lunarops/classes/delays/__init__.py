@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from lunarops.classes.delays.base import (
     GravitationalDelay,
     TroposphereDelay,
@@ -7,6 +9,10 @@ from lunarops.classes.delays.base import (
     ZeroGravitationalDelay,
     ZeroTroposphereDelay,
 )
+
+if TYPE_CHECKING:
+    from lunarops.classes.delays.shapiro import Iers2010ShapiroDelay
+    from lunarops.classes.delays.troposphere import Iers2010MendesPavlisTroposphere
 
 __all__ = [
     "GravitationalDelay",

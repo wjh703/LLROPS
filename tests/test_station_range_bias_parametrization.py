@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 import numpy as np
 import pytest
 
@@ -76,9 +78,65 @@ def test_station_mode_requested_alias_matches_canonical_observation():
     assert np.allclose(block.design_columns(eq), [1.0])
 
 
+def test_station_range_bias_rejects_empty_station_selection():
+    with pytest.raises(ValueError, match="must not be empty"):
+        StationRangeBiasParametrization(stations=[])
+
+
+def test_station_range_bias_rejects_intervals_in_station_mode():
+    with pytest.raises(ValueError, match=r"require per='station\+interval'"):
+        StationRangeBiasParametrization(
+            per="station",
+            intervals=[
+                {
+                    "station": "APOLLO",
+                    "start": "2020-01-01",
+                    "end_exclusive": None,
+                }
+            ],
+        )
+
+
+def test_station_range_bias_uses_partial_coefficient_for_state_reduction():
+    eq = ObservationEquation(
+        observed_minus_computed_one_way_m=0.0,
+        sigma_one_way_m=1.0,
+        design_partials={"station_range_bias": np.array([2.0])},
+        observation_id=1,
+        station_key="APOLLO",
+        reflector_key="apollo15",
+        transmit_epoch_utc=Epoch.from_isot("2020-01-01T00:00:00", scale=TimeScale.UTC),
+    )
+    block = StationRangeBiasParametrization(per="station")
+    block.setup([eq], None)
+    block.apply_update(np.array([0.5]))
+
+    assert block.design_entries(eq) == [(0, 2.0)]
+    assert block.reduce_observation(eq) == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("partial", [[], [1.0, 2.0]])
+def test_station_range_bias_requires_one_partial_coefficient(partial):
+    eq = ObservationEquation(
+        observed_minus_computed_one_way_m=0.0,
+        sigma_one_way_m=1.0,
+        design_partials={"station_range_bias": np.array(partial)},
+        observation_id=1,
+        station_key="APOLLO",
+        reflector_key="apollo15",
+        transmit_epoch_utc=Epoch.from_isot("2020-01-01T00:00:00", scale=TimeScale.UTC),
+    )
+    block = StationRangeBiasParametrization(per="station")
+    block.setup([eq], None)
+
+    with pytest.raises(ValueError, match="exactly one scalar"):
+        block.design_entries(eq)
+
+
 def test_station_range_bias_rejects_alias_schema():
-    with pytest.raises(TypeError, match="list of mappings"):
+    with pytest.raises(TypeError, match="sequence of mappings"):
+        invalid_intervals = cast(Any, {"APOLLO": ["2006-04-07/2010-11-01"]})
         StationRangeBiasParametrization(
             per="station+interval",
-            intervals={"APOLLO": ["2006-04-07/2010-11-01"]},
+            intervals=invalid_intervals,
         )

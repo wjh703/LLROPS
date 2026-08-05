@@ -118,12 +118,11 @@ def build_equation_source(config, context, datasets, processor):
     options = make_processing_options(config, include_design=True)
     runtime = context.runtime
     use_mpi = runtime is not None and runtime.has_workers
+    spec: dict | None = None
+    chunksize = 8
     if use_mpi:
-        from lunarops.parallel.mpi import (
-            make_observation_spec,
-            mpi_observation_equations,
-            snapshot_catalog_state,
-        )
+        assert runtime is not None
+        from lunarops.parallel.mpi import make_observation_spec
 
         spec = make_observation_spec(
             config,
@@ -135,6 +134,10 @@ def build_equation_source(config, context, datasets, processor):
 
     def equation_source(iteration: int):
         if use_mpi:
+            assert runtime is not None
+            assert spec is not None
+            from lunarops.parallel.mpi import mpi_observation_equations, snapshot_catalog_state
+
             equations_by_source = mpi_observation_equations(
                 runtime,
                 spec,

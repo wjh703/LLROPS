@@ -112,15 +112,19 @@ def _resolve_optional_path(ctx: _PathResolver | None, value: object):
     return Path(str(value)).expanduser()
 
 
+def _resolve_required_path(ctx: _PathResolver | None, value: object, *, name: str) -> Path:
+    path = _resolve_optional_path(ctx, value)
+    if path is None:
+        raise ValueError(f"{name} must be a non-empty path.")
+    return path
+
+
 def _register_all() -> None:
     # Imports are local so that merely importing the registry does not load
     # CALCEPH or optional physical-model backends.
-    from lunarops.classes.delays import (
-        Iers2010MendesPavlisTroposphere,
-        Iers2010ShapiroDelay,
-        ZeroGravitationalDelay,
-        ZeroTroposphereDelay,
-    )
+    from lunarops.classes.delays.base import ZeroGravitationalDelay, ZeroTroposphereDelay
+    from lunarops.classes.delays.shapiro import Iers2010ShapiroDelay
+    from lunarops.classes.delays.troposphere import Iers2010MendesPavlisTroposphere
     from lunarops.classes.displacement import (
         CompositeStationDisplacement,
         Iers2010OceanPoleTide,
@@ -149,7 +153,7 @@ def _register_all() -> None:
         if "file" not in cfg:
             raise ValueError("ephemerides/calceph requires 'file'.")
         return load_calceph_ephemeris(
-            _resolve_optional_path(ctx, cfg["file"]),
+            _resolve_required_path(ctx, cfg["file"], name="ephemerides/calceph file"),
             longitude_libration_correction_type=cfg.get(
                 "longitudeLibrationCorrection",
                 "none",
@@ -163,7 +167,7 @@ def _register_all() -> None:
         if "file" not in cfg:
             raise ValueError("earthRotation/iersC04 requires 'file'.")
         return load_iers_eop(
-            _resolve_optional_path(ctx, cfg["file"]),
+            _resolve_required_path(ctx, cfg["file"], name="earthRotation/iersC04 file"),
             duplicate_mjd_policy=cfg.get("duplicateMjdPolicy", "error"),
         )
 
@@ -272,7 +276,7 @@ def _register_all() -> None:
         if has_file == has_biases:
             raise ValueError("rangeBias/table requires exactly one of 'file' or 'biases'.")
         if has_file:
-            table = load_range_bias_table(_resolve_optional_path(ctx, cfg["file"]))
+            table = load_range_bias_table(_resolve_required_path(ctx, cfg["file"], name="rangeBias/table file"))
         else:
             table = RangeBiasTable.from_mapping(cfg)
         return TableRangeBiasModel(table)

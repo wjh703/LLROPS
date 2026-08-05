@@ -1,11 +1,13 @@
 from dataclasses import FrozenInstanceError
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 import pytest
 
 from lunarops.base.epoch import Epoch, TimeScale
 from lunarops.classes.time_scale_converter import TimeScaleConverter
+from lunarops.classes.delays.shapiro import Iers2010ShapiroDelay
 from lunarops.classes.ephemerides import (
     BodyState,
     Ephemeris,
@@ -94,16 +96,16 @@ def _tdb(jd2: float = 0.0) -> Epoch:
 
 def test_epoch_and_body_state_are_frozen_and_validated():
     epoch = _tdb(0.25)
-    state = BodyState([1.0, 2.0, 3.0], [4.0, 5.0, 6.0])
+    state = BodyState(np.array([1.0, 2.0, 3.0]), np.array([4.0, 5.0, 6.0]))
 
     assert (epoch.jd1, epoch.jd2) == (2451545.0, 0.25)
     assert epoch.scale is TimeScale.TDB
     assert not state.position_m.flags.writeable
     assert not state.velocity_mps.flags.writeable
     with pytest.raises(FrozenInstanceError):
-        epoch.jd1 = 0.0
+        cast(Any, epoch).jd1 = 0.0
     with pytest.raises(ValueError):
-        BodyState([1.0, 2.0], [0.0, 0.0, 0.0])
+        BodyState(np.array([1.0, 2.0]), np.zeros(3))
 
 
 def test_lunar_frame_transform_round_trip_uses_ephemeris_orientation():
@@ -153,8 +155,6 @@ def test_reference_frame_system_owns_one_time_converter():
 
 
 def test_zero_libration_factory_and_shapiro_use_epoch():
-    from lunarops.classes.delays import Iers2010ShapiroDelay
-
     epoch = _tdb()
     correction = make_longitude_libration_correction_model("none")
     assert isinstance(correction, LongitudeLibrationCorrectionModel)
@@ -175,7 +175,7 @@ def test_longitude_libration_correction_type_normalization_is_explicit():
     assert normalize_longitude_libration_correction_type(" INPOP21A ") is LongitudeLibrationCorrectionType.INPOP21A
     for legacy_value in (False, True, "", "no", "off", "false", "0"):
         with pytest.raises((TypeError, ValueError)):
-            normalize_longitude_libration_correction_type(legacy_value)
+            normalize_longitude_libration_correction_type(cast(Any, legacy_value))
 
 
 def test_ephemeris_exposes_libration_selection_as_enum():
@@ -184,8 +184,6 @@ def test_ephemeris_exposes_libration_selection_as_enum():
 
 
 def test_shapiro_normalizes_body_inputs_and_validates_positions():
-    from lunarops.classes.delays import Iers2010ShapiroDelay
-
     model = Iers2010ShapiroDelay(
         ephemeris=_FakeEphemeris(),
         bodies="SUN",
@@ -263,7 +261,7 @@ def test_c04_mpi_payload_roundtrip_uses_arrays():
     assert restored.source_file_path == original.source_file_path
     assert restored.mjd_utc_range == original.mjd_utc_range
     assert restored.samples == original.samples
-    assert payload["mjdUtc"].shape == (2,)
+    assert cast(Any, payload["mjdUtc"]).shape == (2,)
 
 
 def test_terrestrial_transform_gcrs_itrf_round_trip(monkeypatch):

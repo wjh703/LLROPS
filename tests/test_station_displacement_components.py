@@ -1,4 +1,5 @@
 from dataclasses import FrozenInstanceError
+from typing import Any, cast
 
 import numpy as np
 import pytest
@@ -46,7 +47,7 @@ def _station_input() -> StationDisplacementInput:
 def test_displacement_inputs_are_frozen_slotted_and_read_only():
     station = _station_input()
     reflector = ReflectorDisplacementInput(
-        reference_position_lcrs_m=[1_737_400.0, 0.0, 0.0],
+        reference_position_lcrs_m=np.array([1_737_400.0, 0.0, 0.0]),
         epoch_tdb=Epoch(2451544.5, 0.0, TimeScale.TDB),
     )
 
@@ -55,7 +56,7 @@ def test_displacement_inputs_are_frozen_slotted_and_read_only():
     assert not station.reference_position_itrf_m.flags.writeable
     assert not reflector.reference_position_lcrs_m.flags.writeable
     with pytest.raises(FrozenInstanceError):
-        station.epoch_utc = station.epoch_utc
+        cast(Any, station).epoch_utc = station.epoch_utc
     with pytest.raises(ValueError):
         station.reference_position_itrf_m[0] = 0.0
     with pytest.raises(ValueError):
@@ -68,7 +69,7 @@ def test_zero_displacement_models_return_three_component_vectors():
         np.zeros(3),
     )
     reflector_data = ReflectorDisplacementInput(
-        reference_position_lcrs_m=[1.0, 0.0, 0.0],
+        reference_position_lcrs_m=np.array([1.0, 0.0, 0.0]),
         epoch_tdb=Epoch(2451544.5, 0.0, TimeScale.TDB),
     )
     assert np.allclose(
@@ -109,7 +110,7 @@ def test_composite_station_displacement_sums_components():
 
 def test_composite_station_displacement_rejects_invalid_components():
     with pytest.raises(TypeError, match="cannot contain None"):
-        CompositeStationDisplacement(components=(None,))
+        CompositeStationDisplacement(components=cast(Any, (None,)))
 
 
 def test_registered_station_sum_and_context_cache():
@@ -186,15 +187,15 @@ def test_pole_tide_exposes_typed_evaluation_result():
 def test_pole_tide_result_validates_vectors_when_constructed_directly():
     wobble = PolarWobble(0.1, 0.2, 0.05, 0.3, 0.05, 0.1)
     result = PoleTideResult(
-        displacement_itrf_m=[1.0, 2.0, 3.0],
-        displacement_enu_m=[4.0, 5.0, 6.0],
+        displacement_itrf_m=np.array([1.0, 2.0, 3.0]),
+        displacement_enu_m=np.array([4.0, 5.0, 6.0]),
         wobble=wobble,
         geocentric_latitude_rad=0.1,
         longitude_rad=0.2,
     )
     assert not result.displacement_itrf_m.flags.writeable
     with pytest.raises(ValueError, match="exactly 3"):
-        PoleTideResult([1.0], [1.0, 2.0, 3.0], wobble, 0.1, 0.2)
+        PoleTideResult(np.array([1.0]), np.array([1.0, 2.0, 3.0]), wobble, 0.1, 0.2)
 
 
 def test_pole_tide_matches_independent_reference_vector():
@@ -248,8 +249,8 @@ def test_ocean_pole_tide_grid_and_model(tmp_path):
     assert grid.info.longitude_nodes == 2
     assert np.all(np.isfinite(result.displacement_itrf_m))
     direct_result = OceanPoleTideResult(
-        displacement_itrf_m=[1.0, 2.0, 3.0],
-        displacement_enu_m=[4.0, 5.0, 6.0],
+        displacement_itrf_m=np.array([1.0, 2.0, 3.0]),
+        displacement_enu_m=np.array([4.0, 5.0, 6.0]),
         coefficients=result.coefficients,
         wobble=result.wobble,
     )
@@ -305,10 +306,12 @@ def test_ocean_pole_tide_matches_official_test_vectors(
     equatorial_radius_m = 6_378_137.0
     eccentricity_squared = 6.6943799901413165e-3
     prime_vertical_radius_m = equatorial_radius_m / np.sqrt(1.0 - eccentricity_squared * np.sin(latitude_rad) ** 2)
-    station_itrf_m = (
-        prime_vertical_radius_m * np.cos(latitude_rad) * np.cos(longitude_rad),
-        prime_vertical_radius_m * np.cos(latitude_rad) * np.sin(longitude_rad),
-        prime_vertical_radius_m * (1.0 - eccentricity_squared) * np.sin(latitude_rad),
+    station_itrf_m = np.array(
+        [
+            prime_vertical_radius_m * np.cos(latitude_rad) * np.cos(longitude_rad),
+            prime_vertical_radius_m * np.cos(latitude_rad) * np.sin(longitude_rad),
+            prime_vertical_radius_m * (1.0 - eccentricity_squared) * np.sin(latitude_rad),
+        ]
     )
     result = model.evaluate(
         StationDisplacementInput(
@@ -333,7 +336,7 @@ def test_ocean_pole_tide_matches_official_test_vectors(
 def test_lunar_solid_tide_requires_no_runtime_backend_injection():
     model = LunarSolidTide(ephemeris=_FakeEphemeris())
     data = ReflectorDisplacementInput(
-        reference_position_lcrs_m=[1_737_400.0, 0.0, 0.0],
+        reference_position_lcrs_m=np.array([1_737_400.0, 0.0, 0.0]),
         epoch_tdb=Epoch(2451544.5, 0.0, TimeScale.TDB),
     )
     displacement = model.displacement_lcrs_m(data)

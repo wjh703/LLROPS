@@ -1,5 +1,6 @@
 import json
 from dataclasses import replace
+from typing import Any, cast
 
 import numpy as np
 import pytest
@@ -8,6 +9,7 @@ from lunarops.base.epoch import Epoch, TimeScale
 from lunarops.base.parameter_name import ParameterName
 from lunarops.classes.observation.equations import ObservationEquation
 from lunarops.classes.parametrization.base import Parametrization, ParametrizationList
+from lunarops.classes.parametrization.station_range_bias import StationRangeBiasParametrization
 from lunarops.estimation.adjustment_preprocessing import floor_prefit_uncertainties
 from lunarops.estimation.convergence import ParameterConvergencePolicy
 from lunarops.estimation.linearized_least_squares import (
@@ -35,7 +37,12 @@ from lunarops.estimation.variance_components import (
 )
 
 
-def _equation(identity, value, station, wavelength=532.0):
+def _equation(
+    identity: object,
+    value: float,
+    station: str,
+    wavelength: float = 532.0,
+) -> ObservationEquation:
     return ObservationEquation(
         observed_minus_computed_one_way_m=float(value),
         sigma_one_way_m=1.0,
@@ -55,10 +62,10 @@ class OffsetParametrization(Parametrization):
     def parameter_names(self):
         return [ParameterName("test", "position.x")]
 
-    def design_columns(self, equation):
+    def design_columns(self, eq):
         return np.array([1.0])
 
-    def reduce_observation(self, equation):
+    def reduce_observation(self, eq):
         return self.value
 
     def apply_update(self, delta):
@@ -75,12 +82,13 @@ class AffineParametrization(Parametrization):
             ParameterName("test", "position.y"),
         ]
 
-    def design_columns(self, equation):
-        station_offset = 10.0 if equation.station_key == "STA_B" else 0.0
-        return np.array([1.0, 1.0e4 * (equation.observation_id[1] + station_offset)])
+    def design_columns(self, eq):
+        station_offset = 10.0 if eq.station_key == "STA_B" else 0.0
+        observation_id = cast(Any, eq.observation_id)
+        return np.array([1.0, 1.0e4 * (observation_id[1] + station_offset)])
 
-    def reduce_observation(self, equation):
-        return float(self.design_columns(equation) @ self.value)
+    def reduce_observation(self, eq):
+        return float(self.design_columns(eq) @ self.value)
 
     def apply_update(self, delta):
         self.value += np.asarray(delta, dtype=float)
@@ -96,6 +104,25 @@ def test_parametrization_selection_reuses_block_state():
     assert offset.value == pytest.approx(2.0)
     with pytest.raises(KeyError, match="Unknown parametrization"):
         parametrization.select_blocks(["MissingParametrization"])
+
+
+def test_parametrization_list_blocks_are_immutable():
+    parametrization = ParametrizationList([OffsetParametrization()])
+    dynamic_parametrization = cast(Any, parametrization)
+
+    assert isinstance(parametrization.blocks, tuple)
+    with pytest.raises(AttributeError):
+        dynamic_parametrization.blocks.append(OffsetParametrization())
+    with pytest.raises(AttributeError):
+        dynamic_parametrization.blocks = ()
+
+
+@pytest.mark.parametrize("selectors", ["OffsetParametrization", ["OffsetParametrization", "OffsetParametrization"]])
+def test_parametrization_selection_rejects_invalid_selector_contract(selectors):
+    parametrization = ParametrizationList([OffsetParametrization()])
+
+    with pytest.raises((TypeError, ValueError)):
+        parametrization.select_blocks(selectors)
 
 
 def test_parameter_convergence_policy_supports_block_tolerances():
@@ -467,7 +494,8 @@ def test_adjustment_is_warm_startable():
     warm = _run_adjustment(initial_scales=first.scales, initial_factors=first.robust_factors)
     assert warm.settings["warm_started_scale_count"] == 2
     assert warm.settings["warm_started_factor_count"] == 12
-    assert set(warm.summary["performance_seconds"]) == {
+    warm_summary = cast(dict[str, Any], warm.summary)
+    assert set(cast(dict[str, float], warm_summary["performance_seconds"])) == {
         "cache_build",
         "normal_solve",
         "leverage",
@@ -513,7 +541,8 @@ def test_llr_adjustment_runs_joint_helmert_vce_cycle():
     assert set(result.scales) == {"A", "B"}
     assert result.normals is not None
     assert len(result.observations) == len(equations)
-    for item in result.observations:
+    observations = cast(list[dict[str, Any]], result.observations)
+    for item in observations:
         base_sigma = item["base_scale"] * item["effective_sigma_m"]
         assert 0.0 <= item["leverage"] < 1.0
         assert item["residual_sigma_m"] == pytest.approx(base_sigma * np.sqrt(1.0 - item["leverage"]))
@@ -528,12 +557,12 @@ def test_llr_adjustment_runs_joint_helmert_vce_cycle():
         result.iterations[-1].expected_total_redundancy
     )
     for iteration in result.iterations:
+        variance_components = cast(dict[str, dict[str, float]], iteration.variance_components)
         expected = max(
-            abs(group["proposed_variance"] / group["current_variance"] - 1.0)
-            for group in iteration.variance_components.values()
+            abs(group["proposed_variance"] / group["current_variance"] - 1.0) for group in variance_components.values()
         )
         assert iteration.maximum_variance_ratio_change == pytest.approx(expected)
-    payload = result.to_dict()
+    payload = cast(dict[str, Any], result.to_dict())
     json.dumps(payload)
     assert payload["summary"]["source_observation_count"] == len(equations)
     assert payload["summary"]["equation_evaluation_count"] == len(payload["equation_evaluations"])
@@ -640,17 +669,15 @@ def test_adjustment_reports_prefit_uncertainty_floor():
         ),
     ).run()
 
-    records = {item["observation_id"]: item for item in result.observations}
+    records = {item["observation_id"]: item for item in cast(list[dict[str, Any]], result.observations)}
     assert result.summary["uncertainty_sigma_floored_count"] == 1
     assert result.summary["retained_uncertainty_sigma_floored_count"] == 1
     assert records["tiny"]["reported_sigma_m"] == pytest.approx(1.0e-5)
     assert records["tiny"]["effective_sigma_m"] == pytest.approx(0.002)
     assert records["tiny"]["uncertainty_qc_status"] == "FLOORED"
     assert records["normal-1"]["effective_sigma_m"] == pytest.approx(0.02)
-    assert result.uncertainty_quality_control["groups"]["A"]["floored_count"] == 1
-
-
-from lunarops.classes.parametrization.station_range_bias import StationRangeBiasParametrization
+    quality_control = cast(dict[str, Any], result.uncertainty_quality_control)
+    assert quality_control["groups"]["A"]["floored_count"] == 1
 
 
 def test_open_bias_interval_remains_active():
@@ -828,7 +855,7 @@ def test_stochastic_iteration_limit_still_applies_parameter_update():
     ).run()
 
     assert source_calls == [1, 2, 3]
-    first = result.linearizations[0]
+    first = cast(dict[str, Any], result.linearizations[0])
     assert not first["stochastic_converged"]
     assert first["stochastic_iteration_limit_reached"]
     assert first["parameter_update_factor"] == 0.5
@@ -929,7 +956,7 @@ def test_parameter_convergence_requires_two_confirmation_linearizations():
 
     assert source_calls == [1, 2, 3, 4]
     assert len(result.linearizations) == 3
-    first_linearization = result.linearizations[0]
+    first_linearization = cast(dict[str, Any], result.linearizations[0])
     assert not first_linearization["parameter_converged"]
     assert first_linearization["applied_update_by_block_m"]["OffsetParametrization"] == pytest.approx(
         first_linearization["candidate_update_by_block_m"]["OffsetParametrization"]

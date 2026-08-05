@@ -1,13 +1,11 @@
 from dataclasses import FrozenInstanceError
+from typing import Any, cast
 
 import numpy as np
 import pytest
 
-from lunarops.classes.delays import (
-    Iers2010MendesPavlisTroposphere,
-    TroposphereInput,
-    ZeroTroposphereDelay,
-)
+from lunarops.classes.delays import TroposphereInput, ZeroTroposphereDelay
+from lunarops.classes.delays.troposphere import Iers2010MendesPavlisTroposphere
 
 
 def _input(**changes):
@@ -29,7 +27,7 @@ def test_troposphere_input_is_frozen_and_slotted():
 
     assert not hasattr(data, "__dict__")
     with pytest.raises(FrozenInstanceError):
-        data.pressure_hpa = 900.0
+        cast(Any, data).pressure_hpa = 900.0
 
 
 def test_troposphere_models_consume_input_object():
@@ -67,7 +65,7 @@ def test_fcul_facades_validate_scalar_boundaries():
     with pytest.raises(ValueError, match="latitude_deg"):
         model.fculzd_hpa(91.0, 0.0, 1013.25, 10.0, 0.532)
     with pytest.raises(ValueError, match="latitude_deg must be a scalar"):
-        model.fculzd_hpa(np.array([45.0]), 0.0, 1013.25, 10.0, 0.532)
+        model.fculzd_hpa(cast(Any, np.array([45.0])), 0.0, 1013.25, 10.0, 0.532)
     with pytest.raises(ValueError, match="water_vapor_pressure_hpa"):
         model.fculzd_hpa(45.0, 0.0, 1013.25, -1.0, 0.532)
     with pytest.raises(ValueError, match="elevation_deg"):

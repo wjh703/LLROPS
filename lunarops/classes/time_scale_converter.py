@@ -10,16 +10,20 @@ from __future__ import annotations
 
 import numpy as np
 from numpy.typing import ArrayLike
+from typing import TYPE_CHECKING
 
 from lunarops.base.constants import C2
 from lunarops.base.epoch import Epoch, TimeScale, tt2utc as _tt2utc, utc2tt as _utc2tt
 from lunarops.base.array_validation import vector3
 
+if TYPE_CHECKING:
+    from lunarops.classes.ephemerides.base import Ephemeris
+
 
 class TimeScaleConverter:
     def __init__(
         self,
-        ephemeris: object | None = None,
+        ephemeris: Ephemeris | None = None,
         max_iterations: int = 6,
         tolerance_s: float = 1.0e-12,
     ) -> None:
@@ -33,7 +37,7 @@ class TimeScaleConverter:
         self.max_iterations = iterations
         self.tolerance_s = tolerance
 
-    def _require_ephemeris(self):
+    def _require_ephemeris(self) -> Ephemeris:
         if self.ephemeris is None:
             raise RuntimeError("TT/TDB conversion requires an ephemeris.")
         return self.ephemeris

@@ -104,7 +104,7 @@ class FrozenObservationEquations:
             if value is not None and (not np.isfinite(value) or value <= 0.0):
                 raise ValueError("Frozen observation wavelengths must be positive and finite.")
             wavelengths.append(value)
-        metadata = plain_data(dict(self.metadata))
+        metadata = cast(dict[str, object], plain_data(dict(self.metadata)))
         compatibility = metadata.get("compatibility")
         if (
             not isinstance(compatibility, str)

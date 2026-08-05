@@ -1,5 +1,6 @@
 from copy import deepcopy
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -7,7 +8,7 @@ from lunarops.config.loader import load_config_file
 from lunarops.estimation.adjustment_config import parse_adjustment_plan
 
 
-def _component(component_id="A"):
+def _component(component_id: str = "A") -> dict[str, Any]:
     return {
         "id": component_id,
         "station": "STA_A",
@@ -16,7 +17,7 @@ def _component(component_id="A"):
     }
 
 
-def _config():
+def _config() -> dict[str, Any]:
     return {"vce": {"components": [_component()]}}
 
 

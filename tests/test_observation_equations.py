@@ -11,7 +11,7 @@ def test_observation_equation_normalizes_and_freezes_partials():
     equation = ObservationEquation(
         observed_minus_computed_one_way_m=0.25,
         sigma_one_way_m=0.01,
-        design_partials={"geometry": [1.0, 2.0, 3.0]},
+        design_partials={"geometry": np.array([1.0, 2.0, 3.0])},
         observation_id=7,
         station_key="STA",
         reflector_key="REF",

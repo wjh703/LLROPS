@@ -1,11 +1,13 @@
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 import pytest
 
 from lunarops.base.constants import C
 from lunarops.base.epoch import Epoch, TimeScale
-from lunarops.classes.delays import Iers2010MendesPavlisTroposphere, ZeroTroposphereDelay
+from lunarops.classes.delays import ZeroTroposphereDelay
+from lunarops.classes.delays.troposphere import Iers2010MendesPavlisTroposphere
 from lunarops.classes.displacement import Iers2010SolidEarthTide
 from lunarops.classes.ephemerides import BodyState, Ephemeris
 from lunarops.classes.frames import EarthOrientationProvider, PolarMotion, ReferenceFrameSystem
@@ -184,8 +186,24 @@ def test_native_solid_earth_tide_enters_transmit_and_receive_light_time():
     with_tide = _pipeline(frames=frames, station_displacement=recorder)
     observation = with_tide.resolver.resolve(_record())
 
-    native = with_tide.observation_model.evaluate(observation, min_elevation_deg=-90.0, result_detail="full").result_row
-    zero = _pipeline().observation_model.evaluate(observation, min_elevation_deg=-90.0, result_detail="full").result_row
+    native = cast(
+        dict[str, Any],
+        with_tide.observation_model.evaluate(
+            observation,
+            min_elevation_deg=-90.0,
+            result_detail="full",
+        ).result_row,
+    )
+    zero = cast(
+        dict[str, Any],
+        _pipeline()
+        .observation_model.evaluate(
+            observation,
+            min_elevation_deg=-90.0,
+            result_detail="full",
+        )
+        .result_row,
+    )
 
     assert native["light_time_converged"]
     assert len(recorder.calls) >= 3
@@ -218,12 +236,22 @@ def test_end_to_end_contribution_changes_rtt_and_oc_separately():
     without_tide = _pipeline()
     observation = with_tide.resolver.resolve(_record())
 
-    tide = with_tide.observation_model.evaluate(observation, min_elevation_deg=-90.0, result_detail="full").result_row
-    zero = without_tide.observation_model.evaluate(
-        without_tide.resolver.resolve(_record()),
-        min_elevation_deg=-90.0,
-        result_detail="full",
-    ).result_row
+    tide = cast(
+        dict[str, Any],
+        with_tide.observation_model.evaluate(
+            observation,
+            min_elevation_deg=-90.0,
+            result_detail="full",
+        ).result_row,
+    )
+    zero = cast(
+        dict[str, Any],
+        without_tide.observation_model.evaluate(
+            without_tide.resolver.resolve(_record()),
+            min_elevation_deg=-90.0,
+            result_detail="full",
+        ).result_row,
+    )
 
     delta_rtt_s = tide["computed_rtt_before_range_bias_s"] - zero["computed_rtt_before_range_bias_s"]
     delta_oc_m = (
@@ -271,13 +299,23 @@ def test_fortran_troposphere_contributes_to_both_light_time_legs(monkeypatch):
     model = Iers2010MendesPavlisTroposphere()
     processor = _pipeline(model)
     observation = processor.resolver.resolve(_record())
-    with_troposphere = processor.observation_model.evaluate(
-        observation,
-        min_elevation_deg=-90.0,
-        result_detail="full",
-    ).result_row
-    without_troposphere = (
-        _pipeline().observation_model.evaluate(observation, min_elevation_deg=-90.0, result_detail="full").result_row
+    with_troposphere = cast(
+        dict[str, Any],
+        processor.observation_model.evaluate(
+            observation,
+            min_elevation_deg=-90.0,
+            result_detail="full",
+        ).result_row,
+    )
+    without_troposphere = cast(
+        dict[str, Any],
+        _pipeline()
+        .observation_model.evaluate(
+            observation,
+            min_elevation_deg=-90.0,
+            result_detail="full",
+        )
+        .result_row,
     )
 
     assert with_troposphere["light_time_converged"]
@@ -299,7 +337,7 @@ def test_measurement_marks_geometry_below_requested_elevation():
     processor = _pipeline()
     observation = processor.resolver.resolve(_record())
     result = processor.observation_model.evaluate(observation, min_elevation_deg=91.0, result_detail="full")
-    row = result.result_row
+    row = cast(dict[str, Any], result.result_row)
 
     assert result.below_elevation_limit
     assert row["below_elevation_limit"]
@@ -347,3 +385,57 @@ def test_reflector_parametrization_updates_explicit_model_state():
     assert updated is not original
     assert updated.moon_fixed_xyz_m == pytest.approx([1_737_401.0, 2.0, 3.0])
     assert processor.resolver.resolve(_record()).reflector is updated
+
+
+@pytest.mark.parametrize(
+    "reflectors, error",
+    [
+        ("APOLLO15", TypeError),
+        (123, TypeError),
+        ([], ValueError),
+        (["APOLLO15", "APOLLO15"], ValueError),
+    ],
+)
+def test_reflector_parametrization_validates_explicit_selection(reflectors, error):
+    with pytest.raises(error):
+        ReflectorPositionParametrization(reflectors=reflectors)
+
+
+def test_reflector_parametrization_rejects_unknown_config_keys():
+    with pytest.raises(ValueError, match="unknown key"):
+        ReflectorPositionParametrization.from_config(
+            {"type": "reflectorPosition", "reflector": ["APOLLO15"]},
+            None,
+        )
+
+
+def test_reflector_parametrization_rejects_unobserved_catalog_key():
+    processor = _pipeline()
+    equation = processor.equations(
+        NptDataset([_record()]),
+        options=ObservationProcessingOptions(
+            min_elevation_deg=-90.0,
+            include_reflector_position_partials=True,
+        ),
+    )[0]
+    processor.model_state.reflector_catalog["UNOBSERVED"] = ReflectorRecord(
+        name="Unobserved",
+        moon_fixed_xyz_m=[1.0, 2.0, 3.0],
+    )
+    block = ReflectorPositionParametrization(reflectors=["UNOBSERVED"])
+
+    with pytest.raises(ValueError, match="have no observations"):
+        block.setup([equation], processor.model_state)
+
+
+def test_reflector_parametrization_missing_partial_message_names_current_option():
+    processor = _pipeline()
+    equation = processor.equations(
+        NptDataset([_record()]),
+        options=ObservationProcessingOptions(min_elevation_deg=-90.0),
+    )[0]
+    block = ReflectorPositionParametrization(reflectors=["APOLLO15"])
+    block.setup([equation], processor.model_state)
+
+    with pytest.raises(KeyError, match="include_reflector_position_partials=True"):
+        block.design_columns(equation)

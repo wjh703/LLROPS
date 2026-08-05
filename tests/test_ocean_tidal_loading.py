@@ -230,10 +230,12 @@ def test_ocean_tidal_loading_component_signs_match_independent_orekit_series(
     model = Iers2010OceanTidalLoading(OceanTidalLoadingCatalog(coefficient_file))
     # WGS84 conversion of the BLQ header's lon/lat/height station position.
     data = StationDisplacementInput(
-        reference_position_itrf_m=(
-            -1_463_996.2265579700,
-            -5_166_630.8462324440,
-            3_435_016.8950683116,
+        reference_position_itrf_m=np.array(
+            [
+                -1_463_996.2265579700,
+                -5_166_630.8462324440,
+                3_435_016.8950683116,
+            ]
         ),
         epoch_utc=Epoch.from_isot(epoch_text, scale=TimeScale.UTC),
         station_id="APOLLO",
@@ -292,7 +294,7 @@ def test_ocean_tidal_loading_preserves_utc_leap_second_calendar_fields(tmp_path)
     )
     for text, expected_calendar, expected_up_south_west_m in inputs:
         data = StationDisplacementInput(
-            reference_position_itrf_m=(6_378_137.0, 0.0, 0.0),
+            reference_position_itrf_m=np.array([6_378_137.0, 0.0, 0.0]),
             epoch_utc=Epoch.from_isot(text, scale=TimeScale.UTC),
             station_id="APOLLO",
         )
@@ -302,6 +304,7 @@ def test_ocean_tidal_loading_preserves_utc_leap_second_calendar_fields(tmp_path)
                 model.displacement_itrf_m(data)
         else:
             result = model.evaluate(data)
+            assert expected_up_south_west_m is not None
             np.testing.assert_allclose(
                 result.displacement_up_south_west_m,
                 expected_up_south_west_m,
@@ -319,7 +322,7 @@ def test_ocean_tidal_loading_rejects_dates_outside_etutc_validity_range(
     coefficient_file.write_text(_blq_text(), encoding="utf-8")
     model = Iers2010OceanTidalLoading(OceanTidalLoadingCatalog(coefficient_file))
     data = StationDisplacementInput(
-        reference_position_itrf_m=(6_378_137.0, 0.0, 0.0),
+        reference_position_itrf_m=np.array([6_378_137.0, 0.0, 0.0]),
         epoch_utc=Epoch.from_isot("2027-07-01T00:00:00", scale=TimeScale.UTC),
         station_id="APOLLO",
     )

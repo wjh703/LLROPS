@@ -1,5 +1,6 @@
 import gzip
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -139,7 +140,8 @@ def test_mini_import_issues_are_published_without_an_implicit_log(tmp_path):
     report = read_structured_text(tmp_path / "importReport.txt.gz", "normalPointImportReport")
 
     assert report["invalidRecordCount"] == 1
-    assert report["sources"][0]["issues"][0]["line"] == 2
+    report_sources = cast(list[dict[str, Any]], report["sources"])
+    assert report_sources[0]["issues"][0]["line"] == 2
     assert not (tmp_path / "llr_mini_io_warnings.log").exists()
 
 

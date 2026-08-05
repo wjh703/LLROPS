@@ -24,6 +24,7 @@ def test_normal_equations_use_W_and_np_solve_convention(tmp_path):
     x, Qxx, sigma0 = normals.solve()
     assert np.allclose(x, np.linalg.solve(expected_N, expected_W))
     assert np.allclose(Qxx, np.linalg.solve(expected_N, np.eye(2)))
+    assert sigma0 is not None
     assert sigma0 >= 0.0
 
     stem = tmp_path / "normals"

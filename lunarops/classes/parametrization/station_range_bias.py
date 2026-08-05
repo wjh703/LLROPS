@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
-from collections.abc import Callable
-from typing import Dict, List, Mapping, Optional, Sequence, Tuple
+from collections.abc import Callable, Mapping, Sequence
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -84,8 +84,8 @@ def parse_station_bias_intervals(config_value: object) -> List[StationBiasInterv
     """Parse the canonical list-of-mappings interval schema."""
     if config_value is None:
         return []
-    if not isinstance(config_value, list):
-        raise TypeError("stationRangeBias intervals must be a list of mappings.")
+    if isinstance(config_value, (str, bytes)) or not isinstance(config_value, Sequence):
+        raise TypeError("stationRangeBias intervals must be a sequence of mappings.")
     intervals: List[StationBiasInterval] = []
     for index, item in enumerate(config_value):
         if not isinstance(item, Mapping):
@@ -134,6 +134,19 @@ def active_station_bias_interval_keys(
     )
 
 
+def _station_range_bias_coefficient(eq: ObservationEquation) -> float:
+    raw = eq.design_partials.get("station_range_bias")
+    if raw is None:
+        return 1.0
+    values = np.asarray(raw, dtype=float).reshape(-1)
+    if values.size != 1:
+        raise ValueError("Observation equation 'station_range_bias' partial must contain exactly one scalar.")
+    coefficient = float(values[0])
+    if not np.isfinite(coefficient):
+        raise ValueError("Observation equation 'station_range_bias' partial must be finite.")
+    return coefficient
+
+
 @register("parametrization", "stationRangeBias")
 class StationRangeBiasParametrization(Parametrization):
     """Estimate one-way station biases by station or explicit interval."""
@@ -148,13 +161,20 @@ class StationRangeBiasParametrization(Parametrization):
         if per not in _MODES:
             raise ValueError(f"stationRangeBias per must be one of {sorted(_MODES)}, got {per!r}.")
         if isinstance(stations, (str, bytes)):
-            raise TypeError("stationRangeBias stations must be a list.")
-        if stations is not None and not isinstance(stations, list):
-            raise TypeError("stationRangeBias stations must be a list.")
+            raise TypeError("stationRangeBias stations must be a sequence of strings.")
+        if stations is not None and not isinstance(stations, Sequence):
+            raise TypeError("stationRangeBias stations must be a sequence of strings.")
         if stations is not None and any(not isinstance(station, str) for station in stations):
             raise TypeError("stationRangeBias stations must contain only strings.")
+        if stations is not None and not stations:
+            raise ValueError("stationRangeBias stations must not be empty; omit it to use all observed stations.")
+        parsed_intervals = parse_station_bias_intervals(intervals)
+        if per == "station" and intervals is not None:
+            raise ValueError("stationRangeBias intervals require per='station+interval'.")
+        if per == "station+interval" and not parsed_intervals:
+            raise ValueError("stationRangeBias per='station+interval' requires intervals.")
         self.per = per
-        self.intervals = parse_station_bias_intervals(intervals)
+        self.intervals = parsed_intervals
         self.requested = None if stations is None else [canonical_station_id(station) for station in stations]
         if self.requested is not None and len(set(self.requested)) != len(self.requested):
             raise ValueError("stationRangeBias stations must be unique.")
@@ -197,10 +217,8 @@ class StationRangeBiasParametrization(Parametrization):
             if missing:
                 raise ValueError(f"stationRangeBias requested station(s) have no observations: {sorted(missing)}.")
         if self.per == "station":
-            self.keys = sorted(self.requested or observed_stations)
+            self.keys = sorted(observed_stations if self.requested is None else self.requested)
         else:
-            if not self.intervals:
-                raise ValueError("stationRangeBias per='station+interval' requires intervals.")
             self.keys = sorted({key for equation in equations for key in self._active_keys_for(equation)})
         for key in self.keys:
             self.values.setdefault(key, 0.0)
@@ -235,7 +253,7 @@ class StationRangeBiasParametrization(Parametrization):
         return columns
 
     def design_entries(self, eq: ObservationEquation) -> list[tuple[int, float]]:
-        coefficient = float(np.asarray(eq.design_partials.get("station_range_bias", [1.0]), dtype=float).reshape(-1)[0])
+        coefficient = _station_range_bias_coefficient(eq)
         if not coefficient:
             return []
         return [
@@ -243,7 +261,8 @@ class StationRangeBiasParametrization(Parametrization):
         ]
 
     def reduce_observation(self, eq: ObservationEquation) -> float:
-        return float(sum(self.values.get(key, 0.0) for key in self._active_keys_for(eq)))
+        coefficient = _station_range_bias_coefficient(eq)
+        return coefficient * float(sum(self.values.get(key, 0.0) for key in self._active_keys_for(eq)))
 
     def initial_update(
         self,

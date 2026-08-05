@@ -2,6 +2,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from typing import Any, cast
 
 from lunarops.base.epoch import Epoch, TimeScale
 from lunarops.classes.ephemerides import BodyState, Ephemeris
@@ -52,7 +53,7 @@ def test_tabulated_eop_public_names_and_validation():
 def test_high_frequency_public_api_requires_explicit_background_dut1():
     epoch_utc = Epoch(2_400_000.5, 55_227.4, TimeScale.UTC)
     with pytest.raises(TypeError):
-        ocean_tide_eop_correction(epoch_utc)
+        cast(Any, ocean_tide_eop_correction)(epoch_utc)
     correction = ocean_tide_eop_correction(
         epoch_utc,
         background_ut1_minus_utc_s=-0.177,

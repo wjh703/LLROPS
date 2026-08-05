@@ -7,6 +7,7 @@ from typing import Mapping, Sequence
 
 import numpy as np
 
+from lunarops.base.array_validation import catalog_vector3
 from lunarops.base.epoch import Epoch, TimeScale
 from lunarops.fileio.catalogs import ReflectorRecord, StationRecord, first_resolvable_key
 from lunarops.fileio.normal_points import NptRecord
@@ -74,9 +75,10 @@ class ObservationCatalogState:
         if unknown:
             raise KeyError(f"Unknown reflector state key(s): {sorted(unknown)}")
         for key, values in positions_pa_m_by_key.items():
+            position = catalog_vector3(values, name=f"reflector[{key}].moon_fixed_xyz_m")
             self.reflector_catalog[key] = replace(
                 self.reflector_catalog[key],
-                moon_fixed_xyz_m=values,
+                moon_fixed_xyz_m=position,
             )
 
 

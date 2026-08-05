@@ -98,9 +98,23 @@ class ParametrizationList:
     """
 
     def __init__(self, blocks: Sequence[Parametrization]) -> None:
-        self.blocks: List[Parametrization] = list(blocks)
+        normalized = tuple(blocks)
+        invalid = [type(block).__name__ for block in normalized if not isinstance(block, Parametrization)]
+        if invalid:
+            raise TypeError(f"ParametrizationList blocks must be Parametrization instances, got {invalid!r}.")
+        self._blocks: tuple[Parametrization, ...] = normalized
         self._parameter_names: List[ParameterName] | None = None
         self._slices: List[slice] = []
+
+    @property
+    def blocks(self) -> tuple[Parametrization, ...]:
+        """The ordered blocks, exposed as an immutable tuple.
+
+        The global column layout is cached, so allowing callers to mutate the
+        block collection directly would leave the cached slices inconsistent
+        with the actual blocks.
+        """
+        return self._blocks
 
     def _ensure_layout(self) -> None:
         if self._parameter_names is not None:
@@ -140,8 +154,20 @@ class ParametrizationList:
         ``reflectorPosition``. An empty selector list is invalid
         so a processing step cannot silently solve a zero-parameter system.
         """
-        requested = {str(value).strip() for value in selectors if str(value).strip()}
-        if not requested:
+        if isinstance(selectors, (str, bytes)):
+            raise TypeError("Parametrization block selectors must be a sequence of strings.")
+        requested_values: list[str] = []
+        for value in selectors:
+            if not isinstance(value, str):
+                raise TypeError("Parametrization block selectors must contain only strings.")
+            selector = value.strip()
+            if not selector:
+                raise ValueError("Parametrization block selectors must not be empty.")
+            if selector in requested_values:
+                raise ValueError(f"Parametrization block selector {selector!r} was provided more than once.")
+            requested_values.append(selector)
+        requested = set(requested_values)
+        if not requested_values:
             raise ValueError("At least one parametrization block selector is required.")
         selected = [block for block in self.blocks if block.block_id in requested]
         found = {block.block_id for block in selected}
@@ -168,6 +194,8 @@ class ParametrizationList:
                 raise ValueError(
                     f"{type(block).__name__}.design_columns() returned {columns.size} columns, expected {expected}."
                 )
+            if not np.all(np.isfinite(columns)):
+                raise ValueError(f"{type(block).__name__}.design_columns() returned non-finite values.")
             return [(block_slice.start + int(index), float(columns[index])) for index in np.flatnonzero(columns)]
 
         entries: list[tuple[int, float]] = []
@@ -178,6 +206,8 @@ class ParametrizationList:
                     f"{type(block).__name__}.design_entries() returned local column {index}, expected [0, {expected})."
                 )
             scalar = float(value)
+            if not np.isfinite(scalar):
+                raise ValueError(f"{type(block).__name__}.design_entries() returned a non-finite coefficient.")
             if scalar:
                 entries.append((block_slice.start + index, scalar))
         return entries
@@ -216,8 +246,12 @@ class ParametrizationList:
 
     def apply_update(self, delta: np.ndarray) -> Dict[str, float]:
         """Apply all block updates; returns per-block max update norms."""
-        norms = self.update_norms(delta)
-        for block, block_delta in zip(self.blocks, self.split(delta)):
+        block_updates = self.split(delta)
+        norms = {
+            block.block_id: float(block.max_update_norm(block_delta))
+            for block, block_delta in zip(self.blocks, block_updates)
+        }
+        for block, block_delta in zip(self.blocks, block_updates):
             block.apply_update(block_delta)
         return norms
 

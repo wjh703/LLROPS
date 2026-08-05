@@ -7,7 +7,7 @@ import math
 
 from lunarops.base.epoch import Epoch, TimeScale
 from lunarops.base.epoch import utc2tt
-import lunarops._iers2010 as _iers2010
+import lunarops._iers2010 as _iers2010  # pyright: ignore[reportMissingModuleSource]
 
 
 _MICROARCSECOND_TO_ARCSECOND = 1.0e-6

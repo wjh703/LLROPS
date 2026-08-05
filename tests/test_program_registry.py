@@ -1,4 +1,5 @@
 import pytest
+from typing import Any, cast
 
 import lunarops.cli as cli
 from lunarops.config.context import RunContext
@@ -25,7 +26,7 @@ def test_program_registry_is_case_insensitive():
         return config["value"]
 
     assert "TestCanonicalProgram" in available_programs()
-    assert run_program("testcanonicalprogram", {"value": 3}, None) == 3
+    assert run_program("testcanonicalprogram", {"value": 3}, cast(Any, None)) == 3
     with pytest.raises(ValueError, match="unknown configuration"):
         validate_program_config("TestCanonicalProgram", {"value": 3, "legacy": True})
 
