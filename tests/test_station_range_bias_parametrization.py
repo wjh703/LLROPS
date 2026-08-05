@@ -8,13 +8,13 @@ from lunarops.classes.parametrization.station_range_bias import StationRangeBias
 
 def _eq(station_key, epoch, station_id=None):
     return ObservationEquation(
-        observed_minus_computed_m=0.0,
-        sigma_m=1.0,
-        partials={"station_range_bias": np.array([1.0])},
-        identity=1,
+        observed_minus_computed_one_way_m=0.0,
+        sigma_one_way_m=1.0,
+        design_partials={"station_range_bias": np.array([1.0])},
+        observation_id=1,
         station_key=station_key,
         reflector_key="apollo15",
-        epoch=epoch,
+        transmit_epoch_utc=epoch,
     )
 
 

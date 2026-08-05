@@ -36,7 +36,38 @@ lunarops = "lunarops.cli:main"
 
 [dependency-groups]
 dev = ["build>=1.3.0"]
+typecheck = [
+    "matplotlib>=3.11.1",
+    "mypy>=1.18.2",
+    "types-pyyaml>=6.0.12.20250516",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+
+[tool.ruff]
+line-length = 120
+target-version = "py314"
+
+[tool.mypy]
+files = ["lunarops", "scripts", "tests"]
+exclude = ["^build/", "^dist/"]
+check_untyped_defs = false
+show_error_codes = true
+pretty = true
+
+[[tool.mypy.overrides]]
+module = [
+    "calcephpy",
+    "calcephpy.*",
+    "erfa",
+    "erfa.*",
+    "mpi4py",
+    "mpi4py.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["lunarops", "lunarops.*"]
+check_untyped_defs = true

@@ -62,9 +62,7 @@ def _string(value: object, path: str) -> str:
 def _string_sequence(value: object, path: str) -> tuple[str, ...]:
     if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
         raise TypeError(f"{path} must be a sequence of strings.")
-    result = tuple(
-        _string(item, f"{path}[{index}]") for index, item in enumerate(value)
-    )
+    result = tuple(_string(item, f"{path}[{index}]") for index, item in enumerate(value))
     if len(set(result)) != len(result):
         raise ValueError(f"{path} must not contain duplicates.")
     return result
@@ -97,20 +95,25 @@ class LlrAdjustmentStage:
     required_consecutive_converged_linearizations: int | None = None
 
     def apply(self, options: LlrAdjustmentOptions) -> LlrAdjustmentOptions:
-        overrides = {
-            field: value
-            for field, value in (
-                ("maximum_linearizations", self.maximum_linearizations),
-                ("parameter_update_factor", self.parameter_update_factor),
-                ("update_tolerance_m", self.update_tolerance_m),
-                (
-                    "required_consecutive_converged_linearizations",
-                    self.required_consecutive_converged_linearizations,
-                ),
-            )
-            if value is not None
-        }
-        return replace(options, **overrides)
+        return replace(
+            options,
+            maximum_linearizations=(
+                options.maximum_linearizations if self.maximum_linearizations is None else self.maximum_linearizations
+            ),
+            parameter_update_factor=(
+                options.parameter_update_factor
+                if self.parameter_update_factor is None
+                else self.parameter_update_factor
+            ),
+            update_tolerance_m=(
+                options.update_tolerance_m if self.update_tolerance_m is None else self.update_tolerance_m
+            ),
+            required_consecutive_converged_linearizations=(
+                options.required_consecutive_converged_linearizations
+                if self.required_consecutive_converged_linearizations is None
+                else self.required_consecutive_converged_linearizations
+            ),
+        )
 
     def validate(self, options: LlrAdjustmentOptions) -> None:
         self.apply(options)
@@ -190,9 +193,7 @@ def _parse_stages(value: object) -> tuple[LlrAdjustmentStage, ...]:
                 parametrizations=(
                     ()
                     if "parametrizations" not in stage
-                    else _string_sequence(
-                        stage["parametrizations"], f"{path}.parametrizations"
-                    )
+                    else _string_sequence(stage["parametrizations"], f"{path}.parametrizations")
                 ),
                 maximum_linearizations=(
                     None
@@ -213,9 +214,7 @@ def _parse_stages(value: object) -> tuple[LlrAdjustmentStage, ...]:
                 update_tolerance_m=(
                     None
                     if "updateToleranceM" not in stage
-                    else _number(
-                        stage["updateToleranceM"], f"{path}.updateToleranceM"
-                    )
+                    else _number(stage["updateToleranceM"], f"{path}.updateToleranceM")
                 ),
                 required_consecutive_converged_linearizations=(
                     None
@@ -239,9 +238,7 @@ def parse_adjustment_plan(config: Mapping[str, object]) -> LlrAdjustmentPlan:
     """Parse one canonical schema and reject obsolete aliases."""
 
     if "robust_estimation" in config:
-        raise ValueError(
-            "robust_estimation was removed; use robustEstimation."
-        )
+        raise ValueError("robust_estimation was removed; use robustEstimation.")
     adjustment = _mapping(config.get("adjustment"), "adjustment")
     initialization = _mapping(config.get("initialization"), "initialization")
     robust = _mapping(config.get("robustEstimation"), "robustEstimation")
@@ -261,14 +258,10 @@ def parse_adjustment_plan(config: Mapping[str, object]) -> LlrAdjustmentPlan:
     )
 
     raw_components = vce.get("components")
-    if isinstance(raw_components, (str, bytes)) or not isinstance(
-        raw_components, Sequence
-    ):
+    if isinstance(raw_components, (str, bytes)) or not isinstance(raw_components, Sequence):
         raise TypeError("vce.components must be a sequence.")
     components = tuple(
-        VarianceComponentDefinition.from_config(
-            _mapping(item, f"vce.components[{index}]")
-        )
+        VarianceComponentDefinition.from_config(_mapping(item, f"vce.components[{index}]"))
         for index, item in enumerate(raw_components)
     )
     defaults = LlrAdjustmentOptions(components=components)
@@ -278,21 +271,15 @@ def parse_adjustment_plan(config: Mapping[str, object]) -> LlrAdjustmentPlan:
         allow_none=True,
     )
     canonical_thresholds = {
-        canonical_station_id(station): threshold
-        for station, threshold in station_thresholds.items()
+        canonical_station_id(station): threshold for station, threshold in station_thresholds.items()
     }
     if len(canonical_thresholds) != len(station_thresholds):
-        raise ValueError(
-            "adjustment.prefitGrossThresholdByStationM contains duplicate "
-            "canonical station identifiers."
-        )
+        raise ValueError("adjustment.prefitGrossThresholdByStationM contains duplicate canonical station identifiers.")
     block_tolerances = _number_mapping(
         adjustment.get("updateToleranceByBlockM"),
         "adjustment.updateToleranceByBlockM",
     )
-    prefit_threshold = adjustment.get(
-        "prefitGrossThresholdM", defaults.prefit_gross_threshold_m
-    )
+    prefit_threshold = adjustment.get("prefitGrossThresholdM", defaults.prefit_gross_threshold_m)
     robust_model = _string(
         robust.get("model", defaults.robust_model),
         "robustEstimation.model",
@@ -306,9 +293,7 @@ def parse_adjustment_plan(config: Mapping[str, object]) -> LlrAdjustmentPlan:
     options = LlrAdjustmentOptions(
         components=components,
         prefit_gross_threshold_m=(
-            None
-            if prefit_threshold is None
-            else _number(prefit_threshold, "adjustment.prefitGrossThresholdM")
+            None if prefit_threshold is None else _number(prefit_threshold, "adjustment.prefitGrossThresholdM")
         ),
         prefit_gross_threshold_by_station_m=canonical_thresholds or None,
         maximum_linearizations=_integer(
@@ -334,9 +319,7 @@ def parse_adjustment_plan(config: Mapping[str, object]) -> LlrAdjustmentPlan:
             adjustment.get("updateToleranceM", defaults.update_tolerance_m),
             "adjustment.updateToleranceM",
         ),
-        update_tolerance_by_block_m={
-            key: float(value) for key, value in block_tolerances.items()
-        },
+        update_tolerance_by_block_m={key: float(value) for key, value in block_tolerances.items() if value is not None},
         required_consecutive_converged_linearizations=_integer(
             adjustment.get(
                 "requiredConsecutiveConvergedLinearizations",
@@ -352,15 +335,11 @@ def parse_adjustment_plan(config: Mapping[str, object]) -> LlrAdjustmentPlan:
         k0=_number(robust.get("k0", defaults.k0), "robustEstimation.k0"),
         k1=robust_k1,
         minimum_one_minus_leverage=_number(
-            robust.get(
-                "minimumOneMinusLeverage", defaults.minimum_one_minus_leverage
-            ),
+            robust.get("minimumOneMinusLeverage", defaults.minimum_one_minus_leverage),
             "robustEstimation.minimumOneMinusLeverage",
         ),
         minimum_nonzero_robust_factor=_number(
-            robust.get(
-                "activeFactorThreshold", defaults.minimum_nonzero_robust_factor
-            ),
+            robust.get("activeFactorThreshold", defaults.minimum_nonzero_robust_factor),
             "robustEstimation.activeFactorThreshold",
         ),
         minimum_robust_factor_for_convergence=_number(
@@ -379,9 +358,7 @@ def parse_adjustment_plan(config: Mapping[str, object]) -> LlrAdjustmentPlan:
             "initialization.minimumMadCount",
         ),
         minimum_initial_scale=_number(
-            initialization.get(
-                "minimumInitialScale", defaults.minimum_initial_scale
-            ),
+            initialization.get("minimumInitialScale", defaults.minimum_initial_scale),
             "initialization.minimumInitialScale",
         ),
         bias_weight_cap=_number(
@@ -389,15 +366,11 @@ def parse_adjustment_plan(config: Mapping[str, object]) -> LlrAdjustmentPlan:
             "initialization.biasWeightCap",
         ),
         bias_maximum_iterations=_integer(
-            initialization.get(
-                "biasMaximumIterations", defaults.bias_maximum_iterations
-            ),
+            initialization.get("biasMaximumIterations", defaults.bias_maximum_iterations),
             "initialization.biasMaximumIterations",
         ),
         minimum_effective_redundancy=_number(
-            vce.get(
-                "minimumEffectiveRedundancy", defaults.minimum_effective_redundancy
-            ),
+            vce.get("minimumEffectiveRedundancy", defaults.minimum_effective_redundancy),
             "vce.minimumEffectiveRedundancy",
         ),
         scale_log_tolerance=_number(

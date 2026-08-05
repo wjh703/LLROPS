@@ -1,4 +1,5 @@
 """Optional longitude-libration corrections applied to lunar orientation."""
+
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
@@ -6,7 +7,7 @@ from typing import Protocol, runtime_checkable
 import numpy as np
 
 from lunarops.base.epoch import Epoch
-from lunarops import _iers2010
+import lunarops._iers2010 as _iers2010
 
 from .base import LongitudeLibrationCorrectionType, require_tdb_epoch
 
@@ -23,20 +24,15 @@ def normalize_longitude_libration_correction_type(
         return LongitudeLibrationCorrectionType.NONE
     if not isinstance(value, str):
         raise TypeError(
-            "longitude-libration correction type must be a string, "
-            "LongitudeLibrationCorrectionType, or None."
+            "longitude-libration correction type must be a string, LongitudeLibrationCorrectionType, or None."
         )
     text = value.strip().lower()
     try:
         return LongitudeLibrationCorrectionType(text)
     except ValueError:
-        allowed = ", ".join(
-            correction_type.value
-            for correction_type in LongitudeLibrationCorrectionType
-        )
+        allowed = ", ".join(correction_type.value for correction_type in LongitudeLibrationCorrectionType)
         raise ValueError(
-            "Unsupported longitude-libration correction type "
-            f"{value!r}; expected one of: {allowed}."
+            f"Unsupported longitude-libration correction type {value!r}; expected one of: {allowed}."
         ) from None
 
 
@@ -47,8 +43,7 @@ class LongitudeLibrationCorrectionModel(Protocol):
         epoch_tdb: Epoch,
         *,
         j2000_epoch_tdb: Epoch,
-    ) -> float:
-        ...
+    ) -> float: ...
 
 
 class ZeroLongitudeLibrationCorrection:
@@ -78,14 +73,10 @@ class Inpop21aLongitudeLibrationCorrection:
             name="j2000_epoch_tdb",
         )
         julian_centuries_since_j2000 = (
-            (epoch_tdb.jd1 - j2000_epoch_tdb.jd1)
-            + (epoch_tdb.jd2 - j2000_epoch_tdb.jd2)
+            (epoch_tdb.jd1 - j2000_epoch_tdb.jd1) + (epoch_tdb.jd2 - j2000_epoch_tdb.jd2)
         ) / _JULIAN_CENTURY_DAYS
         lunar_anomaly, solar_anomaly, argument_latitude, elongation, _ = (
-            float(argument)
-            for argument in _iers2010.fundarg(
-                float(julian_centuries_since_j2000)
-            )
+            float(argument) for argument in _iers2010.fundarg(float(julian_centuries_since_j2000))
         )
         correction_mas = (
             4.5 * np.cos(solar_anomaly)
@@ -103,9 +94,7 @@ def make_longitude_libration_correction_model(
         return ZeroLongitudeLibrationCorrection()
     if normalized_type is LongitudeLibrationCorrectionType.INPOP21A:
         return Inpop21aLongitudeLibrationCorrection()
-    raise AssertionError(
-        f"Unhandled longitude-libration correction type: {normalized_type!r}"
-    )
+    raise AssertionError(f"Unhandled longitude-libration correction type: {normalized_type!r}")
 
 
 __all__ = [

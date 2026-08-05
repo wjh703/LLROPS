@@ -38,7 +38,7 @@ class _ConstantDisplacement:
 
 def _station_input() -> StationDisplacementInput:
     return StationDisplacementInput(
-        reference_position_itrf_m=[6_378_137.0, 0.0, 0.0],
+        reference_position_itrf_m=np.asarray([6_378_137.0, 0.0, 0.0]),
         epoch_utc=Epoch.from_isot("2000-01-01T00:00:00", scale=TimeScale.UTC),
     )
 
@@ -143,6 +143,7 @@ class _FakeEphemeris(Ephemeris):
     @property
     def source_file_path(self):
         from pathlib import Path
+
         return Path("fake.eph")
 
     def body_state_bcrs(self, body_name, epoch_tdb: Epoch):
@@ -169,9 +170,7 @@ class _FakeEphemeris(Ephemeris):
 
 
 def test_pole_tide_exposes_typed_evaluation_result():
-    model = Iers2010SolidEarthPoleTide(
-        earth_orientation_provider=_FakeEarthOrientation()
-    )
+    model = Iers2010SolidEarthPoleTide(earth_orientation_provider=_FakeEarthOrientation())
     result = model.evaluate(_station_input())
     assert result.displacement_itrf_m.shape == (3,)
     assert result.displacement_enu_m.shape == (3,)
@@ -238,12 +237,7 @@ def test_pole_tide_matches_independent_reference_vector():
 
 def test_ocean_pole_tide_grid_and_model(tmp_path):
     coefficient_file = tmp_path / "ocean_pole_tide.txt"
-    coefficient_file.write_text(
-        "0 -90 1 0 2 0 3 0\n"
-        "180 -90 1 0 2 0 3 0\n"
-        "0 90 1 0 2 0 3 0\n"
-        "180 90 1 0 2 0 3 0\n"
-    )
+    coefficient_file.write_text("0 -90 1 0 2 0 3 0\n180 -90 1 0 2 0 3 0\n0 90 1 0 2 0 3 0\n180 90 1 0 2 0 3 0\n")
     grid = OceanPoleTideGrid(coefficient_file)
     model = Iers2010OceanPoleTide(
         grid=grid,
@@ -310,9 +304,7 @@ def test_ocean_pole_tide_matches_official_test_vectors(
     longitude_rad = np.deg2rad(232.25)
     equatorial_radius_m = 6_378_137.0
     eccentricity_squared = 6.6943799901413165e-3
-    prime_vertical_radius_m = equatorial_radius_m / np.sqrt(
-        1.0 - eccentricity_squared * np.sin(latitude_rad) ** 2
-    )
+    prime_vertical_radius_m = equatorial_radius_m / np.sqrt(1.0 - eccentricity_squared * np.sin(latitude_rad) ** 2)
     station_itrf_m = (
         prime_vertical_radius_m * np.cos(latitude_rad) * np.cos(longitude_rad),
         prime_vertical_radius_m * np.cos(latitude_rad) * np.sin(longitude_rad),

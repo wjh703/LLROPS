@@ -10,7 +10,7 @@ import sys
 import numpy as np
 import pytest
 
-from lunarops import _iers2010
+import lunarops._iers2010 as _iers2010
 
 
 _FCUL_ZD_EXPECTED_M = np.array(
@@ -144,9 +144,13 @@ def test_fundarg_matches_iers_reference_case():
     actual = _iers2010.fundarg(0.07995893223819302)
     np.testing.assert_allclose(
         actual,
-        (2.291187512612069099, 6.212931111003726414,
-         3.658025792050572989, 4.554139562402433228,
-         -0.5167379217231804489),
+        (
+            2.291187512612069099,
+            6.212931111003726414,
+            3.658025792050572989,
+            4.554139562402433228,
+            -0.5167379217231804489,
+        ),
         rtol=0.0,
         atol=2.0e-11,
     )
@@ -353,9 +357,9 @@ def test_installed_iers_sources_match_pinned_hashes():
 
     assert not root.joinpath("HARDISP.F").is_file()
     assert not root.joinpath("LunarOps_HARDISP.F").is_file()
-    license_text = importlib.resources.files("lunarops").joinpath(
-        "_external", "iers2010", "LICENSE"
-    ).read_text(encoding="utf-8")
+    license_text = (
+        importlib.resources.files("lunarops").joinpath("_external", "iers2010", "LICENSE").read_text(encoding="utf-8")
+    )
     assert "IERS Conventions Software License" in license_text
     assert "This notice must be reproduced intact" in license_text
 

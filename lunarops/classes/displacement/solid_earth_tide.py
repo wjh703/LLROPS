@@ -1,9 +1,10 @@
 """IERS 2010 solid-Earth tide station displacement."""
+
 from __future__ import annotations
 
 import numpy as np
 
-from lunarops import _iers2010
+import lunarops._iers2010 as _iers2010
 from lunarops.base.epoch import Epoch, TimeScale
 from lunarops.classes.frames import ReferenceFrameSystem
 
@@ -33,9 +34,7 @@ class Iers2010SolidEarthTide:
         minute = int(minute_text)
         second = float(second_text)
         if second >= 60.0:
-            raise ValueError(
-                "IERS DEHANTTIDEINEL cannot represent an exact UTC leap-second label."
-            )
+            raise ValueError("IERS DEHANTTIDEINEL cannot represent an exact UTC leap-second label.")
         fractional_hour = hour + minute / 60.0 + second / 3600.0
         return year, month, day, fractional_hour
 

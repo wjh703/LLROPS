@@ -24,9 +24,7 @@ ARTIFACT_TYPE = "normalPoint"
 
 def is_normal_point_file(path: str | Path) -> bool:
     source = Path(path)
-    if not source.is_file() or not (
-        source.name.lower().endswith(".txt") or source.name.lower().endswith(".txt.gz")
-    ):
+    if not source.is_file() or not (source.name.lower().endswith(".txt") or source.name.lower().endswith(".txt.gz")):
         return False
     try:
         return read_artifact_type(source) == ARTIFACT_TYPE
@@ -65,9 +63,7 @@ def write_normal_point_file(dataset: NptDataset, path: str | Path) -> Path:
         )
         stream.write("data\n")
         for record in dataset.records:
-            epoch = record.transmit_epoch.require_scale(
-                TimeScale.UTC, name="transmit_epoch"
-            )
+            epoch = record.transmit_epoch.require_scale(TimeScale.UTC, name="transmit_epoch")
             fields = (
                 format_float(epoch.jd1),
                 format_float(epoch.jd2),
@@ -104,17 +100,13 @@ def read_normal_point_file(path: str | Path) -> NptDataset:
         except ValueError as exc:
             raise ValueError(f"Invalid normal-point header in {source}: {exc}") from exc
         if time_scale != "UTC":
-            raise ValueError(
-                f"Normal-point timeScale must be UTC, found {time_scale!r}."
-            )
+            raise ValueError(f"Normal-point timeScale must be UTC, found {time_scale!r}.")
         if min(record_count, input_count, invalid_count) < 0:
             raise ValueError("Normal-point counts must be non-negative.")
         if not dataset_name:
             raise ValueError("Normal-point datasetName must not be empty.")
         if input_count < record_count + invalid_count:
-            raise ValueError(
-                "Normal-point input count must cover valid and invalid records."
-            )
+            raise ValueError("Normal-point input count must cover valid and invalid records.")
         if marker != "data":
             raise ValueError(f"Expected normal-point data marker, found {marker!r}.")
 
@@ -122,9 +114,7 @@ def read_normal_point_file(path: str | Path) -> NptDataset:
         for line_number, line in enumerate(lines, start=1):
             fields = line.split()
             if len(fields) != 13:
-                raise ValueError(
-                    f"Normal-point data row {line_number} has {len(fields)} fields; expected 13."
-                )
+                raise ValueError(f"Normal-point data row {line_number} has {len(fields)} fields; expected 13.")
             try:
                 station_code = None if fields[11] == "~" else decode_token(fields[11])
                 reflector_code = None if fields[12] == "~" else decode_token(fields[12])
@@ -138,14 +128,10 @@ def read_normal_point_file(path: str | Path) -> NptDataset:
                             TimeScale.UTC,
                         ),
                         round_trip_time_s=parse_float(fields[4], field="rtt_s"),
-                        uncertainty_two_way_s=parse_float(
-                            fields[5], field="uncertainty_two_way_s"
-                        ),
+                        uncertainty_two_way_s=parse_float(fields[5], field="uncertainty_two_way_s"),
                         pressure_hpa=parse_float(fields[6], field="pressure_hPa"),
                         temperature_k=parse_float(fields[7], field="temperature_K"),
-                        humidity_percent=parse_float(
-                            fields[8], field="humidity_percent"
-                        ),
+                        humidity_percent=parse_float(fields[8], field="humidity_percent"),
                         wavelength_nm=parse_float(fields[9], field="wavelength_nm"),
                         index=int(fields[10]),
                         station_code=station_code,
@@ -153,13 +139,9 @@ def read_normal_point_file(path: str | Path) -> NptDataset:
                     )
                 )
             except (TypeError, ValueError) as exc:
-                raise ValueError(
-                    f"Invalid normal-point data row {line_number} in {source}: {exc}"
-                ) from exc
+                raise ValueError(f"Invalid normal-point data row {line_number} in {source}: {exc}") from exc
     if len(records) != record_count:
-        raise ValueError(
-            f"Normal-point header declares {record_count} records, found {len(records)}."
-        )
+        raise ValueError(f"Normal-point header declares {record_count} records, found {len(records)}.")
     if len({record.index for record in records}) != len(records):
         raise ValueError("Normal-point file contains duplicate record indices.")
     return NptDataset(

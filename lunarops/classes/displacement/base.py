@@ -1,4 +1,5 @@
 """Core displacement interfaces and immutable evaluation inputs."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -67,14 +68,12 @@ class ReflectorDisplacementInput:
 
 @runtime_checkable
 class StationDisplacement(Protocol):
-    def displacement_itrf_m(self, data: StationDisplacementInput) -> np.ndarray:
-        ...
+    def displacement_itrf_m(self, data: StationDisplacementInput) -> np.ndarray: ...
 
 
 @runtime_checkable
 class ReflectorDisplacement(Protocol):
-    def displacement_lcrs_m(self, data: ReflectorDisplacementInput) -> np.ndarray:
-        ...
+    def displacement_lcrs_m(self, data: ReflectorDisplacementInput) -> np.ndarray: ...
 
 
 class ZeroStationDisplacement:
@@ -93,8 +92,7 @@ class CompositeStationDisplacement:
         for index, component in enumerate(normalized):
             if component is None:
                 raise TypeError(
-                    "CompositeStationDisplacement components cannot contain None; "
-                    f"component {index} is invalid."
+                    f"CompositeStationDisplacement components cannot contain None; component {index} is invalid."
                 )
             if not callable(getattr(component, "displacement_itrf_m", None)):
                 raise TypeError(
@@ -108,14 +106,10 @@ class CompositeStationDisplacement:
         for component in self.components:
             value = np.asarray(component.displacement_itrf_m(data), dtype=float)
             if value.size != 3:
-                raise ValueError(
-                    f"{type(component).__name__}.displacement_itrf_m() must return three values."
-                )
+                raise ValueError(f"{type(component).__name__}.displacement_itrf_m() must return three values.")
             value = value.reshape(3)
             if not np.all(np.isfinite(value)):
-                raise ValueError(
-                    f"{type(component).__name__}.displacement_itrf_m() returned non-finite values."
-                )
+                raise ValueError(f"{type(component).__name__}.displacement_itrf_m() returned non-finite values.")
             total += value
         return total
 

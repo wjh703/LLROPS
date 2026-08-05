@@ -49,11 +49,7 @@ class NptRecord:
         if not math.isfinite(humidity) or not 0.0 <= humidity <= 100.0:
             raise ValueError("humidity_percent must be finite and in [0, 100].")
         self.humidity_percent = humidity
-        if (
-            isinstance(self.index, bool)
-            or not isinstance(self.index, int)
-            or self.index < 0
-        ):
+        if isinstance(self.index, bool) or not isinstance(self.index, int) or self.index < 0:
             raise ValueError("Normal-point index must be a non-negative integer.")
         self.index = int(self.index)
         self.station_code = _optional_text(self.station_code)
@@ -93,9 +89,7 @@ class NptDataset:
         n_invalid_records: int = 0,
         import_issues: Optional[List[dict[str, object]]] = None,
     ) -> None:
-        if not isinstance(records, list) or not all(
-            isinstance(record, NptRecord) for record in records
-        ):
+        if not isinstance(records, list) or not all(isinstance(record, NptRecord) for record in records):
             raise TypeError("NptDataset.records must be a list of NptRecord objects.")
         input_count = int(n_input_records)
         invalid_count = int(n_invalid_records)
@@ -104,9 +98,7 @@ class NptDataset:
         if input_count == 0 and records and invalid_count == 0:
             input_count = len(records)
         if invalid_count < 0 or input_count < len(records) + invalid_count:
-            raise ValueError(
-                "Normal-point input count must cover valid and invalid records."
-            )
+            raise ValueError("Normal-point input count must cover valid and invalid records.")
         self.records = records
         self.name = name
         self.n_input_records = input_count
@@ -115,9 +107,7 @@ class NptDataset:
         if not all(isinstance(issue, dict) for issue in issues):
             raise TypeError("Normal-point import issues must be mappings.")
         if len(issues) > invalid_count:
-            raise ValueError(
-                "Normal-point import issues cannot exceed the invalid-record count."
-            )
+            raise ValueError("Normal-point import issues cannot exceed the invalid-record count.")
         self.import_issues = issues
 
     def __repr__(self) -> str:

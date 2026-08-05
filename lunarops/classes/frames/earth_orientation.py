@@ -1,4 +1,5 @@
 """Explicit Earth-orientation data sources used by ERFA frame transforms."""
+
 from __future__ import annotations
 
 import warnings
@@ -6,7 +7,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Mapping, Sequence
-from typing import Literal
+from typing import Literal, TypeGuard, cast
 
 import erfa
 import numpy as np
@@ -65,17 +66,17 @@ class EarthOrientationSample:
                 raise ValueError(f"{name} must be finite.")
             object.__setattr__(self, name, value)
 
+
 DuplicateMjdPolicy = Literal["error", "first", "last", "mean"]
 
 
 def _parse_duplicate_mjd_policy(value: str | None) -> DuplicateMjdPolicy:
     policy = str(value or "error").strip().lower()
     if policy not in {"error", "first", "last", "mean"}:
-        raise ValueError(
-            "duplicateMjdPolicy must be one of 'error', 'first', 'last', or 'mean', "
-            f"got {value!r}."
-        )
-    return policy  # type: ignore[return-value]
+        raise ValueError(f"duplicateMjdPolicy must be one of 'error', 'first', 'last', or 'mean', got {value!r}.")
+    # The membership check above validates the runtime string; the cast tells
+    # static type checkers that it is now one of the allowed literal values.
+    return cast(DuplicateMjdPolicy, policy)
 
 
 def _deduplicate_samples(
@@ -84,9 +85,11 @@ def _deduplicate_samples(
     policy: DuplicateMjdPolicy,
 ) -> tuple[EarthOrientationSample, ...]:
     if policy == "error":
-        mjd = np.array([sample.mjd_utc for sample in sorted_samples], dtype=float)
-        if np.unique(mjd).size != mjd.size:
-            duplicate_values = sorted({float(value) for value in mjd if np.count_nonzero(mjd == value) > 1})
+        mjd_values = np.array([sample.mjd_utc for sample in sorted_samples], dtype=float)
+        if np.unique(mjd_values).size != mjd_values.size:
+            duplicate_values = sorted(
+                {float(value) for value in mjd_values if np.count_nonzero(mjd_values == value) > 1}
+            )
             preview = ", ".join(f"{value:.1f}" for value in duplicate_values[:10])
             suffix = "" if len(duplicate_values) <= 10 else f", ... ({len(duplicate_values)} duplicate MJDs)"
             raise ValueError(
@@ -130,12 +133,10 @@ class EarthOrientationProvider(ABC):
 
     @property
     @abstractmethod
-    def source_file_path(self) -> Path | None:
-        ...
+    def source_file_path(self) -> Path | None: ...
 
     @abstractmethod
-    def polar_motion(self, epoch_utc: Epoch) -> PolarMotion:
-        ...
+    def polar_motion(self, epoch_utc: Epoch) -> PolarMotion: ...
 
     def celestial_pole_offsets(self, epoch_utc: Epoch) -> CelestialPoleOffsets:
         if not isinstance(epoch_utc, Epoch):
@@ -144,8 +145,7 @@ class EarthOrientationProvider(ABC):
         return CelestialPoleOffsets(0.0, 0.0)
 
     @abstractmethod
-    def ut1_minus_utc_s(self, epoch_utc: Epoch) -> float:
-        ...
+    def ut1_minus_utc_s(self, epoch_utc: Epoch) -> float: ...
 
     def close(self) -> None:
         """Release resources; the default implementation owns none."""
@@ -154,6 +154,8 @@ class EarthOrientationProvider(ABC):
 
 class TabulatedEarthOrientation(EarthOrientationProvider):
     """Linearly interpolated Earth-orientation table."""
+
+    _duplicate_mjd_policy: DuplicateMjdPolicy
 
     __slots__ = (
         "_source_file_path",
@@ -246,10 +248,7 @@ class TabulatedEarthOrientation(EarthOrientationProvider):
         if any(not np.all(np.isfinite(values)) for values in columns):
             raise ValueError("Broadcast EOP columns contain non-finite values.")
         if np.any(np.diff(columns[0]) <= 0.0):
-            raise ValueError(
-                "Broadcast EOP MJD values must be strictly increasing after "
-                "rank-0 duplicate handling."
-            )
+            raise ValueError("Broadcast EOP MJD values must be strictly increasing after rank-0 duplicate handling.")
 
         self = cls.__new__(cls)
         for name, values in zip(("_mjd", "_xp_arcsec", "_yp_arcsec"), columns[:3]):
@@ -287,15 +286,23 @@ class TabulatedEarthOrientation(EarthOrientationProvider):
     ) -> "TabulatedEarthOrientation":
         if not isinstance(payload, Mapping) or payload.get("kind") != "iersC04Arrays":
             raise ValueError("Invalid MPI Earth-orientation payload.")
+        required = ("mjdUtc", "xpArcsec", "ypArcsec", "ut1MinusUtcSec")
+        if any(key not in payload for key in required):
+            raise ValueError("MPI Earth-orientation payload is missing required columns.")
+        source_file = payload.get("sourceFile")
+        if source_file is not None and not isinstance(source_file, (str, Path)):
+            raise TypeError("MPI Earth-orientation sourceFile must be a path string.")
         return cls.from_columns(
-            payload["mjdUtc"],
-            payload["xpArcsec"],
-            payload["ypArcsec"],
-            payload["ut1MinusUtcSec"],
-            payload.get("dxArcsec"),
-            payload.get("dyArcsec"),
-            source_file_path=payload.get("sourceFile"),
-            duplicate_mjd_policy=payload.get("duplicateMjdPolicy", "error"),
+            cast(ArrayLike, payload["mjdUtc"]),
+            cast(ArrayLike, payload["xpArcsec"]),
+            cast(ArrayLike, payload["ypArcsec"]),
+            cast(ArrayLike, payload["ut1MinusUtcSec"]),
+            cast(ArrayLike | None, payload.get("dxArcsec")),
+            cast(ArrayLike | None, payload.get("dyArcsec")),
+            source_file_path=source_file,
+            duplicate_mjd_policy=_parse_duplicate_mjd_policy(
+                cast(str | None, payload.get("duplicateMjdPolicy", "error"))
+            ),
         )
 
     @property
@@ -396,7 +403,7 @@ def _is_int_token(value: str) -> bool:
     return value.lstrip("+-").isdigit()
 
 
-def _is_mjd(value: float | None) -> bool:
+def _is_mjd(value: float | None) -> TypeGuard[float]:
     return value is not None and 15_000.0 < value < 90_000.0
 
 
@@ -456,7 +463,11 @@ def _parse_finals_row(parts: list[str], mjd_index: int, mjd: float) -> EarthOrie
             if sample is not None:
                 return sample
 
-    numeric_after = [(index, value) for index in range(mjd_index + 1, len(parts)) if (value := _float_or_none(parts[index])) is not None]
+    numeric_after = [
+        (index, value)
+        for index in range(mjd_index + 1, len(parts))
+        if (value := _float_or_none(parts[index])) is not None
+    ]
 
     # Unflagged finals-style layout with interleaved errors.
     if len(numeric_after) >= 5:

@@ -92,6 +92,11 @@ python_sources = run_command(
 py.install_sources(python_sources, pure: false, preserve_path: true)
 
 install_data(
+  'lunarops/_iers2010.pyi',
+  install_dir: join_paths(py.get_install_dir(), 'lunarops'),
+)
+
+install_data(
   iers_fortran_sources,
   install_dir: join_paths(
     py.get_install_dir(),

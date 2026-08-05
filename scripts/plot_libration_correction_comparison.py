@@ -16,12 +16,8 @@ import matplotlib.pyplot as plt
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_WITH_CORRECTION = (
-    PROJECT_ROOT / "output" / "oc_residuals_w_libration_correction.csv"
-)
-DEFAULT_WITHOUT_CORRECTION = (
-    PROJECT_ROOT / "output" / "oc_residuals_wo_libration_correction.csv"
-)
+DEFAULT_WITH_CORRECTION = PROJECT_ROOT / "output" / "oc_residuals_w_libration_correction.csv"
+DEFAULT_WITHOUT_CORRECTION = PROJECT_ROOT / "output" / "oc_residuals_wo_libration_correction.csv"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "output" / "libration_correction_comparison"
 
 KEY_FIELDS = (
@@ -33,7 +29,7 @@ KEY_FIELDS = (
 REQUIRED_FIELDS = set(KEY_FIELDS) | {
     "station_name",
     "oc_one_way_m",
-    "converged",
+    "light_time_converged",
     "status",
 }
 
@@ -57,6 +53,7 @@ class Comparison:
     timestamp: datetime
     with_correction_m: float
     without_correction_m: float
+
 
 STATIONS = (
     Station("APOL", "Apache", "apache_libration_correction_comparison.png"),
@@ -110,9 +107,7 @@ def parse_timestamp(value: str, *, path: Path, row_number: int) -> datetime:
     try:
         timestamp = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
     except ValueError as exc:
-        raise ValueError(
-            f"{path}:{row_number}: invalid obs_time_utc value {value!r}"
-        ) from exc
+        raise ValueError(f"{path}:{row_number}: invalid obs_time_utc value {value!r}") from exc
     if timestamp.tzinfo is None:
         return timestamp.replace(tzinfo=UTC)
     return timestamp.astimezone(UTC)
@@ -137,38 +132,28 @@ def load_residuals(
         reader = csv.DictReader(stream)
         missing_fields = REQUIRED_FIELDS - set(reader.fieldnames or ())
         if missing_fields:
-            raise ValueError(
-                f"{path} is missing required CSV fields: "
-                f"{', '.join(sorted(missing_fields))}"
-            )
+            raise ValueError(f"{path} is missing required CSV fields: {', '.join(sorted(missing_fields))}")
 
         for row_number, row in enumerate(reader, start=2):
-            timestamp = parse_timestamp(
-                row["obs_time_utc"], path=path, row_number=row_number
-            )
+            timestamp = parse_timestamp(row["obs_time_utc"], path=path, row_number=row_number)
             if not start_date <= timestamp.date() <= end_date:
                 continue
             if row["station_name"] not in station_names:
                 continue
-            if (
-                row["status"].strip().lower() != "ok"
-                or row["converged"].strip().lower() not in {"true", "1", "yes"}
-            ):
+            if row["status"].strip().lower() != "ok" or row["light_time_converged"].strip().lower() not in {
+                "true",
+                "1",
+                "yes",
+            }:
                 skipped_unsuccessful += 1
                 continue
 
             try:
                 residual_m = float(row["oc_one_way_m"])
             except ValueError as exc:
-                raise ValueError(
-                    f"{path}:{row_number}: invalid oc_one_way_m value "
-                    f"{row['oc_one_way_m']!r}"
-                ) from exc
+                raise ValueError(f"{path}:{row_number}: invalid oc_one_way_m value {row['oc_one_way_m']!r}") from exc
             if not math.isfinite(residual_m):
-                raise ValueError(
-                    f"{path}:{row_number}: non-finite oc_one_way_m value "
-                    f"{row['oc_one_way_m']!r}"
-                )
+                raise ValueError(f"{path}:{row_number}: non-finite oc_one_way_m value {row['oc_one_way_m']!r}")
 
             key = tuple(row[field] for field in KEY_FIELDS)
             if key in residuals:
@@ -205,7 +190,7 @@ def pair_residuals(
             stacklevel=2,
         )
 
-    paired = {station.csv_name: [] for station in STATIONS}
+    paired: dict[str, list[Comparison]] = {station.csv_name: [] for station in STATIONS}
     for key in with_correction.keys() & without_correction.keys():
         corrected = with_correction[key]
         uncorrected = without_correction[key]
@@ -225,9 +210,7 @@ def pair_residuals(
     for station in STATIONS:
         paired[station.csv_name].sort(key=lambda item: item.timestamp)
         if not paired[station.csv_name]:
-            raise ValueError(
-                f"No {station.csv_name!r} observations found in the selected date range."
-            )
+            raise ValueError(f"No {station.csv_name!r} observations found in the selected date range.")
     return paired
 
 
@@ -245,37 +228,25 @@ def render_station_plot(
             plot_data.append((item.timestamp, corrected_cm, uncorrected_cm))
 
     if not plot_data:
-        raise ValueError(
-            f"No {station.csv_name!r} paired observations remain within +/-12 cm."
-        )
+        raise ValueError(f"No {station.csv_name!r} paired observations remain within +/-12 cm.")
 
     timestamps = [item[0] for item in plot_data]
-    corrected_cm = [item[1] for item in plot_data]
-    uncorrected_cm = [item[2] for item in plot_data]
-    corrected_rms_cm = math.sqrt(
-        sum(value * value for value in corrected_cm) / len(corrected_cm)
-    )
-    uncorrected_rms_cm = math.sqrt(
-        sum(value * value for value in uncorrected_cm) / len(uncorrected_cm)
-    )
+    corrected_values_cm = [item[1] for item in plot_data]
+    uncorrected_values_cm = [item[2] for item in plot_data]
+    corrected_rms_cm = math.sqrt(sum(value * value for value in corrected_values_cm) / len(corrected_values_cm))
+    uncorrected_rms_cm = math.sqrt(sum(value * value for value in uncorrected_values_cm) / len(uncorrected_values_cm))
+    plot_dates = mdates.date2num(timestamps)
 
     fig, ax = plt.subplots(figsize=(8, 5), constrained_layout=True)
     ax.scatter(
-        timestamps,
-        uncorrected_cm,
+        plot_dates,
+        uncorrected_values_cm,
         s=15,
         alpha=1,
         label="Without libration correction",
         color="k",
     )
-    ax.scatter(
-        timestamps,
-        corrected_cm,
-        s=15,
-        alpha=1,
-        label="With libration correction",
-        color="red"
-    )
+    ax.scatter(plot_dates, corrected_values_cm, s=15, alpha=1, label="With libration correction", color="red")
 
     ax.set_title(station.display_name, pad=1, fontsize=18)
     ax.set_ylabel("One-way O-C residual (cm)", fontsize=18, labelpad=1)
@@ -311,6 +282,7 @@ def render_station_plot(
         f"without RMS {uncorrected_rms_cm:.3f} cm"
     )
     print(f"  wrote {output_path}")
+
 
 def main() -> int:
     args = parse_args()

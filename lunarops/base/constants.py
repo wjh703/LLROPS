@@ -3,6 +3,7 @@
 Keep this module deliberately small: it is imported by nearly every layer.
 Model-specific constants live with the model that owns their convention.
 """
+
 from __future__ import annotations
 
 C = 299_792_458.0

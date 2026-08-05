@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Hashable, Mapping, Optional, Sequence
+from typing import Hashable, Mapping, Optional, Sequence, cast
 
 import numpy as np
 
@@ -37,14 +37,12 @@ def prefit_gross_rejections(
 ) -> dict[ObsKey, float]:
     rejected: dict[ObsKey, float] = {}
     for equation in equations:
-        threshold = prefit_gross_threshold(
-            equation, threshold_m, threshold_by_station_m
-        )
+        threshold = prefit_gross_threshold(equation, threshold_m, threshold_by_station_m)
         if threshold is None:
             continue
         residual = float(parametrization.reduced_observation(equation))
         if abs(residual) > threshold:
-            rejected[equation.identity] = residual
+            rejected[equation.observation_id] = residual
     return rejected
 
 
@@ -62,8 +60,8 @@ def floor_prefit_uncertainties(
     """Apply a fixed prefit sigma floor within each variance-component group."""
     grouped_sigmas: dict[str, list[float]] = {}
     for equation in equations:
-        component_id = assignments[equation.identity]
-        grouped_sigmas.setdefault(component_id, []).append(float(equation.sigma_m))
+        component_id = assignments[equation.observation_id]
+        grouped_sigmas.setdefault(component_id, []).append(float(equation.sigma_one_way_m))
 
     group_diagnostics: dict[str, dict[str, object]] = {}
     for component_id, values in grouped_sigmas.items():
@@ -80,9 +78,9 @@ def floor_prefit_uncertainties(
     adjusted: list[ObservationEquation] = []
     records: dict[ObsKey, dict[str, object]] = {}
     for equation in equations:
-        component_id = assignments[equation.identity]
-        reported = float(equation.sigma_m)
-        floor = group_diagnostics[component_id]["sigma_floor_m"]
+        component_id = assignments[equation.observation_id]
+        reported = float(equation.sigma_one_way_m)
+        floor = cast(float, group_diagnostics[component_id]["sigma_floor_m"])
         effective = max(reported, floor)
         floored = effective > reported
         qc = {
@@ -93,17 +91,13 @@ def floor_prefit_uncertainties(
             "status": "FLOORED" if floored else "UNCHANGED",
             "reason": "BELOW_PREFIT_UNCERTAINTY_FLOOR" if floored else None,
         }
-        records[equation.identity] = qc
-        adjusted.append(replace(equation, sigma_m=effective))
+        records[equation.observation_id] = qc
+        adjusted.append(replace(equation, sigma_one_way_m=effective))
 
     for component_id, diagnostics in group_diagnostics.items():
-        component_records = [
-            item for item in records.values() if item["component_id"] == component_id
-        ]
+        component_records = [item for item in records.values() if item["component_id"] == component_id]
         diagnostics["observation_count"] = len(component_records)
-        diagnostics["floored_count"] = sum(
-            item["status"] == "FLOORED" for item in component_records
-        )
+        diagnostics["floored_count"] = sum(item["status"] == "FLOORED" for item in component_records)
     return adjusted, records, group_diagnostics
 
 
@@ -120,9 +114,9 @@ def initialize_mad_scales(
     for component in components:
         values = np.asarray(
             [
-                parametrization.reduced_observation(eq) / eq.sigma_m
+                parametrization.reduced_observation(eq) / eq.sigma_one_way_m
                 for eq in equations
-                if assignments[eq.identity] == component.id
+                if assignments[eq.observation_id] == component.id
             ],
             dtype=float,
         )
@@ -131,11 +125,7 @@ def initialize_mad_scales(
             continue
         median = float(np.median(values))
         scale = 1.4826 * float(np.median(np.abs(values - median)))
-        scales[component.id] = (
-            minimum_scale
-            if not np.isfinite(scale) or scale <= 0.0
-            else max(minimum_scale, scale)
-        )
+        scales[component.id] = minimum_scale if not np.isfinite(scale) or scale <= 0.0 else max(minimum_scale, scale)
     return scales
 
 

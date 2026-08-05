@@ -20,9 +20,7 @@ from lunarops.programs.specs import OBSERVATION_PROGRAM_KEYS
         name="LlrResiduals",
         summary="Evaluate LLR O-C residuals and diagnostics.",
         inputs=(ArtifactSlot("inputFilesNormalPoints", "NormalPointFile", many=True),),
-        outputs=(
-            ArtifactSlot("outputFileObservationResults", "ObservationResultFile"),
-        ),
+        outputs=(ArtifactSlot("outputFileObservationResults", "ObservationResultFile"),),
         optional_keys=(
             *OBSERVATION_PROGRAM_KEYS,
             "outputLevel",
@@ -37,6 +35,7 @@ def llr_residuals(config: dict, context: RunContext):
     options = make_processing_options(config)
     table_level = output_level(config)
 
+    results_by_file: Dict[str, list]
     runtime = context.runtime
     if runtime is not None and runtime.has_workers:
         from lunarops.parallel.mpi import make_observation_spec, mpi_observation_rows
@@ -54,17 +53,15 @@ def llr_residuals(config: dict, context: RunContext):
         )
     else:
         processor = build_processor(config, context)
-        results_by_file: Dict[str, list] = {
-            source_name: processor.rows(dataset, options=options, level=table_level)
+        results_by_file = {
+            source_name: processor.rows(dataset, options=options, detail=table_level)
             for source_name, dataset in datasets.items()
         }
 
     output = context.resolve_path(config["outputFileObservationResults"])
     write_observation_results(results_by_file, output)
     total = sum(len(rows) for rows in results_by_file.values())
-    print(
-        f"[LlrResiduals] {total} normal point(s) over {len(results_by_file)} source(s) -> {output}"
-    )
+    print(f"[LlrResiduals] {total} normal point(s) over {len(results_by_file)} source(s) -> {output}")
     return results_by_file
 
 

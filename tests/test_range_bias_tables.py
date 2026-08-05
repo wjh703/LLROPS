@@ -17,9 +17,9 @@ def test_inpop21a_is_the_explicit_name_for_the_builtin_table():
 
 def test_builtin_range_bias_table_lookup_and_summary():
     epoch = Epoch.from_isot("2008-01-01T00:00:00", scale=TimeScale.UTC)
-    assert INPOP21_RANGE_BIAS_TABLE.two_way_cm(
-        ["7045"], epoch
-    ) == INPOP21_RANGE_BIAS_TABLE.two_way_cm(["APOLLO"], epoch)
+    assert INPOP21_RANGE_BIAS_TABLE.two_way_cm(["7045"], epoch) == INPOP21_RANGE_BIAS_TABLE.two_way_cm(
+        ["APOLLO"], epoch
+    )
     assert "APOLLO" in INPOP21_RANGE_BIAS_TABLE.coverage_summary()
 
 

@@ -45,9 +45,7 @@ class RangeBiasEntry:
     def __post_init__(self) -> None:
         if not isinstance(self.station, str):
             raise TypeError("RangeBiasEntry.station must be a string.")
-        if isinstance(self.bias_two_way_cm, bool) or not isinstance(
-            self.bias_two_way_cm, (int, float)
-        ):
+        if isinstance(self.bias_two_way_cm, bool) or not isinstance(self.bias_two_way_cm, (int, float)):
             raise TypeError("RangeBiasEntry.bias_two_way_cm must be a number.")
         if self.source is not None and not isinstance(self.source, str):
             raise TypeError("RangeBiasEntry.source must be a string or null.")
@@ -100,6 +98,7 @@ class RangeBiasEntry:
             bias_two_way_cm=bias,
             source=default_source if item_source is None else item_source,
         )
+
 
 def _d(value: str) -> date:
     return datetime.strptime(value, "%Y/%m/%d").date()
@@ -160,7 +159,10 @@ class RangeBiasTable:
         object.__setattr__(
             self,
             "_by_station",
-            {station: tuple(sorted(items, key=lambda item: (item.start, item.end))) for station, items in by_station.items()},
+            {
+                station: tuple(sorted(items, key=lambda item: (item.start, item.end)))
+                for station, items in by_station.items()
+            },
         )
 
     def canonical_station(self, value: object) -> Optional[str]:
@@ -176,7 +178,9 @@ class RangeBiasTable:
                 return station
         return None
 
-    def active_entries(self, station_values: Sequence[object] | object, obs_epoch_utc: Epoch) -> tuple[RangeBiasEntry, ...]:
+    def active_entries(
+        self, station_values: Sequence[object] | object, obs_epoch_utc: Epoch
+    ) -> tuple[RangeBiasEntry, ...]:
         station = self.station_from_candidates(station_values)
         if station is None:
             return ()
@@ -205,10 +209,7 @@ class RangeBiasTable:
             raise ValueError("Range-bias table config requires a 'biases' list.")
         if not isinstance(raw_biases, list):
             raise TypeError("Range-bias 'biases' must be a list of rows.")
-        entries = tuple(
-            RangeBiasEntry.from_config_item(item, default_source=source)
-            for item in raw_biases
-        )
+        entries = tuple(RangeBiasEntry.from_config_item(item, default_source=source) for item in raw_biases)
         return cls(entries=entries, source=source)
 
 

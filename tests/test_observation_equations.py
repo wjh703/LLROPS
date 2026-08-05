@@ -9,18 +9,18 @@ _UTC_EPOCH = Epoch(2458849.5, 0.0, TimeScale.UTC)
 
 def test_observation_equation_normalizes_and_freezes_partials():
     equation = ObservationEquation(
-        observed_minus_computed_m=0.25,
-        sigma_m=0.01,
-        partials={"geometry": [1.0, 2.0, 3.0]},
-        identity=7,
+        observed_minus_computed_one_way_m=0.25,
+        sigma_one_way_m=0.01,
+        design_partials={"geometry": [1.0, 2.0, 3.0]},
+        observation_id=7,
         station_key="STA",
         reflector_key="REF",
-        epoch=_UTC_EPOCH,
+        transmit_epoch_utc=_UTC_EPOCH,
         wavelength_nm=532.0,
     )
 
-    assert equation.observed_minus_computed_m == 0.25
-    assert equation.epoch is _UTC_EPOCH
-    assert np.allclose(equation.partials["geometry"], [1.0, 2.0, 3.0])
+    assert equation.observed_minus_computed_one_way_m == 0.25
+    assert equation.transmit_epoch_utc is _UTC_EPOCH
+    assert np.allclose(equation.design_partials["geometry"], [1.0, 2.0, 3.0])
     with pytest.raises(ValueError):
-        equation.partials["geometry"][0] = 9.0
+        equation.design_partials["geometry"][0] = 9.0

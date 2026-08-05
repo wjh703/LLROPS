@@ -5,11 +5,11 @@ UTC<->TT is handled by the ERFA-backed routines in
 configured ephemeris target-16 table and, optionally, the topocentric
 ``v_E dot X / c^2`` term.
 """
+
 from __future__ import annotations
 
-from typing import Sequence
-
 import numpy as np
+from numpy.typing import ArrayLike
 
 from lunarops.base.constants import C2
 from lunarops.base.epoch import Epoch, TimeScale, tt2utc as _tt2utc, utc2tt as _utc2tt
@@ -50,15 +50,13 @@ class TimeScaleConverter:
         self,
         epoch_tdb: Epoch,
         *,
-        station_gcrs_m: Sequence[float] | None = None,
+        station_gcrs_m: ArrayLike | None = None,
     ) -> float:
         epoch_tdb.require_scale(TimeScale.TDB, name="epoch_tdb")
         ephemeris = self._require_ephemeris()
         geocentric = ephemeris.geocentric_tdb_minus_tt_s(epoch_tdb)
         if geocentric is None:
-            raise RuntimeError(
-                "The configured ephemeris does not provide a TDB-TT table."
-            )
+            raise RuntimeError("The configured ephemeris does not provide a TDB-TT table.")
         correction = 0.0
         if station_gcrs_m is not None:
             station = vector3(station_gcrs_m, name="station_gcrs_m")
@@ -73,7 +71,7 @@ class TimeScaleConverter:
         self,
         epoch_tdb: Epoch,
         *,
-        station_gcrs_m: Sequence[float] | None = None,
+        station_gcrs_m: ArrayLike | None = None,
     ) -> Epoch:
         epoch_tdb.require_scale(TimeScale.TDB, name="epoch_tdb")
         delta_s = self.tdb_minus_tt_s(
@@ -87,7 +85,7 @@ class TimeScaleConverter:
         self,
         epoch_tt: Epoch,
         *,
-        station_gcrs_m: Sequence[float] | None = None,
+        station_gcrs_m: ArrayLike | None = None,
     ) -> Epoch:
         epoch_tt.require_scale(TimeScale.TT, name="epoch_tt")
         current = Epoch(epoch_tt.jd1, epoch_tt.jd2, TimeScale.TDB)
@@ -108,7 +106,7 @@ class TimeScaleConverter:
         epoch: Epoch,
         scale: TimeScale | str,
         *,
-        station_gcrs_m: Sequence[float] | None = None,
+        station_gcrs_m: ArrayLike | None = None,
     ) -> Epoch:
         target = TimeScale.parse(scale)
         if epoch.scale is target:
@@ -127,9 +125,8 @@ class TimeScaleConverter:
                 station_gcrs_m=station_gcrs_m,
             )
         if epoch.scale is TimeScale.TDB and target is TimeScale.UTC:
-            return self.tt2utc(
-                self.tdb2tt(epoch, station_gcrs_m=station_gcrs_m)
-            )
+            return self.tt2utc(self.tdb2tt(epoch, station_gcrs_m=station_gcrs_m))
         raise AssertionError("Unhandled time-scale conversion.")
+
 
 __all__ = ["TimeScaleConverter"]

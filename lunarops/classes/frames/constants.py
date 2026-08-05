@@ -1,4 +1,5 @@
 """Reference-ellipsoid constants used by terrestrial-frame geometry."""
+
 from __future__ import annotations
 
 WGS84_SEMI_MAJOR_AXIS_M = 6378137.0

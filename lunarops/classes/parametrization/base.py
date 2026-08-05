@@ -13,6 +13,7 @@ The estimator (:mod:`lunarops.estimation.adjustment_solver`) and the
 normal-equation builder are generic over the parametrization list — adding EOP,
 Love-number or orbit-state parameters never touches them.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -60,7 +61,7 @@ class Parametrization:
         return [(int(index), float(columns[index])) for index in np.flatnonzero(columns)]
 
     def reduce_observation(self, eq: ObservationEquation) -> float:
-        """Amount to subtract from ``eq.observed_minus_computed_m`` for the *current* parameter
+        """Amount to subtract from ``eq.observed_minus_computed_one_way_m`` for the *current* parameter
         values (linearization point), e.g. the currently accumulated station
         bias.  Default 0."""
         return 0.0
@@ -165,21 +166,16 @@ class ParametrizationList:
             columns = np.asarray(block.design_columns(eq), dtype=float).reshape(-1)
             if columns.size != expected:
                 raise ValueError(
-                    f"{type(block).__name__}.design_columns() returned {columns.size} "
-                    f"columns, expected {expected}."
+                    f"{type(block).__name__}.design_columns() returned {columns.size} columns, expected {expected}."
                 )
-            return [
-                (block_slice.start + int(index), float(columns[index]))
-                for index in np.flatnonzero(columns)
-            ]
+            return [(block_slice.start + int(index), float(columns[index])) for index in np.flatnonzero(columns)]
 
         entries: list[tuple[int, float]] = []
         for local_index, value in block.design_entries(eq):
             index = int(local_index)
             if index < 0 or index >= expected:
                 raise ValueError(
-                    f"{type(block).__name__}.design_entries() returned local "
-                    f"column {index}, expected [0, {expected})."
+                    f"{type(block).__name__}.design_entries() returned local column {index}, expected [0, {expected})."
                 )
             scalar = float(value)
             if scalar:
@@ -205,7 +201,7 @@ class ParametrizationList:
         return float(sum(values[index] * value for index, value in self.design_entries(eq)))
 
     def reduced_observation(self, eq: ObservationEquation) -> float:
-        return float(eq.observed_minus_computed_m) - sum(block.reduce_observation(eq) for block in self.blocks)
+        return float(eq.observed_minus_computed_one_way_m) - sum(block.reduce_observation(eq) for block in self.blocks)
 
     def split(self, delta: np.ndarray) -> List[np.ndarray]:
         self._ensure_layout()

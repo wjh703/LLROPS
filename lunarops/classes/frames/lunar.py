@@ -1,9 +1,9 @@
 """Lunar principal-axis and LCRS rotations."""
+
 from __future__ import annotations
 
-from typing import Sequence
-
 import numpy as np
+from numpy.typing import ArrayLike
 
 from lunarops.base.epoch import Epoch
 from lunarops.classes.ephemerides import Ephemeris, require_tdb_epoch
@@ -17,14 +17,14 @@ class LunarFrameTransform:
             raise TypeError("ephemeris must implement Ephemeris.")
         self.ephemeris = ephemeris
 
-    def pa2lcrs(self, position_pa_m: Sequence[float], epoch_tdb: Epoch) -> np.ndarray:
+    def pa2lcrs(self, position_pa_m: ArrayLike, epoch_tdb: Epoch) -> np.ndarray:
         epoch = require_tdb_epoch(epoch_tdb, name="epoch_tdb")
         return self.ephemeris.pa2lcrs_matrix(epoch) @ vector3(
             position_pa_m,
             name="position_pa_m",
         )
 
-    def lcrs2pa(self, position_lcrs_m: Sequence[float], epoch_tdb: Epoch) -> np.ndarray:
+    def lcrs2pa(self, position_lcrs_m: ArrayLike, epoch_tdb: Epoch) -> np.ndarray:
         epoch = require_tdb_epoch(epoch_tdb, name="epoch_tdb")
         return self.ephemeris.pa2lcrs_matrix(epoch).T @ vector3(
             position_lcrs_m,

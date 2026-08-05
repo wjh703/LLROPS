@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import math
-from typing import Sequence
+from numpy.typing import ArrayLike
 
 from lunarops.base.epoch import Epoch
 
@@ -14,8 +14,8 @@ class GravitationalDelay(ABC):
     @abstractmethod
     def path_delay_m(
         self,
-        transmitter_bcrs_m: Sequence[float],
-        receiver_bcrs_m: Sequence[float],
+        transmitter_bcrs_m: ArrayLike,
+        receiver_bcrs_m: ArrayLike,
         epoch_tdb: Epoch,
     ) -> float:
         """Return the one-way equivalent path delay in meters."""

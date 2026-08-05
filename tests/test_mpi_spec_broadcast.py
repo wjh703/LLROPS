@@ -142,9 +142,7 @@ def test_single_rank_spec_uses_serial_cache(monkeypatch):
 
     monkeypatch.setattr(
         "lunarops.parallel.mpi._processor_for_task",
-        lambda cache, prepared_spec: cache.setdefault(
-            ("processor", prepared_spec["specId"]), processor
-        ),
+        lambda cache, prepared_spec: cache.setdefault(("processor", prepared_spec["specId"]), processor),
     )
 
     assert runtime.prepare_observation_spec(spec) is True

@@ -27,7 +27,7 @@ Caveats:
 from __future__ import annotations
 
 import gzip
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Sequence
 
@@ -129,14 +129,8 @@ class _CrdSession:
     target_name: str = ""
     start_epoch: Optional[Epoch] = None
     wavelength_nm: Optional[float] = None
-    normal_points: List[_CrdNormalPoint] = None
-    meteo: List[_CrdMeteo] = None
-
-    def __post_init__(self):
-        if self.normal_points is None:
-            self.normal_points = []
-        if self.meteo is None:
-            self.meteo = []
+    normal_points: List[_CrdNormalPoint] = field(default_factory=list)
+    meteo: List[_CrdMeteo] = field(default_factory=list)
 
 
 def _circular_distance(a: float, b: float) -> float:
@@ -204,11 +198,7 @@ def parse_crd_sessions(path) -> List[_CrdSession]:
                 np_window = _to_float(fields[5]) if len(fields) > 5 else None
                 n_ranges = _to_int(fields[6]) if len(fields) > 6 else None
                 bin_rms = _to_float(fields[7]) if len(fields) > 7 else None
-                snr = (
-                    _to_float(fields[13])
-                    if (crd_version >= 2 and len(fields) > 13)
-                    else None
-                )
+                snr = _to_float(fields[13]) if (crd_version >= 2 and len(fields) > 13) else None
                 current.normal_points.append(
                     _CrdNormalPoint(
                         seconds_of_day=seconds_of_day,
@@ -228,9 +218,7 @@ def parse_crd_sessions(path) -> List[_CrdSession]:
                         seconds_of_day=_to_float(fields[1]) or 0.0,
                         pressure_hpa=_to_float(fields[2]) if len(fields) > 2 else None,
                         temperature_k=_to_float(fields[3]) if len(fields) > 3 else None,
-                        humidity_percent=_to_float(fields[4])
-                        if len(fields) > 4
-                        else None,
+                        humidity_percent=_to_float(fields[4]) if len(fields) > 4 else None,
                     )
                 )
 
@@ -248,8 +236,7 @@ def _station_identity(session: _CrdSession) -> tuple[str, str]:
     if pad.isdigit():
         return canonical_station_id(session.station_name), pad.zfill(5)[:5]
     raise ValueError(
-        f"Cannot map CRD station {session.station_name!r} (pad {session.station_pad_id!r}) "
-        "to a canonical identity."
+        f"Cannot map CRD station {session.station_name!r} (pad {session.station_pad_id!r}) to a canonical identity."
     )
 
 
@@ -258,19 +245,14 @@ def _reflector_identity(session: _CrdSession) -> tuple[str, int]:
     if token in CRD_REFLECTOR_IDENTITY_BY_NAME:
         return CRD_REFLECTOR_IDENTITY_BY_NAME[token]
     raise ValueError(
-        f"Cannot map CRD target {session.target_name!r} to a canonical identity; "
-        f"extend CRD_REFLECTOR_IDENTITY_BY_NAME."
+        f"Cannot map CRD target {session.target_name!r} to a canonical identity; extend CRD_REFLECTOR_IDENTITY_BY_NAME."
     )
 
 
-def _nearest_meteo(
-    meteo: Sequence[_CrdMeteo], seconds_of_day: float
-) -> Optional[_CrdMeteo]:
+def _nearest_meteo(meteo: Sequence[_CrdMeteo], seconds_of_day: float) -> Optional[_CrdMeteo]:
     if not meteo:
         return None
-    return min(
-        meteo, key=lambda rec: _circular_distance(rec.seconds_of_day, seconds_of_day)
-    )
+    return min(meteo, key=lambda rec: _circular_distance(rec.seconds_of_day, seconds_of_day))
 
 
 @dataclass
@@ -297,10 +279,7 @@ def _crd_observations(sessions: Sequence[_CrdSession]) -> List[_CrdObservation]:
     observations: List[_CrdObservation] = []
     for session_index, session in enumerate(sessions, start=1):
         if session.start_epoch is None:
-            raise ValueError(
-                "CRD session is missing the H4 start epoch; "
-                "cannot anchor seconds-of-day."
-            )
+            raise ValueError("CRD session is missing the H4 start epoch; cannot anchor seconds-of-day.")
 
         station_name, station_code = _station_identity(session)
         reflector_name, reflector_id = _reflector_identity(session)
@@ -320,24 +299,14 @@ def _crd_observations(sessions: Sequence[_CrdSession]) -> List[_CrdObservation]:
                 epoch = epoch.shifted(-0.5 * np_rec.time_of_flight_s)
             elif np_rec.epoch_event not in (1, 2):
                 raise ValueError(
-                    f"Unsupported CRD epoch event {np_rec.epoch_event}; "
-                    "only 1 (bounce) and 2 (transmit) are handled."
+                    f"Unsupported CRD epoch event {np_rec.epoch_event}; only 1 (bounce) and 2 (transmit) are handled."
                 )
 
-            label = (
-                f"CRD NP at {epoch.isot(scale=TimeScale.UTC)} "
-                f"(station {station_code}, reflector {reflector_id})"
-            )
+            label = f"CRD NP at {epoch.isot(scale=TimeScale.UTC)} (station {station_code}, reflector {reflector_id})"
             meteo = _nearest_meteo(session.meteo, seconds)
             if meteo is None:
-                raise ValueError(
-                    f"{label}: the CRD session has no '20' meteorological record."
-                )
-            if (
-                meteo.pressure_hpa is None
-                or meteo.temperature_k is None
-                or meteo.humidity_percent is None
-            ):
+                raise ValueError(f"{label}: the CRD session has no '20' meteorological record.")
+            if meteo.pressure_hpa is None or meteo.temperature_k is None or meteo.humidity_percent is None:
                 raise ValueError(
                     f"{label}: the nearest CRD '20' record is incomplete "
                     f"(pressure={meteo.pressure_hpa!r}, "
@@ -345,13 +314,9 @@ def _crd_observations(sessions: Sequence[_CrdSession]) -> List[_CrdObservation]:
                     f"humidity={meteo.humidity_percent!r})."
                 )
             if session.wavelength_nm is None or session.wavelength_nm <= 0.0:
-                raise ValueError(
-                    f"{label}: the CRD session 'C0' record carries no usable laser wavelength."
-                )
+                raise ValueError(f"{label}: the CRD session 'C0' record carries no usable laser wavelength.")
             if np_rec.bin_rms_ps is None or np_rec.bin_rms_ps <= 0.0:
-                raise ValueError(
-                    f"{label}: the CRD '11' record carries no usable bin RMS (uncertainty)."
-                )
+                raise ValueError(f"{label}: the CRD '11' record carries no usable bin RMS (uncertainty).")
 
             observations.append(
                 _CrdObservation(

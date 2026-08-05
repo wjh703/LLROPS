@@ -16,7 +16,7 @@ import re
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import ContextManager, Iterator, TextIO
+from typing import Any, BinaryIO, ContextManager, Iterator, TextIO, cast
 from urllib.parse import quote, unquote_to_bytes
 
 ARCHIVE_VERSION = 20260728
@@ -55,36 +55,30 @@ def _open_text(path: Path, mode: str) -> Iterator[TextIO]:
     if path.name.lower().endswith(".gz"):
         if "w" in mode:
             with path.open("wb") as raw:
-                with gzip.GzipFile(
-                    filename="", mode="wb", fileobj=raw, mtime=0
-                ) as compressed:
-                    with io.TextIOWrapper(
-                        compressed, encoding="utf-8", newline="\n"
-                    ) as stream:
+                with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as compressed:
+                    with io.TextIOWrapper(compressed, encoding="utf-8", newline="\n") as stream:
                         yield stream
             return
         with gzip.open(path, mode, encoding="utf-8", newline="\n") as stream:
-            yield stream
+            yield cast(TextIO, stream)
         return
     with path.open(mode, encoding="utf-8", newline="\n") as stream:
-        yield stream
+        yield cast(TextIO, stream)
 
 
 @contextmanager
-def _open_binary(path: Path, mode: str) -> Iterator[object]:
+def _open_binary(path: Path, mode: str) -> Iterator[BinaryIO]:
     if path.name.lower().endswith(".gz"):
         if "w" in mode:
             with path.open("wb") as raw:
-                with gzip.GzipFile(
-                    filename="", mode="wb", fileobj=raw, mtime=0
-                ) as stream:
-                    yield stream
+                with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as stream:
+                    yield cast(BinaryIO, stream)
             return
         with gzip.open(path, mode) as stream:
-            yield stream
+            yield cast(BinaryIO, stream)
         return
     with path.open(mode) as stream:
-        yield stream
+        yield cast(BinaryIO, stream)
 
 
 def encode_token(value: object) -> str:
@@ -107,7 +101,7 @@ def decode_token(value: str) -> str:
 
 
 def format_float(value: object) -> str:
-    number = float(value)
+    number = float(cast(Any, value))
     if number != number or number in (float("inf"), float("-inf")):
         raise ValueError(f"LunarOps archives reject non-finite float {value!r}.")
     return format(number, ".17e")
@@ -135,27 +129,19 @@ def parse_header(stream: TextIO, expected_type: str | None = None) -> str:
         if not text or text.startswith("#"):
             continue
         parts = text.split()
-        if (
-            len(parts) != 3
-            or parts[0] != "lunarops"
-            or not parts[2].startswith("version=")
-        ):
+        if len(parts) != 3 or parts[0] != "lunarops" or not parts[2].startswith("version="):
             raise ValueError(f"Invalid LunarOps archive header: {text!r}")
         try:
             version = int(parts[2].split("=", 1)[1])
         except ValueError as exc:
             raise ValueError(f"Invalid LunarOps archive version in {text!r}") from exc
         if version != ARCHIVE_VERSION:
-            raise ValueError(
-                f"Unsupported LunarOps archive version {version}; expected {ARCHIVE_VERSION}."
-            )
+            raise ValueError(f"Unsupported LunarOps archive version {version}; expected {ARCHIVE_VERSION}.")
         artifact_type = parts[1]
         if _ARTIFACT_TYPE.fullmatch(artifact_type) is None:
             raise ValueError(f"Invalid LunarOps artifact type {artifact_type!r}.")
         if expected_type is not None and artifact_type != expected_type:
-            raise ValueError(
-                f"Expected LunarOps {expected_type!r} archive, found {artifact_type!r}."
-            )
+            raise ValueError(f"Expected LunarOps {expected_type!r} archive, found {artifact_type!r}.")
         return artifact_type
     raise ValueError("LunarOps archive is empty.")
 
@@ -189,7 +175,7 @@ def atomic_text_writer(path: str | Path, artifact_type: str) -> Iterator[TextIO]
 
 
 @contextmanager
-def atomic_binary_writer(path: str | Path) -> Iterator[object]:
+def atomic_binary_writer(path: str | Path) -> Iterator[BinaryIO]:
     target = require_binary_path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
@@ -214,7 +200,7 @@ def open_text_reader(path: str | Path) -> ContextManager[TextIO]:
     return _open_text(target, "rt")
 
 
-def open_binary_reader(path: str | Path):
+def open_binary_reader(path: str | Path) -> ContextManager[BinaryIO]:
     target = require_binary_path(path)
     if not target.is_file():
         raise FileNotFoundError(f"LunarOps binary archive not found: {target}")
@@ -224,9 +210,7 @@ def open_binary_reader(path: str | Path):
 def require_file_group_path(path: str | Path) -> Path:
     target = Path(path).expanduser()
     if target.suffix:
-        raise ValueError(
-            f"LunarOps file groups require an extensionless directory: {target}"
-        )
+        raise ValueError(f"LunarOps file groups require an extensionless directory: {target}")
     return target
 
 

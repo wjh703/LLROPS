@@ -1,4 +1,5 @@
 """Core ephemeris interfaces and immutable query/result objects."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -60,8 +61,7 @@ class Ephemeris(ABC):
 
     @property
     @abstractmethod
-    def source_file_path(self) -> Path | None:
-        ...
+    def source_file_path(self) -> Path | None: ...
 
     @abstractmethod
     def body_state_bcrs(self, body_name: str, epoch_tdb: Epoch) -> BodyState:

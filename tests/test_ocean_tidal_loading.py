@@ -105,7 +105,7 @@ def _blq_text(
 
 def _station_input(*, station_id: str | None = "APOLLO") -> StationDisplacementInput:
     return StationDisplacementInput(
-        reference_position_itrf_m=(6_378_137.0, 0.0, 0.0),
+        reference_position_itrf_m=np.asarray((6_378_137.0, 0.0, 0.0)),
         epoch_utc=Epoch.from_isot("2009-06-25T01:10:45", scale=TimeScale.UTC),
         station_id=station_id,
     )
@@ -154,9 +154,11 @@ def test_onsala_blq_catalog_rejects_malformed_and_duplicate_station_blocks(tmp_p
 
     duplicate = tmp_path / "duplicate.blq"
     duplicate.write_text(
-        _blq_text().replace("$$ END TABLE", "  APOLLO\n" + "\n".join(
-            [*[_row(row) for row in _AMPLITUDES], *[_row(row) for row in _PHASES], "$$ END TABLE"]
-        )),
+        _blq_text().replace(
+            "$$ END TABLE",
+            "  APOLLO\n"
+            + "\n".join([*[_row(row) for row in _AMPLITUDES], *[_row(row) for row in _PHASES], "$$ END TABLE"]),
+        ),
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="duplicate BLQ station"):

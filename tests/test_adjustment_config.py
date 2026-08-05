@@ -181,9 +181,7 @@ def test_variance_component_station_alias_fields_are_rejected(obsolete_key):
 
 def test_duplicate_stage_names_are_rejected():
     config = _config()
-    config["adjustment"] = {
-        "stages": [{"name": "joint"}, {"name": "joint"}]
-    }
+    config["adjustment"] = {"stages": [{"name": "joint"}, {"name": "joint"}]}
 
     with pytest.raises(ValueError, match="names must be unique"):
         parse_adjustment_plan(config)
@@ -191,9 +189,7 @@ def test_duplicate_stage_names_are_rejected():
 
 def test_stage_override_is_validated_eagerly():
     config = _config()
-    config["adjustment"] = {
-        "stages": [{"name": "joint", "parameterUpdateFactor": 1.5}]
-    }
+    config["adjustment"] = {"stages": [{"name": "joint", "parameterUpdateFactor": 1.5}]}
 
     with pytest.raises(ValueError, match="Parameter update factor"):
         parse_adjustment_plan(config)
@@ -217,12 +213,8 @@ def test_variance_component_dates_are_validated():
 
 def test_detailed_adjustment_config_uses_the_canonical_schema():
     root = Path(__file__).resolve().parents[1]
-    config = load_config_file(
-        root / "configs" / "lunarops_reflector_bias_adjustment_detailed.yml"
-    )
-    adjustment_program = next(
-        item for item in config["programs"] if item.get("program") == "LlrAdjustment"
-    )
+    config = load_config_file(root / "configs" / "lunarops_reflector_bias_adjustment_detailed.yml")
+    adjustment_program = next(item for item in config["programs"] if item.get("program") == "LlrAdjustment")
 
     plan = parse_adjustment_plan(deepcopy(adjustment_program))
 

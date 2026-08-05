@@ -1,4 +1,5 @@
 """IERS 2010 high-frequency Earth-orientation corrections."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,7 +7,7 @@ import math
 
 from lunarops.base.epoch import Epoch, TimeScale
 from lunarops.base.epoch import utc2tt
-from lunarops import _iers2010
+import lunarops._iers2010 as _iers2010
 
 
 _MICROARCSECOND_TO_ARCSECOND = 1.0e-6
@@ -56,6 +57,7 @@ class HighFrequencyEopCorrection:
     def delta_ut1_s(self) -> float:
         return self.ocean_delta_ut1_s + self.libration_delta_ut1_s
 
+
 def _require_utc_epoch(epoch_utc: Epoch) -> Epoch:
     if not isinstance(epoch_utc, Epoch):
         raise TypeError("High-frequency EOP requires an Epoch.")
@@ -90,9 +92,7 @@ def ocean_tide_eop_correction(
     background_ut1_minus_utc_s: float,
 ) -> HighFrequencyEopCorrection:
     """Return ORTHO_EOP corrections at the corresponding UT1 epoch."""
-    delta_xp, delta_yp, delta_ut1 = _iers2010.ortho_eop(
-        _compute_ut1_mjd(epoch_utc, background_ut1_minus_utc_s)
-    )
+    delta_xp, delta_yp, delta_ut1 = _iers2010.ortho_eop(_compute_ut1_mjd(epoch_utc, background_ut1_minus_utc_s))
     return HighFrequencyEopCorrection(
         ocean_delta_xp_arcsec=delta_xp * _MICROARCSECOND_TO_ARCSECOND,
         ocean_delta_yp_arcsec=delta_yp * _MICROARCSECOND_TO_ARCSECOND,

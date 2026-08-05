@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Hashable, Mapping, Optional, Sequence
+from typing import Hashable, Mapping, Optional, Sequence, cast
 
 import numpy as np
 
@@ -75,9 +75,7 @@ class LlrAdjustmentResult:
             "equation_evaluations": self.equation_evaluations,
             "parameter_names": names_to_strings(self.parameter_names),
             "state": self.state,
-            "gross_rejected_observations": {
-                str(key): value for key, value in self.gross_rejected.items()
-            },
+            "gross_rejected_observations": {str(key): value for key, value in self.gross_rejected.items()},
             "uncertainty_quality_control": self.uncertainty_quality_control,
             "scales": self.scales,
             "iterations": [asdict(item) for item in self.iterations],
@@ -96,7 +94,7 @@ def robust_factor_summary(
     *,
     active_threshold: float,
 ) -> dict[str, object]:
-    values = np.asarray([factors[eq.identity] for eq in equations], dtype=float)
+    values = np.asarray([factors[eq.observation_id] for eq in equations], dtype=float)
     if not len(values):
         return {
             "observation_count": 0,
@@ -151,12 +149,8 @@ def residual_summary(
     *,
     active_threshold: float,
 ) -> dict[str, object]:
-    residuals = np.asarray(
-        [residual_by_identity[eq.identity] for eq in equations], dtype=float
-    )
-    standards = np.asarray(
-        [standardized[eq.identity] for eq in equations], dtype=float
-    )
+    residuals = np.asarray([residual_by_identity[eq.observation_id] for eq in equations], dtype=float)
+    standards = np.asarray([standardized[eq.observation_id] for eq in equations], dtype=float)
     weights = np.asarray(weights, dtype=float)
     if weights.shape != residuals.shape:
         raise ValueError("Residual weights must match the equation count.")
@@ -167,13 +161,9 @@ def residual_summary(
         "residual_m": distribution_summary(residuals),
         "standardized_residual": distribution_summary(standards),
         "equivalent_weighted_rms_m": (
-            None
-            if weight_sum <= 0.0
-            else float(np.sqrt(np.sum(weights * residuals**2) / weight_sum))
+            None if weight_sum <= 0.0 else float(np.sqrt(np.sum(weights * residuals**2) / weight_sum))
         ),
-        "robust_factors": robust_factor_summary(
-            equations, factors, active_threshold=active_threshold
-        ),
+        "robust_factors": robust_factor_summary(equations, factors, active_threshold=active_threshold),
     }
 
 
@@ -205,35 +195,22 @@ def parameter_records(
     for index, name in enumerate(names):
         candidates = np.abs(correlations[index]).copy()
         candidates[index] = -1.0
-        correlated_index = (
-            int(np.argmax(candidates)) if len(candidates) > 1 else None
-        )
+        correlated_index = int(np.argmax(candidates)) if len(candidates) > 1 else None
         records.append(
             {
                 "name": str(name),
                 "type": name.parameter_type,
                 "remaining_linearized_correction_m": float(delta[index]),
-                "cofactor_uncertainty_m": float(
-                    PARAMETER_UNCERTAINTY_SIGMA_MULTIPLIER
-                    * cofactor_one_sigma[index]
-                ),
+                "cofactor_uncertainty_m": float(PARAMETER_UNCERTAINTY_SIGMA_MULTIPLIER * cofactor_one_sigma[index]),
                 "formal_uncertainty_m": (
                     None
                     if sigma0_post is None
-                    else float(
-                        PARAMETER_UNCERTAINTY_SIGMA_MULTIPLIER
-                        * sigma0_post
-                        * cofactor_one_sigma[index]
-                    )
+                    else float(PARAMETER_UNCERTAINTY_SIGMA_MULTIPLIER * sigma0_post * cofactor_one_sigma[index])
                 ),
                 "maximum_absolute_correlation": (
-                    None
-                    if correlated_index is None
-                    else float(abs(correlations[index, correlated_index]))
+                    None if correlated_index is None else float(abs(correlations[index, correlated_index]))
                 ),
-                "maximum_correlated_parameter": (
-                    None if correlated_index is None else str(names[correlated_index])
-                ),
+                "maximum_correlated_parameter": (None if correlated_index is None else str(names[correlated_index])),
             }
         )
     return records, {
@@ -242,9 +219,7 @@ def parameter_records(
         "rank": int(np.linalg.matrix_rank(normals.N)),
         "condition_number": normal_matrix_condition(normals),
         "sigma0_post": sigma0_post,
-        "parameter_uncertainty_sigma_multiplier": (
-            PARAMETER_UNCERTAINTY_SIGMA_MULTIPLIER
-        ),
+        "parameter_uncertainty_sigma_multiplier": (PARAMETER_UNCERTAINTY_SIGMA_MULTIPLIER),
     }
 
 
@@ -265,24 +240,13 @@ def variance_component_records(
 ) -> list[dict[str, object]]:
     records: list[dict[str, object]] = []
     for component in components:
-        selected = [
-            equation
-            for equation in equations
-            if assignments[equation.identity] == component.id
-        ]
-        residual_values = np.asarray(
-            [residuals[equation.identity] for equation in selected], dtype=float
-        )
-        standardized_values = np.asarray(
-            [standardized[equation.identity] for equation in selected], dtype=float
-        )
-        factor_summary = robust_factor_summary(
-            selected, factors, active_threshold=active_threshold
-        )
+        selected = [equation for equation in equations if assignments[equation.observation_id] == component.id]
+        residual_values = np.asarray([residuals[equation.observation_id] for equation in selected], dtype=float)
+        standardized_values = np.asarray([standardized[equation.observation_id] for equation in selected], dtype=float)
+        factor_summary = robust_factor_summary(selected, factors, active_threshold=active_threshold)
         weights = np.asarray(
             [
-                factors[equation.identity]
-                / (scales[component.id] ** 2 * equation.sigma_m**2)
+                factors[equation.observation_id] / (scales[component.id] ** 2 * equation.sigma_one_way_m**2)
                 for equation in selected
             ],
             dtype=float,
@@ -295,55 +259,31 @@ def variance_component_records(
                 "configured_start": component.start,
                 "configured_end": component.end_exclusive or "present",
                 "actual_start_epoch": (
-                    min(equation.epoch for equation in selected).isot()
-                    if selected
-                    else None
+                    min(equation.transmit_epoch_utc for equation in selected).isot() if selected else None
                 ),
                 "actual_end_epoch": (
-                    max(equation.epoch for equation in selected).isot()
-                    if selected
-                    else None
+                    max(equation.transmit_epoch_utc for equation in selected).isot() if selected else None
                 ),
                 "proposed_scale_applied": False,
                 "observation_count": len(selected),
-                "retained_observation_count": sum(
-                    value == component.id for value in assignments.values()
-                ),
+                "retained_observation_count": sum(value == component.id for value in assignments.values()),
                 "initial_scale": float(initial_scales[component.id]),
                 "final_scale": float(scales[component.id]),
                 "variance_component": float(scales[component.id] ** 2),
-                "uncertainty_quality_control": dict(
-                    uncertainty_qc_groups[component.id]
-                ),
-                "residual_rms_m": (
-                    float(np.sqrt(np.mean(residual_values**2)))
-                    if len(residual_values)
-                    else None
-                ),
+                "uncertainty_quality_control": dict(uncertainty_qc_groups[component.id]),
+                "residual_rms_m": (float(np.sqrt(np.mean(residual_values**2))) if len(residual_values) else None),
                 "standardized_rms": (
-                    float(np.sqrt(np.mean(standardized_values**2)))
-                    if len(standardized_values)
-                    else None
+                    float(np.sqrt(np.mean(standardized_values**2))) if len(standardized_values) else None
                 ),
                 "median_standardized_residual": (
-                    float(np.median(standardized_values))
-                    if len(standardized_values)
-                    else None
+                    float(np.median(standardized_values)) if len(standardized_values) else None
                 ),
-                "mad_standardized_residual": distribution_summary(
-                    standardized_values
-                ).get("mad"),
+                "mad_standardized_residual": distribution_summary(standardized_values).get("mad"),
                 "residual_wrms_m": (
-                    None
-                    if weight_sum <= 0.0
-                    else float(
-                        np.sqrt(np.sum(weights * residual_values**2) / weight_sum)
-                    )
+                    None if weight_sum <= 0.0 else float(np.sqrt(np.sum(weights * residual_values**2) / weight_sum))
                 ),
                 "residual_summary_m": distribution_summary(residual_values),
-                "standardized_residual_summary": distribution_summary(
-                    standardized_values
-                ),
+                "standardized_residual_summary": distribution_summary(standardized_values),
                 "robust_factor_summary": factor_summary,
                 "final_state_proposed_robust_factor_summary": robust_factor_summary(
                     selected,
@@ -375,55 +315,42 @@ def observation_records(
     uncertainty_qc_records: Mapping[ObsKey, Mapping[str, object]],
     active_threshold: float,
 ) -> list[dict[str, object]]:
-    stations = {
-        component.id: component.station for component in components
-    }
+    stations = {component.id: component.station for component in components}
     records: list[dict[str, object]] = []
     for equation in equations:
-        factor = float(factors[equation.identity])
-        proposed_factor = float(proposed_factors[equation.identity])
-        component_id = assignments[equation.identity]
+        factor = float(factors[equation.observation_id])
+        proposed_factor = float(proposed_factors[equation.observation_id])
+        component_id = assignments[equation.observation_id]
         matched_parameters = parametrization.matched_parameter_names(equation)
-        status = (
-            "REJECTED"
-            if factor <= active_threshold
-            else ("FULL_WEIGHT" if factor == 1.0 else "DOWNWEIGHTED")
-        )
+        status = "REJECTED" if factor <= active_threshold else ("FULL_WEIGHT" if factor == 1.0 else "DOWNWEIGHTED")
         proposed_status = (
             "REJECTED"
             if proposed_factor <= active_threshold
             else ("FULL_WEIGHT" if proposed_factor == 1.0 else "DOWNWEIGHTED")
         )
-        qc = uncertainty_qc_records[equation.identity]
+        qc = uncertainty_qc_records[equation.observation_id]
         scale = float(scales[component_id])
-        base_variance = scale**2 * equation.sigma_m**2
+        base_variance = scale**2 * equation.sigma_one_way_m**2
         records.append(
             {
-                "observation_id": str(equation.identity),
-                "epoch": equation.epoch.isot(),
+                "observation_id": str(equation.observation_id),
+                "epoch": equation.transmit_epoch_utc.isot(),
                 "station_id": equation.station_key,
                 "station": stations[component_id],
                 "vce_component_id": component_id,
-                "reported_sigma_m": float(qc["reported_sigma_m"]),
-                "effective_sigma_m": float(equation.sigma_m),
+                "reported_sigma_m": cast(float, qc["reported_sigma_m"]),
+                "effective_sigma_m": float(equation.sigma_one_way_m),
                 "uncertainty_qc_status": qc["status"],
                 "uncertainty_qc_reason": qc["reason"],
-                "uncertainty_sigma_floor_m": float(qc["sigma_floor_m"]),
+                "uncertainty_sigma_floor_m": cast(float, qc["sigma_floor_m"]),
                 "base_scale": scale,
                 "base_variance_m2": float(base_variance),
                 "base_weight_per_m2": float(1.0 / base_variance),
-                "current_state_residual_m": float(
-                    current_state_residuals[equation.identity]
-                ),
-                "linearized_postfit_residual_m": float(
-                    linearized_postfit_residuals[equation.identity]
-                ),
-                "residual_sigma_m": float(residual_sigmas[equation.identity]),
-                "leverage": float(
-                    1.0
-                    - residual_sigmas[equation.identity] ** 2 / base_variance
-                ),
-                "standardized_residual": float(standardized[equation.identity]),
+                "current_state_residual_m": float(current_state_residuals[equation.observation_id]),
+                "linearized_postfit_residual_m": float(linearized_postfit_residuals[equation.observation_id]),
+                "residual_sigma_m": float(residual_sigmas[equation.observation_id]),
+                "leverage": float(1.0 - residual_sigmas[equation.observation_id] ** 2 / base_variance),
+                "standardized_residual": float(standardized[equation.observation_id]),
                 "applied_robust_factor": factor,
                 "final_state_proposed_robust_factor": proposed_factor,
                 "proposed_robust_factor_applied": False,

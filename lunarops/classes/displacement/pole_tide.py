@@ -1,4 +1,5 @@
 """IERS 2010 solid-Earth pole-tide displacement."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -90,9 +91,7 @@ class Iers2010SolidEarthPoleTide:
 
     def __init__(self, earth_orientation_provider: EarthOrientationProvider) -> None:
         if not isinstance(earth_orientation_provider, EarthOrientationProvider):
-            raise TypeError(
-                "earth_orientation_provider must be an EarthOrientationProvider instance."
-            )
+            raise TypeError("earth_orientation_provider must be an EarthOrientationProvider instance.")
         self.earth_orientation_provider = earth_orientation_provider
 
     def evaluate(self, data: StationDisplacementInput) -> PoleTideResult:
@@ -105,9 +104,7 @@ class Iers2010SolidEarthPoleTide:
         common = wobble.m1_arcsec * cos_lon + wobble.m2_arcsec * sin_lon
 
         south_mm = -9.0 * np.cos(2.0 * theta) * common
-        east_mm = 9.0 * np.cos(theta) * (
-            wobble.m1_arcsec * sin_lon - wobble.m2_arcsec * cos_lon
-        )
+        east_mm = 9.0 * np.cos(theta) * (wobble.m1_arcsec * sin_lon - wobble.m2_arcsec * cos_lon)
         up_mm = -33.0 * np.sin(2.0 * theta) * common
 
         enu_m = np.array([east_mm, -south_mm, up_mm], dtype=float) * 1.0e-3

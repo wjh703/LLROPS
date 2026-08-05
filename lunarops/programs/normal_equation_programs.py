@@ -10,18 +10,14 @@ from lunarops.programs.registry import ArtifactSlot, ProgramSpec, program
     ProgramSpec(
         name="NormalsAccumulate",
         summary="Align parameters by structured name and add normal equations.",
-        inputs=(
-            ArtifactSlot("inputFilesNormalEquations", "NormalEquationFile", many=True),
-        ),
+        inputs=(ArtifactSlot("inputFilesNormalEquations", "NormalEquationFile", many=True),),
         outputs=(ArtifactSlot("outputFileNormalEquations", "NormalEquationFile"),),
     )
 )
 def normals_accumulate(config: dict, context: RunContext):
     from lunarops.fileio.normal_equations import NormalEquations
 
-    paths = [
-        context.resolve_path(value) for value in config["inputFilesNormalEquations"]
-    ]
+    paths = [context.resolve_path(value) for value in config["inputFilesNormalEquations"]]
     total = NormalEquations.load(paths[0])
     for path in paths[1:]:
         total = total.add(NormalEquations.load(path))
@@ -61,9 +57,7 @@ def normals_solve(config: dict, context: RunContext):
     )
     from lunarops.fileio.structured_text import write_structured_text
 
-    normals = NormalEquations.load(
-        context.resolve_path(config["inputFileNormalEquations"])
-    )
+    normals = NormalEquations.load(context.resolve_path(config["inputFileNormalEquations"]))
     values, cofactor, sigma0 = normals.solve()
     diagonal = np.maximum(np.diag(cofactor), 0.0)
     one_sigma = np.sqrt(diagonal)
@@ -100,17 +94,13 @@ def normals_solve(config: dict, context: RunContext):
             "parameterCount": len(normals.parameter_names),
             "degreesOfFreedom": normals.obs_count - len(normals.parameter_names),
             "sigma0Post": sigma0,
-            "parameterUncertaintySigmaMultiplier": (
-                PARAMETER_UNCERTAINTY_SIGMA_MULTIPLIER
-            ),
+            "parameterUncertaintySigmaMultiplier": (PARAMETER_UNCERTAINTY_SIGMA_MULTIPLIER),
             "solutionFile": str(solution_path),
             "covarianceFile": str(covariance_path),
         },
     )
     sigma_text = "undefined" if sigma0 is None else f"{sigma0:.6g}"
-    print(
-        f"[NormalsSolve] {len(values)} parameter(s), sigma0={sigma_text} -> {solution_path}"
-    )
+    print(f"[NormalsSolve] {len(values)} parameter(s), sigma0={sigma_text} -> {solution_path}")
     return solution
 
 

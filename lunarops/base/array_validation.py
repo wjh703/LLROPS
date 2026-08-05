@@ -1,9 +1,9 @@
 """Array validation helpers shared by physical-model modules."""
+
 from __future__ import annotations
 
-from typing import Sequence
-
 import numpy as np
+from numpy.typing import ArrayLike
 
 
 def finite_array(
@@ -27,15 +27,11 @@ def finite_array(
     if shape is not None:
         expected = int(np.prod(shape))
         if array.size != expected:
-            raise ValueError(
-                f"{name} must contain exactly {expected} values, got shape {array.shape}."
-            )
+            raise ValueError(f"{name} must contain exactly {expected} values, got shape {array.shape}.")
         array = array.reshape(shape)
     elif size is not None:
         if array.size != int(size):
-            raise ValueError(
-                f"{name} must contain exactly {int(size)} values, got shape {array.shape}."
-            )
+            raise ValueError(f"{name} must contain exactly {int(size)} values, got shape {array.shape}.")
         array = array.reshape(int(size))
     if not np.all(np.isfinite(array)):
         raise ValueError(f"{name} must contain only finite values.")
@@ -45,7 +41,7 @@ def finite_array(
 
 
 def vector3(
-    value: Sequence[float],
+    value: ArrayLike,
     *,
     name: str,
     copy: bool = True,
@@ -54,7 +50,7 @@ def vector3(
     return finite_array(value, size=3, name=name, copy=copy, readonly=readonly)
 
 
-def readonly_vector3(value: Sequence[float], *, name: str) -> np.ndarray:
+def readonly_vector3(value: ArrayLike, *, name: str) -> np.ndarray:
     return vector3(value, name=name, copy=True, readonly=True)
 
 
@@ -74,7 +70,7 @@ def parameter_vector(value, *, expected_size: int, name: str = "delta") -> np.nd
     return finite_array(value, size=size, name=name, copy=True, readonly=False)
 
 
-def catalog_vector3(value: Sequence[float], *, name: str) -> np.ndarray:
+def catalog_vector3(value: ArrayLike, *, name: str) -> np.ndarray:
     """Validate mutable catalog position/velocity triples."""
     return vector3(value, name=name, copy=True, readonly=False)
 

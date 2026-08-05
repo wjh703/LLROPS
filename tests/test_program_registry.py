@@ -74,9 +74,7 @@ def test_program_artifact_validation_rejects_wrong_type_header(tmp_path):
         )
 
 
-def test_validate_command_understands_outputs_produced_earlier_in_graph(
-    tmp_path, capsys
-):
+def test_validate_command_understands_outputs_produced_earlier_in_graph(tmp_path, capsys):
     source = tmp_path / "source.crd"
     source.write_text("external source placeholder\n", encoding="ascii")
     config = tmp_path / "scenario.yml"

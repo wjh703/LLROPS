@@ -1,4 +1,5 @@
 """Variance-component definitions and observation assignment."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -56,9 +57,7 @@ class VarianceComponentDefinition:
             raise TypeError("Variance-component keys must be strings.")
         unknown = set(value) - _COMPONENT_CONFIG_KEYS
         if unknown:
-            raise ValueError(
-                f"Variance component: unknown key(s) {sorted(unknown)}."
-            )
+            raise ValueError(f"Variance component: unknown key(s) {sorted(unknown)}.")
         component_id_value = value.get("id")
         station_value = value.get("station")
         if not isinstance(component_id_value, str):
@@ -70,29 +69,15 @@ class VarianceComponentDefinition:
         start_value = value.get("start")
         start = "" if start_value is None else _date_text(start_value, "start")
         if not component_id or not start:
-            raise ValueError(
-                "Each variance component requires id, station, and start."
-            )
+            raise ValueError("Each variance component requires id, station, and start.")
         end_value = value.get("endExclusive")
         end = None if end_value is None else _date_text(end_value, "endExclusive")
         if end is not None and end <= start:
-            raise ValueError(
-                f"Variance component {component_id!r} endExclusive must be after start."
-            )
-        wavelength_min = _optional_wavelength(
-            value.get("wavelengthMinNm"), "wavelengthMinNm"
-        )
-        wavelength_max = _optional_wavelength(
-            value.get("wavelengthMaxExclusiveNm"), "wavelengthMaxExclusiveNm"
-        )
-        if (
-            wavelength_min is not None
-            and wavelength_max is not None
-            and wavelength_min >= wavelength_max
-        ):
-            raise ValueError(
-                f"Variance component {component_id!r} wavelength range is empty."
-            )
+            raise ValueError(f"Variance component {component_id!r} endExclusive must be after start.")
+        wavelength_min = _optional_wavelength(value.get("wavelengthMinNm"), "wavelengthMinNm")
+        wavelength_max = _optional_wavelength(value.get("wavelengthMaxExclusiveNm"), "wavelengthMaxExclusiveNm")
+        if wavelength_min is not None and wavelength_max is not None and wavelength_min >= wavelength_max:
+            raise ValueError(f"Variance component {component_id!r} wavelength range is empty.")
         component = cls(
             id=component_id,
             station=station,
@@ -104,7 +89,7 @@ class VarianceComponentDefinition:
         return component
 
     def matches(self, equation: ObservationEquation) -> bool:
-        date = equation.epoch.date_iso()
+        date = equation.transmit_epoch_utc.date_iso()
         if date < self.start or (self.end_exclusive is not None and date >= self.end_exclusive):
             return False
         if canonical_station_id(equation.station_key) != self.station:
@@ -121,7 +106,9 @@ class VarianceComponentDefinition:
         return True
 
 
-def assign_variance_components(equations: Sequence[ObservationEquation], components: Sequence[VarianceComponentDefinition]) -> dict[ObsKey, str]:
+def assign_variance_components(
+    equations: Sequence[ObservationEquation], components: Sequence[VarianceComponentDefinition]
+) -> dict[ObsKey, str]:
     if not components:
         raise ValueError("At least one variance component is required.")
     assignments: dict[ObsKey, str] = {}
@@ -129,8 +116,10 @@ def assign_variance_components(equations: Sequence[ObservationEquation], compone
         matches = [component.id for component in components if component.matches(equation)]
         if len(matches) != 1:
             detail = "no matching component" if not matches else f"multiple matching components {matches!r}"
-            raise ValueError(f"Observation {equation.identity!r} at {equation.epoch.date_iso()} has {detail}.")
-        assignments[equation.identity] = matches[0]
+            raise ValueError(
+                f"Observation {equation.observation_id!r} at {equation.transmit_epoch_utc.date_iso()} has {detail}."
+            )
+        assignments[equation.observation_id] = matches[0]
     return assignments
 
 

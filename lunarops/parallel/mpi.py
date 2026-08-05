@@ -84,11 +84,7 @@ def _processor_for_task(cache: dict, spec: dict):
 
 
 def _close_worker_contexts(cache: dict) -> None:
-    contexts = [
-        value
-        for key, value in cache.items()
-        if isinstance(key, tuple) and key and key[0] == "context"
-    ]
+    contexts = [value for key, value in cache.items() if isinstance(key, tuple) and key and key[0] == "context"]
     for context in contexts:
         context.close()
 
@@ -100,8 +96,7 @@ def _initialized_processor_for_task(cache: dict, spec: dict):
         return cache[processor_key]
     except KeyError:
         raise RuntimeError(
-            f"MPI observation processor {spec['specId']!r} was not initialized "
-            "before observation task dispatch."
+            f"MPI observation processor {spec['specId']!r} was not initialized before observation task dispatch."
         ) from None
 
 
@@ -115,16 +110,14 @@ def _observation_spec_for_payload(payload: dict, cache: dict) -> dict:
     try:
         return cache[("observationSpec", spec_id)]
     except KeyError:
-        raise RuntimeError(
-            f"MPI observation spec {spec_id!r} was not broadcast before task dispatch."
-        ) from None
+        raise RuntimeError(f"MPI observation spec {spec_id!r} was not broadcast before task dispatch.") from None
 
 
 def _handle_observation_equations(payload: dict, cache: dict):
     """NptRecord chunk -> typed equations or lightweight table rows."""
     from lunarops.fileio.normal_points import NptDataset
     from lunarops.classes.observation import (
-        ObservationOutputLevel,
+        ObservationResultDetail,
         ObservationProcessingOptions,
     )
 
@@ -148,8 +141,8 @@ def _handle_observation_equations(payload: dict, cache: dict):
         "nRecords": len(records),
     }
     if payload.get("returnRows"):
-        level = ObservationOutputLevel.parse(payload.get("outputLevel", "standard"))
-        response["items"] = processor.rows(local, options=options, level=level)
+        level = ObservationResultDetail.parse(payload.get("outputLevel", "standard"))
+        response["items"] = processor.rows(local, options=options, detail=level)
     else:
         response["items"] = processor.equations(local, options=options)
     return response
@@ -238,9 +231,7 @@ class MpiRuntime:
 
         spec_id = str(spec_id)
         if spec_id not in self._prepared_spec_ids:
-            raise RuntimeError(
-                f"MPI observation spec {spec_id!r} must be broadcast before initialization."
-            )
+            raise RuntimeError(f"MPI observation spec {spec_id!r} must be broadcast before initialization.")
         if spec_id in self._initialized_spec_ids:
             return False
 
@@ -253,8 +244,7 @@ class MpiRuntime:
         worker_ranks = list(range(1, self.size))
         if not quiet:
             print(
-                f"[MPI] initializing {len(worker_ranks)} worker(s) "
-                "(processor + process-local CALCEPH)...",
+                f"[MPI] initializing {len(worker_ranks)} worker(s) (processor + process-local CALCEPH)...",
                 flush=True,
             )
 
@@ -275,9 +265,7 @@ class MpiRuntime:
             )
             worker = status.Get_source()
             if worker not in pending:
-                raise RuntimeError(
-                    f"Unexpected duplicate MPI initialization response from rank {worker}."
-                )
+                raise RuntimeError(f"Unexpected duplicate MPI initialization response from rank {worker}.")
             pending.remove(worker)
             if str(response_spec_id) != spec_id:
                 failures.append(
@@ -324,9 +312,7 @@ class MpiRuntime:
                 if tag == TAG_BROADCAST_SPEC:
                     command = message or {}
                     if command.get("kind") != "observationSpec":
-                        raise RuntimeError(
-                            f"Rank {self.rank} received invalid broadcast command {command!r}."
-                        )
+                        raise RuntimeError(f"Rank {self.rank} received invalid broadcast command {command!r}.")
                     spec = self.comm.bcast(None, root=0)
                     spec_id = str(command["specId"])
                     if str(spec.get("specId")) != spec_id:
@@ -339,16 +325,12 @@ class MpiRuntime:
                 if tag == TAG_INITIALIZE_SPEC:
                     command = message or {}
                     spec_id = str(command.get("specId", ""))
-                    if (
-                        command.get("kind") != "initializeObservationSpec"
-                        or not spec_id
-                    ):
+                    if command.get("kind") != "initializeObservationSpec" or not spec_id:
                         self.comm.send(
                             (
                                 True,
                                 spec_id,
-                                f"Rank {self.rank} received invalid initialization "
-                                f"command {command!r}.",
+                                f"Rank {self.rank} received invalid initialization command {command!r}.",
                             ),
                             dest=0,
                             tag=TAG_READY,
@@ -375,18 +357,14 @@ class MpiRuntime:
                         )
                     continue
                 if tag != TAG_TASK:
-                    raise RuntimeError(
-                        f"Rank {self.rank} received unexpected MPI tag {tag}"
-                    )
+                    raise RuntimeError(f"Rank {self.rank} received unexpected MPI tag {tag}")
                 kind, payload = message
                 task_id = payload.get("taskId")
                 try:
                     result = TASK_HANDLERS[kind](payload, cache)
                     self.comm.send((False, task_id, result), dest=0, tag=TAG_RESULT)
                 except Exception:
-                    self.comm.send(
-                        (True, task_id, traceback.format_exc()), dest=0, tag=TAG_RESULT
-                    )
+                    self.comm.send((True, task_id, traceback.format_exc()), dest=0, tag=TAG_RESULT)
         finally:
             _close_worker_contexts(cache)
 
@@ -447,14 +425,10 @@ class MpiRuntime:
         last_report = rate_started
         last_report_units = 0
         while completed < n_tasks:
-            is_error, task_id, result = self.comm.recv(
-                source=self._MPI.ANY_SOURCE, tag=TAG_RESULT, status=status
-            )
+            is_error, task_id, result = self.comm.recv(source=self._MPI.ANY_SOURCE, tag=TAG_RESULT, status=status)
             worker = status.Get_source()
             if is_error:
-                raise RuntimeError(
-                    f"MPI worker rank {worker} failed on {kind} task {task_id}:\n{result}"
-                )
+                raise RuntimeError(f"MPI worker rank {worker} failed on {kind} task {task_id}:\n{result}")
             results[int(task_id)] = result
             completed += 1
             if isinstance(result, dict):
@@ -592,16 +566,18 @@ def _collect_observations(
     )
     items_by_source: Dict[str, list] = {str(name): [] for name in datasets}
     for result in results:
-        items_by_source[result["sourceName"]].extend(result["items"])
+        if not isinstance(result, dict):
+            raise TypeError("Observation worker returned a non-mapping result.")
+        source_name = result.get("sourceName")
+        items = result.get("items")
+        if not isinstance(source_name, str) or not isinstance(items, list):
+            raise TypeError("Observation worker result has an invalid payload shape.")
+        items_by_source[source_name].extend(items)
     for items in items_by_source.values():
         if return_rows:
-            items.sort(
-                key=lambda row: int(
-                    row.get("normal_point_index", row.get("record_index", 0))
-                )
-            )
+            items.sort(key=lambda row: int(row.get("normal_point_index", row.get("record_index", 0))))
         else:
-            items.sort(key=lambda equation: equation.normal_point_index)
+            items.sort(key=lambda equation: equation.observation_id)
     return items_by_source
 
 

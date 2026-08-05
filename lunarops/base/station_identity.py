@@ -1,4 +1,5 @@
 """Canonical station identity data shared by catalogs and estimators."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

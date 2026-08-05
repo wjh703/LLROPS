@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Iterable, Sequence
+from typing import Iterable
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 from lunarops.base.constants import C2
 from lunarops.base.array_validation import vector3
@@ -36,9 +37,7 @@ class Iers2010ShapiroDelay(GravitationalDelay):
             raise TypeError("ephemeris must implement Ephemeris.")
         if isinstance(bodies, str):
             bodies = (bodies,)
-        normalized_bodies = tuple(
-            dict.fromkeys(str(body).strip().upper() for body in bodies)
-        )
+        normalized_bodies = tuple(dict.fromkeys(str(body).strip().upper() for body in bodies))
         if not normalized_bodies:
             raise ValueError("Iers2010ShapiroDelay requires at least one gravitating body.")
         unknown = [body for body in normalized_bodies if body not in GM_BY_BODY]
@@ -55,8 +54,8 @@ class Iers2010ShapiroDelay(GravitationalDelay):
 
     def path_delay_m(
         self,
-        transmitter_bcrs_m: Sequence[float],
-        receiver_bcrs_m: Sequence[float],
+        transmitter_bcrs_m: ArrayLike,
+        receiver_bcrs_m: ArrayLike,
         epoch_tdb: Epoch,
     ) -> float:
         epoch = require_tdb_epoch(epoch_tdb, name="epoch_tdb")

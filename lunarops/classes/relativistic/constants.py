@@ -1,4 +1,5 @@
 """Relativistic and gravitational constants used by frame/time models."""
+
 from __future__ import annotations
 
 # IAU/JPL relativistic scale constants used by coordinate transforms.
@@ -60,14 +61,26 @@ GM_BY_BODY = {
 # External-potential body lists used in BCRS<->GCRS / BCRS<->LCRS
 # coordinate-time conversions (IERS Eq. 11.18 / 11.19; paper Eq. 21 / 23).
 EARTH_EXTERNAL_POTENTIAL_BODIES = (
-    "SUN", "MOON", "MERCURY BARYCENTER", "VENUS BARYCENTER",
-    "MARS BARYCENTER", "JUPITER BARYCENTER",
-    "SATURN BARYCENTER", "URANUS BARYCENTER", "NEPTUNE BARYCENTER",
+    "SUN",
+    "MOON",
+    "MERCURY BARYCENTER",
+    "VENUS BARYCENTER",
+    "MARS BARYCENTER",
+    "JUPITER BARYCENTER",
+    "SATURN BARYCENTER",
+    "URANUS BARYCENTER",
+    "NEPTUNE BARYCENTER",
 )
 MOON_EXTERNAL_POTENTIAL_BODIES = (
-    "SUN", "EARTH", "MERCURY BARYCENTER", "VENUS BARYCENTER",
-    "MARS BARYCENTER", "JUPITER BARYCENTER",
-    "SATURN BARYCENTER", "URANUS BARYCENTER", "NEPTUNE BARYCENTER",
+    "SUN",
+    "EARTH",
+    "MERCURY BARYCENTER",
+    "VENUS BARYCENTER",
+    "MARS BARYCENTER",
+    "JUPITER BARYCENTER",
+    "SATURN BARYCENTER",
+    "URANUS BARYCENTER",
+    "NEPTUNE BARYCENTER",
 )
 
 __all__ = [

@@ -55,9 +55,7 @@ def _replace_directory(target: Path, temporary: Path) -> None:
     try:
         if target.exists():
             if not target.is_dir():
-                raise FileExistsError(
-                    f"Normal-equation target exists and is not a directory: {target}"
-                )
+                raise FileExistsError(f"Normal-equation target exists and is not a directory: {target}")
             backup = target.parent / f".{target.name}.old.{os.getpid()}"
             if backup.exists():
                 shutil.rmtree(backup)
@@ -96,9 +94,7 @@ class NormalEquations:
     ) -> None:
         self.parameter_names = parameter_names
         self.parameter_units = (
-            [parameter_unit(name) for name in parameter_names]
-            if parameter_units is None
-            else list(parameter_units)
+            [parameter_unit(name) for name in parameter_names] if parameter_units is None else list(parameter_units)
         )
         self.N = N
         self.W = W
@@ -118,46 +114,32 @@ class NormalEquations:
     def __post_init__(self) -> None:
         names = list(self.parameter_names)
         if not all(isinstance(name, ParameterName) for name in names):
-            raise TypeError(
-                "Normal-equation parameter names must be ParameterName objects."
-            )
+            raise TypeError("Normal-equation parameter names must be ParameterName objects.")
         if len(set(names)) != len(names):
             raise ValueError("Normal-equation parameter names must be unique.")
         units = [str(unit).strip() for unit in self.parameter_units]
         if len(units) != len(names) or any(not unit for unit in units):
-            raise ValueError(
-                "Normal-equation parameter units must align and be non-empty."
-            )
+            raise ValueError("Normal-equation parameter units must align and be non-empty.")
 
         normal_matrix = np.asarray(self.N, dtype=float)
         right_hand_side = np.asarray(self.W, dtype=float).reshape(-1)
         parameter_count = len(names)
         if normal_matrix.shape != (parameter_count, parameter_count):
             raise ValueError(
-                f"Normal matrix has shape {normal_matrix.shape}, expected "
-                f"{(parameter_count, parameter_count)}."
+                f"Normal matrix has shape {normal_matrix.shape}, expected {(parameter_count, parameter_count)}."
             )
         if right_hand_side.shape != (parameter_count,):
             raise ValueError(
-                f"Normal right-hand side has shape {right_hand_side.shape}, "
-                f"expected {(parameter_count,)}."
+                f"Normal right-hand side has shape {right_hand_side.shape}, expected {(parameter_count,)}."
             )
-        if not np.all(np.isfinite(normal_matrix)) or not np.all(
-            np.isfinite(right_hand_side)
-        ):
+        if not np.all(np.isfinite(normal_matrix)) or not np.all(np.isfinite(right_hand_side)):
             raise ValueError("Normal equations contain non-finite matrix values.")
         if not np.allclose(normal_matrix, normal_matrix.T, rtol=1.0e-12, atol=1.0e-14):
             raise ValueError("Normal matrix must be symmetric.")
         if not np.isfinite(self.lPl) or float(self.lPl) < 0.0:
             raise ValueError("Normal-equation lPl must be finite and non-negative.")
-        if (
-            isinstance(self.obs_count, bool)
-            or int(self.obs_count) != self.obs_count
-            or int(self.obs_count) < 0
-        ):
-            raise ValueError(
-                "Normal-equation observation count must be a non-negative integer."
-            )
+        if isinstance(self.obs_count, bool) or int(self.obs_count) != self.obs_count or int(self.obs_count) < 0:
+            raise ValueError("Normal-equation observation count must be a non-negative integer.")
         self.parameter_names = names
         self.parameter_units = units
         self.N = normal_matrix
@@ -167,9 +149,7 @@ class NormalEquations:
         metadata: dict[str, object] = {}
         for key, value in dict(self.meta).items():
             if not isinstance(key, str) or not key:
-                raise ValueError(
-                    "Normal-equation metadata keys must be non-empty strings."
-                )
+                raise ValueError("Normal-equation metadata keys must be non-empty strings.")
             metadata[key] = value
         self.meta = metadata
 
@@ -206,18 +186,14 @@ class NormalEquations:
                 raise ValueError("Either sigma or weight is required.")
             sigma = float(sigma)
             if not np.isfinite(sigma) or sigma <= 0.0:
-                raise ValueError(
-                    f"Observation sigma must be positive and finite, got {sigma!r}."
-                )
+                raise ValueError(f"Observation sigma must be positive and finite, got {sigma!r}.")
             weight_value = 1.0 / (sigma * sigma)
         else:
             if sigma is not None:
                 raise ValueError("Specify either sigma or weight, not both.")
             weight_value = float(weight)
             if not np.isfinite(weight_value) or weight_value < 0.0:
-                raise ValueError(
-                    f"Observation weight must be finite and non-negative, got {weight_value!r}."
-                )
+                raise ValueError(f"Observation weight must be finite and non-negative, got {weight_value!r}.")
         observation = float(l)
         if not np.isfinite(observation):
             raise ValueError("Reduced observation must be finite.")
@@ -227,9 +203,7 @@ class NormalEquations:
         for raw_index, raw_value in entries:
             index = int(raw_index)
             if index < 0 or index >= parameter_count:
-                raise ValueError(
-                    f"Sparse design column {index} is outside [0, {parameter_count})."
-                )
+                raise ValueError(f"Sparse design column {index} is outside [0, {parameter_count}).")
             value = float(raw_value)
             if not np.isfinite(value):
                 raise ValueError("Sparse design values must be finite.")
@@ -237,8 +211,11 @@ class NormalEquations:
                 coalesced[index] = coalesced.get(index, 0.0) + value
 
         if coalesced:
-            indices = np.fromiter(coalesced.keys(), dtype=int)
-            values = np.fromiter((coalesced[index] for index in indices), dtype=float)
+            indices = np.fromiter(coalesced.keys(), dtype=np.intp)
+            values = np.fromiter(
+                (coalesced[int(index)] for index in indices),
+                dtype=np.float64,
+            )
             self.N[np.ix_(indices, indices)] += weight_value * np.outer(values, values)
             self.W[indices] += weight_value * values * observation
         self.lPl += weight_value * observation * observation
@@ -247,9 +224,7 @@ class NormalEquations:
     def accumulate_row(self, a: np.ndarray, l: float, sigma: float) -> None:
         row = np.asarray(a, dtype=float).reshape(-1)
         if row.size != len(self.parameter_names):
-            raise ValueError(
-                f"Design row has {row.size} columns, expected {len(self.parameter_names)}."
-            )
+            raise ValueError(f"Design row has {row.size} columns, expected {len(self.parameter_names)}.")
         self.accumulate_sparse_row(
             ((index, value) for index, value in enumerate(row) if float(value)),
             l,
@@ -271,15 +246,11 @@ class NormalEquations:
         left = self.meta.get("compatibility")
         right = other.meta.get("compatibility")
         if left != right:
-            raise ValueError(
-                "Normal equations have incompatible scientific conventions."
-            )
+            raise ValueError("Normal equations have incompatible scientific conventions.")
         left_units = dict(zip(self.parameter_names, self.parameter_units))
         for name, unit in zip(other.parameter_names, other.parameter_units):
             if name in left_units and left_units[name] != unit:
-                raise ValueError(
-                    f"Parameter {name} has incompatible units {left_units[name]!r} and {unit!r}."
-                )
+                raise ValueError(f"Parameter {name} has incompatible units {left_units[name]!r} and {unit!r}.")
 
     def add(self, other: "NormalEquations") -> "NormalEquations":
         if not isinstance(other, NormalEquations):
@@ -298,9 +269,7 @@ class NormalEquations:
         rhs = np.zeros(count, dtype=float)
 
         def scatter(source: "NormalEquations") -> None:
-            indices = np.array(
-                [index[name] for name in source.parameter_names], dtype=int
-            )
+            indices = np.array([index[name] for name in source.parameter_names], dtype=int)
             matrix[np.ix_(indices, indices)] += source.N
             rhs[indices] += source.W
 
@@ -330,16 +299,11 @@ class NormalEquations:
         tolerance = 1.0e-10 * max(1.0, self.lPl, abs(float(rhs @ solution)))
         if residual_quadratic < -tolerance:
             raise np.linalg.LinAlgError(
-                "Normal-equation negative residual quadratic is beyond roundoff: "
-                f"lPl-W.T@x={residual_quadratic:.6e}."
+                f"Normal-equation negative residual quadratic is beyond roundoff: lPl-W.T@x={residual_quadratic:.6e}."
             )
         residual_quadratic = max(residual_quadratic, 0.0)
         degrees_of_freedom = self.obs_count - len(self.parameter_names)
-        sigma0 = (
-            None
-            if degrees_of_freedom <= 0
-            else float(np.sqrt(residual_quadratic / degrees_of_freedom))
-        )
+        sigma0 = None if degrees_of_freedom <= 0 else float(np.sqrt(residual_quadratic / degrees_of_freedom))
         return solution, covariance, sigma0
 
     def save(self, path: str | Path) -> Path:
@@ -352,12 +316,8 @@ class NormalEquations:
             names_path = temporary / "parameterNames.txt"
             write_matrix(matrix_path, self.N, kind="lowerSymmetric")
             write_matrix(rhs_path, self.W, kind="vector")
-            write_parameter_names(
-                names_path, self.parameter_names, self.parameter_units
-            )
-            with atomic_text_writer(
-                temporary / "info.txt", "normalEquationInfo"
-            ) as stream:
+            write_parameter_names(names_path, self.parameter_names, self.parameter_units)
+            with atomic_text_writer(temporary / "info.txt", "normalEquationInfo") as stream:
                 stream.write(f"observationCount {self.obs_count}\n")
                 stream.write(f"lPl {format_float(self.lPl)}\n")
                 stream.write(f"parameterCount {len(self.parameter_names)}\n")
@@ -370,9 +330,7 @@ class NormalEquations:
                 items = sorted(self.meta.items())
                 stream.write(f"metadataCount {len(items)}\n")
                 for key, value in items:
-                    stream.write(
-                        f"metadata {encode_token(key)} {_encode_metadata(value)}\n"
-                    )
+                    stream.write(f"metadata {encode_token(key)} {_encode_metadata(value)}\n")
             _replace_directory(target, temporary)
         finally:
             if temporary.exists():
@@ -392,14 +350,10 @@ class NormalEquations:
                 try:
                     line = next(lines)
                 except StopIteration as exc:
-                    raise ValueError(
-                        f"Truncated normal-equation info in {source}."
-                    ) from exc
+                    raise ValueError(f"Truncated normal-equation info in {source}.") from exc
                 parts = line.split(maxsplit=1)
                 if len(parts) != 2 or parts[0] != expected:
-                    raise ValueError(
-                        f"Expected {expected!r} in normal-equation info, found {line!r}."
-                    )
+                    raise ValueError(f"Expected {expected!r} in normal-equation info, found {line!r}.")
                 return parts[1]
 
             observation_count = int(pair("observationCount"))
@@ -413,9 +367,7 @@ class NormalEquations:
                 or rhs_name != "rightHandSide.dat.gz"
                 or names_name != "parameterNames.txt"
             ):
-                raise ValueError(
-                    f"Normal-equation group uses unexpected payload names in {source}."
-                )
+                raise ValueError(f"Normal-equation group uses unexpected payload names in {source}.")
             matrix_hash = pair("normalMatrixSha256")
             rhs_hash = pair("rightHandSideSha256")
             names_hash = pair("parameterNamesSha256")
@@ -425,14 +377,10 @@ class NormalEquations:
                 try:
                     metadata_line = next(lines)
                 except StopIteration as exc:
-                    raise ValueError(
-                        f"Truncated normal-equation metadata in {source}."
-                    ) from exc
+                    raise ValueError(f"Truncated normal-equation metadata in {source}.") from exc
                 fields = metadata_line.split()
                 if len(fields) != 3 or fields[0] != "metadata":
-                    raise ValueError(
-                        f"Malformed normal-equation metadata row {metadata_line!r}."
-                    )
+                    raise ValueError(f"Malformed normal-equation metadata row {metadata_line!r}.")
                 key = decode_token(fields[1])
                 if key in metadata:
                     raise ValueError(f"Duplicate normal-equation metadata key {key!r}.")
@@ -453,14 +401,10 @@ class NormalEquations:
             (names_path, names_hash),
         ):
             if sha256_file(payload) != expected:
-                raise ValueError(
-                    f"Normal-equation payload checksum mismatch: {payload}"
-                )
+                raise ValueError(f"Normal-equation payload checksum mismatch: {payload}")
         names, units = read_parameter_names(names_path)
         if len(names) != parameter_count:
-            raise ValueError(
-                "Normal-equation parameter count does not match parameter names."
-            )
+            raise ValueError("Normal-equation parameter count does not match parameter names.")
         matrix = read_matrix(matrix_path, expected_kind="lowerSymmetric")
         rhs = read_matrix(rhs_path, expected_kind="vector")
         return cls(

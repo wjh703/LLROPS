@@ -28,7 +28,10 @@ class _Ephemeris(Ephemeris):
             "SUN": [1.0e11, 0.0, 0.0],
             "MOON": [4.0e8, 0.0, 0.0],
         }
-        return BodyState(positions[body_name.strip().upper()], [0.0, 0.0, 0.0])
+        return BodyState(
+            np.asarray(positions[body_name.strip().upper()]),
+            np.zeros(3),
+        )
 
     def pa2lcrs_matrix(self, epoch_tdb: Epoch) -> np.ndarray:
         epoch_tdb.require_scale(TimeScale.TDB)
@@ -41,9 +44,7 @@ def test_tabulated_eop_public_names_and_validation():
 
     assert eop.source_file_path == Path("eop.txt")
     assert eop.mjd_utc_range == (60_000.0, 60_000.0)
-    assert eop.ut1_minus_utc_s(
-        Epoch(2_400_000.5, 60_000.0, TimeScale.UTC)
-    ) == pytest.approx(-0.3)
+    assert eop.ut1_minus_utc_s(Epoch(2_400_000.5, 60_000.0, TimeScale.UTC)) == pytest.approx(-0.3)
     with pytest.raises(ValueError, match="must be finite"):
         EarthOrientationSample(60_000.0, np.nan, 0.2, 0.0)
 
@@ -58,17 +59,13 @@ def test_high_frequency_public_api_requires_explicit_background_dut1():
     )
     assert np.isfinite(correction.delta_ut1_s)
     assert np.isfinite(
-        earth_rotation_libration_eop_correction(
-            Epoch(2_400_000.5, 55_227.4, TimeScale.TDB)
-        ).delta_xp_arcsec
+        earth_rotation_libration_eop_correction(Epoch(2_400_000.5, 55_227.4, TimeScale.TDB)).delta_xp_arcsec
     )
 
 
 def test_gcrs2itrf_matrix_is_read_only():
     epoch = Epoch.from_calendar(2020, 1, 1, 6, scale=TimeScale.UTC)
-    eop = TabulatedEarthOrientation(
-        (EarthOrientationSample(epoch.mjd, 0.076, 0.282, -0.177),)
-    )
+    eop = TabulatedEarthOrientation((EarthOrientationSample(epoch.mjd, 0.076, 0.282, -0.177),))
     matrix = TerrestrialFrameTransform(eop).gcrs2itrf_matrix(epoch)
     assert not matrix.flags.writeable
     with pytest.raises(ValueError):
@@ -78,13 +75,9 @@ def test_gcrs2itrf_matrix_is_read_only():
 def test_external_gravitational_potential_normalizes_and_deduplicates_names():
     epoch = Epoch(2_450_000.5, 0.0, TimeScale.TDB)
     transform = RelativisticFrameTransform(_Ephemeris())
-    potential = transform.external_gravitational_potential_m2_s2(
-        " earth ", epoch, " sun "
-    )
+    potential = transform.external_gravitational_potential_m2_s2(" earth ", epoch, " sun ")
     assert potential == pytest.approx(GM_SUN / 1.0e11)
-    deduplicated = transform.external_gravitational_potential_m2_s2(
-        "EARTH", epoch, ("SUN", " sun ")
-    )
+    deduplicated = transform.external_gravitational_potential_m2_s2("EARTH", epoch, ("SUN", " sun "))
     assert deduplicated == pytest.approx(potential)
     with pytest.raises(ValueError, match="must not also appear"):
         transform.external_gravitational_potential_m2_s2("EARTH", epoch, "earth")

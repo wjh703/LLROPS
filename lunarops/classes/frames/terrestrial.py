@@ -1,10 +1,10 @@
 """ITRF/ITRS and GCRS transforms driven by explicit EOP and ERFA."""
-from __future__ import annotations
 
-from typing import Sequence
+from __future__ import annotations
 
 import erfa
 import numpy as np
+from numpy.typing import ArrayLike
 
 from lunarops.base.epoch import Epoch, TimeScale, utc2tt
 from lunarops.base.array_validation import readonly_matrix3x3, vector3
@@ -18,9 +18,7 @@ _ARCSEC_TO_RAD = np.deg2rad(1.0 / 3600.0)
 class TerrestrialFrameTransform:
     def __init__(self, earth_orientation_provider: EarthOrientationProvider) -> None:
         if not isinstance(earth_orientation_provider, EarthOrientationProvider):
-            raise TypeError(
-                "earth_orientation_provider must be an EarthOrientationProvider instance."
-            )
+            raise TypeError("earth_orientation_provider must be an EarthOrientationProvider instance.")
         self.earth_orientation_provider = earth_orientation_provider
 
     @staticmethod
@@ -63,11 +61,11 @@ class TerrestrialFrameTransform:
             raise RuntimeError("ERFA returned an invalid celestial-to-terrestrial matrix.")
         return readonly_matrix3x3(matrix, name="gcrs2itrf_matrix")
 
-    def gcrs2itrf(self, position_gcrs_m: Sequence[float], epoch_utc: Epoch) -> np.ndarray:
+    def gcrs2itrf(self, position_gcrs_m: ArrayLike, epoch_utc: Epoch) -> np.ndarray:
         matrix = self.gcrs2itrf_matrix(epoch_utc)
         return matrix @ vector3(position_gcrs_m, name="position_gcrs_m")
 
-    def itrf2gcrs(self, position_itrf_m: Sequence[float], epoch_utc: Epoch) -> np.ndarray:
+    def itrf2gcrs(self, position_itrf_m: ArrayLike, epoch_utc: Epoch) -> np.ndarray:
         matrix = self.gcrs2itrf_matrix(epoch_utc)
         return matrix.T @ vector3(position_itrf_m, name="position_itrf_m")
 

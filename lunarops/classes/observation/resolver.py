@@ -1,8 +1,11 @@
 """Catalog resolution for source-independent normal-point observations."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from typing import Mapping, Sequence
+
+import numpy as np
 
 from lunarops.base.epoch import Epoch, TimeScale
 from lunarops.fileio.catalogs import ReflectorRecord, StationRecord, first_resolvable_key
@@ -10,38 +13,41 @@ from lunarops.fileio.normal_points import NptRecord
 
 
 @dataclass(frozen=True, slots=True)
-class CatalogSelection:
-    station_name: str | None = None
-    reflector_name: str | None = None
+class ObservationCatalogSelection:
+    station_identifier: str | None = None
+    reflector_identifier: str | None = None
 
 
 @dataclass(frozen=True, slots=True, eq=False, repr=False)
 class ResolvedObservation:
-    record: NptRecord
+    normal_point: NptRecord
     station_key: str
     station: StationRecord
     reflector_key: str
     reflector: ReflectorRecord
-    transmit_epoch: Epoch
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.transmit_epoch, Epoch):
-            raise TypeError("transmit_epoch must be an Epoch.")
-        self.transmit_epoch.require_scale(TimeScale.UTC, name="transmit_epoch")
 
     @property
-    def station_candidates(self) -> tuple[str, ...]:
+    def transmit_epoch_utc(self) -> Epoch:
+        epoch = self.normal_point.transmit_epoch
+        epoch.require_scale(TimeScale.UTC, name="normal_point.transmit_epoch")
+        return epoch
+
+    @property
+    def station_identity_candidates(self) -> tuple[str, ...]:
         values = (
             self.station_key,
             self.station.name,
-            self.record.station_name,
-            self.record.station_code,
+            self.normal_point.station_name,
+            self.normal_point.station_code,
         )
         return tuple(str(value) for value in values if value is not None and str(value).strip())
 
 
-class ObservationModelState:
+class ObservationCatalogState:
     """Mutable catalog state shared explicitly by model and parametrizations."""
+
+    station_catalog: dict[str, StationRecord]
+    reflector_catalog: dict[str, ReflectorRecord]
 
     __slots__ = ("station_catalog", "reflector_catalog")
 
@@ -53,20 +59,21 @@ class ObservationModelState:
         self.station_catalog = dict(station_catalog)
         self.reflector_catalog = dict(reflector_catalog)
 
-    def reflector_positions(self) -> dict[str, tuple[float, float, float]]:
-        return {
-            key: tuple(float(value) for value in record.moon_fixed_xyz_m)
-            for key, record in self.reflector_catalog.items()
-        }
+    def reflector_positions_pa_m(self) -> dict[str, tuple[float, float, float]]:
+        positions: dict[str, tuple[float, float, float]] = {}
+        for key, record in self.reflector_catalog.items():
+            values = np.asarray(record.moon_fixed_xyz_m, dtype=np.float64).reshape(3)
+            positions[key] = (float(values[0]), float(values[1]), float(values[2]))
+        return positions
 
-    def apply_reflector_positions(
+    def apply_reflector_positions_pa_m(
         self,
-        positions: Mapping[str, Sequence[float]],
+        positions_pa_m_by_key: Mapping[str, Sequence[float]],
     ) -> None:
-        unknown = set(positions) - set(self.reflector_catalog)
+        unknown = set(positions_pa_m_by_key) - set(self.reflector_catalog)
         if unknown:
             raise KeyError(f"Unknown reflector state key(s): {sorted(unknown)}")
-        for key, values in positions.items():
+        for key, values in positions_pa_m_by_key.items():
             self.reflector_catalog[key] = replace(
                 self.reflector_catalog[key],
                 moon_fixed_xyz_m=values,
@@ -76,10 +83,10 @@ class ObservationModelState:
 class ObservationResolver:
     def __init__(
         self,
-        model_state: ObservationModelState,
+        model_state: ObservationCatalogState,
     ) -> None:
-        if not isinstance(model_state, ObservationModelState):
-            raise TypeError("model_state must be an ObservationModelState.")
+        if not isinstance(model_state, ObservationCatalogState):
+            raise TypeError("model_state must be an ObservationCatalogState.")
         self.model_state = model_state
 
     @property
@@ -92,65 +99,64 @@ class ObservationResolver:
 
     @staticmethod
     def _candidates(
-        record: NptRecord,
-        selection: CatalogSelection,
+        normal_point: NptRecord,
+        catalog_selection: ObservationCatalogSelection,
     ) -> tuple[list[str | None], list[str | None]]:
-        station_candidates = (
-            [selection.station_name]
-            if selection.station_name
-            else [record.station_name, record.station_code]
+        station_candidates: list[str | None] = (
+            [catalog_selection.station_identifier]
+            if catalog_selection.station_identifier
+            else [normal_point.station_name, normal_point.station_code]
         )
-        reflector_candidates = (
-            [selection.reflector_name]
-            if selection.reflector_name
-            else [record.reflector_name, record.reflector_code]
+        reflector_candidates: list[str | None] = (
+            [catalog_selection.reflector_identifier]
+            if catalog_selection.reflector_identifier
+            else [normal_point.reflector_name, normal_point.reflector_code]
         )
         return station_candidates, reflector_candidates
 
     def resolve(
         self,
-        record: NptRecord,
-        selection: CatalogSelection = CatalogSelection(),
+        normal_point: NptRecord,
+        catalog_selection: ObservationCatalogSelection | None = None,
     ) -> ResolvedObservation:
-        station_candidates, reflector_candidates = self._candidates(record, selection)
+        catalog_selection = catalog_selection or ObservationCatalogSelection()
+        station_candidates, reflector_candidates = self._candidates(normal_point, catalog_selection)
         station_key = first_resolvable_key(station_candidates, self.station_catalog, "Station")
         reflector_key = first_resolvable_key(
             reflector_candidates,
             self.reflector_catalog,
             "Reflector",
         )
+        normal_point = replace(normal_point)
         return ResolvedObservation(
-            record=record,
+            normal_point=normal_point,
             station_key=station_key,
             station=self.station_catalog[station_key],
             reflector_key=reflector_key,
             reflector=self.reflector_catalog[reflector_key],
-            transmit_epoch=record.transmit_epoch,
         )
 
-    def validate(
+    def resolve_all(
         self,
-        records: Sequence[NptRecord],
-        selection: CatalogSelection = CatalogSelection(),
+        normal_points: Sequence[NptRecord],
+        catalog_selection: ObservationCatalogSelection | None = None,
     ) -> list[ResolvedObservation]:
         resolved: list[ResolvedObservation] = []
         problems: list[str] = []
-        for position, record in enumerate(records):
+        for position, normal_point in enumerate(normal_points):
             try:
-                resolved.append(self.resolve(record, selection))
+                resolved.append(self.resolve(normal_point, catalog_selection))
             except KeyError as exc:
                 problems.append(f"record_index={position}: {exc}")
         if problems:
             detail = "\n  ".join(problems)
-            raise ValueError(
-                f"Catalog resolution failed for {len(problems)} record(s):\n  {detail}"
-            )
+            raise ValueError(f"Catalog resolution failed for {len(problems)} record(s):\n  {detail}")
         return resolved
 
 
 __all__ = [
-    "CatalogSelection",
-    "ObservationModelState",
+    "ObservationCatalogSelection",
+    "ObservationCatalogState",
     "ObservationResolver",
     "ResolvedObservation",
 ]

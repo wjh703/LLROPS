@@ -12,11 +12,7 @@ from lunarops.programs.registry import ArtifactSlot, ProgramSpec, program
     ProgramSpec(
         name="NormalPointsConvert",
         summary="Import CRD, MINI, or native normal points into one canonical file.",
-        inputs=(
-            ArtifactSlot(
-                "inputFilesNormalPoints", "ExternalNormalPointFile", many=True
-            ),
-        ),
+        inputs=(ArtifactSlot("inputFilesNormalPoints", "ExternalNormalPointFile", many=True),),
         outputs=(
             ArtifactSlot("outputFileNormalPoints", "NormalPointFile"),
             ArtifactSlot("outputFileImportReport", "ImportReportFile"),
@@ -70,9 +66,7 @@ def normal_points_convert(config: dict, context: RunContext):
         "normalPointImportReport",
         report,
     )
-    print(
-        f"[NormalPointsConvert] {len(combined)} record(s) from {len(sources)} source(s) -> {output}"
-    )
+    print(f"[NormalPointsConvert] {len(combined)} record(s) from {len(sources)} source(s) -> {output}")
     return output
 
 
@@ -128,26 +122,12 @@ def normal_points_filter(config: dict, context: RunContext):
     )
     from lunarops.fileio.normal_points import NptDataset, parse_time_filter
 
-    dataset = read_normal_point_file(
-        context.resolve_path(config["inputFileNormalPoints"])
-    )
+    dataset = read_normal_point_file(context.resolve_path(config["inputFileNormalPoints"]))
     start = parse_time_filter(config.get("startTime"))
     end = parse_time_filter(config.get("endTime"))
-    stations = (
-        None
-        if config.get("stationNames") is None
-        else {str(value) for value in config["stationNames"]}
-    )
-    reflectors = (
-        None
-        if config.get("reflectorNames") is None
-        else {str(value) for value in config["reflectorNames"]}
-    )
-    maximum_sigma = (
-        None
-        if config.get("maximumOneWaySigmaM") is None
-        else float(config["maximumOneWaySigmaM"])
-    )
+    stations = None if config.get("stationNames") is None else {str(value) for value in config["stationNames"]}
+    reflectors = None if config.get("reflectorNames") is None else {str(value) for value in config["reflectorNames"]}
+    maximum_sigma = None if config.get("maximumOneWaySigmaM") is None else float(config["maximumOneWaySigmaM"])
     if maximum_sigma is not None and maximum_sigma <= 0.0:
         raise ValueError("maximumOneWaySigmaM must be positive.")
     records = [
@@ -155,19 +135,9 @@ def normal_points_filter(config: dict, context: RunContext):
         for record in dataset.records
         if (start is None or record.transmit_epoch >= start)
         and (end is None or record.transmit_epoch < end)
-        and (
-            stations is None
-            or record.station_name in stations
-            or record.station_code in stations
-        )
-        and (
-            reflectors is None
-            or record.reflector_name in reflectors
-            or record.reflector_code in reflectors
-        )
-        and (
-            maximum_sigma is None or record.range_uncertainty_one_way_m <= maximum_sigma
-        )
+        and (stations is None or record.station_name in stations or record.station_code in stations)
+        and (reflectors is None or record.reflector_name in reflectors or record.reflector_code in reflectors)
+        and (maximum_sigma is None or record.range_uncertainty_one_way_m <= maximum_sigma)
     ]
     if not records:
         raise ValueError("NormalPointsFilter selected no records.")
@@ -179,9 +149,7 @@ def normal_points_filter(config: dict, context: RunContext):
     ).assign_indices()
     output = context.resolve_path(config["outputFileNormalPoints"])
     write_normal_point_file(filtered, output)
-    print(
-        f"[NormalPointsFilter] {len(dataset)} -> {len(filtered)} record(s) -> {output}"
-    )
+    print(f"[NormalPointsFilter] {len(dataset)} -> {len(filtered)} record(s) -> {output}")
     return output
 
 
@@ -199,10 +167,7 @@ def normal_points_statistics(config: dict, context: RunContext):
     from lunarops.fileio.normal_point_file import read_normal_point_file
     from lunarops.fileio.structured_text import write_structured_text
 
-    datasets = [
-        read_normal_point_file(context.resolve_path(value))
-        for value in config["inputFilesNormalPoints"]
-    ]
+    datasets = [read_normal_point_file(context.resolve_path(value)) for value in config["inputFilesNormalPoints"]]
     records = [record for dataset in datasets for record in dataset.records]
     if not records:
         raise ValueError("NormalPointsStatistics has no records.")
@@ -214,20 +179,14 @@ def normal_points_statistics(config: dict, context: RunContext):
         "recordCount": len(records),
         "startTimeUtc": epochs[0].isot(precision=6),
         "endTimeUtc": epochs[-1].isot(precision=6),
-        "recordsByStation": dict(
-            sorted(Counter(record.station_name for record in records).items())
-        ),
-        "recordsByReflector": dict(
-            sorted(Counter(record.reflector_name for record in records).items())
-        ),
+        "recordsByStation": dict(sorted(Counter(record.station_name for record in records).items())),
+        "recordsByReflector": dict(sorted(Counter(record.reflector_name for record in records).items())),
         "oneWaySigmaM": {
             "minimum": float(np.min(sigmas)),
             "median": float(np.median(sigmas)),
             "maximum": float(np.max(sigmas)),
         },
-        "invalidInputRecordCount": sum(
-            dataset.n_invalid_records for dataset in datasets
-        ),
+        "invalidInputRecordCount": sum(dataset.n_invalid_records for dataset in datasets),
     }
     output = context.resolve_path(config["outputFileStatistics"])
     write_structured_text(output, "normalPointStatistics", payload)

@@ -52,11 +52,7 @@ class _FakeEphemeris(Ephemeris):
             "URANUS BARYCENTER": 9,
             "NEPTUNE BARYCENTER": 10,
         }[body_name.upper()]
-        velocity = (
-            np.array([12_000.0, -18_000.0, 3_000.0])
-            if index == 3
-            else np.zeros(3)
-        )
+        velocity = np.array([12_000.0, -18_000.0, 3_000.0]) if index == 3 else np.zeros(3)
         return BodyState(
             position_m=np.array([index * 1.0e11, index * 1.0e9, 0.0]),
             velocity_mps=velocity,
@@ -175,14 +171,8 @@ def test_zero_libration_factory_and_shapiro_use_epoch():
 
 
 def test_longitude_libration_correction_type_normalization_is_explicit():
-    assert (
-        normalize_longitude_libration_correction_type(None)
-        is LongitudeLibrationCorrectionType.NONE
-    )
-    assert (
-        normalize_longitude_libration_correction_type(" INPOP21A ")
-        is LongitudeLibrationCorrectionType.INPOP21A
-    )
+    assert normalize_longitude_libration_correction_type(None) is LongitudeLibrationCorrectionType.NONE
+    assert normalize_longitude_libration_correction_type(" INPOP21A ") is LongitudeLibrationCorrectionType.INPOP21A
     for legacy_value in (False, True, "", "no", "off", "false", "0"):
         with pytest.raises((TypeError, ValueError)):
             normalize_longitude_libration_correction_type(legacy_value)
@@ -190,10 +180,7 @@ def test_longitude_libration_correction_type_normalization_is_explicit():
 
 def test_ephemeris_exposes_libration_selection_as_enum():
     ephemeris = _FakeEphemeris()
-    assert (
-        ephemeris.longitude_libration_correction_type
-        is LongitudeLibrationCorrectionType.NONE
-    )
+    assert ephemeris.longitude_libration_correction_type is LongitudeLibrationCorrectionType.NONE
 
 
 def test_shapiro_normalizes_body_inputs_and_validates_positions():

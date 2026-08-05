@@ -1,4 +1,5 @@
 """Parametrization: lunar reflector PA-frame coordinates (3 per reflector)."""
+
 from __future__ import annotations
 
 from dataclasses import replace
@@ -10,7 +11,7 @@ from lunarops.base.parameter_name import ParameterName
 from lunarops.base.array_validation import parameter_vector
 from lunarops.config.registry import register
 from lunarops.classes.observation.equations import ObservationEquation
-from lunarops.classes.observation.resolver import ObservationModelState
+from lunarops.classes.observation.resolver import ObservationCatalogState
 from .base import Parametrization
 
 _AXES = ("x", "y", "z")
@@ -25,7 +26,7 @@ class ReflectorPositionParametrization(Parametrization):
     reflectors :
         Optional explicit list of reflector catalog keys to estimate; default
         is every reflector present in the observation set.
-    The explicit :class:`ObservationModelState` supplied to :meth:`setup`
+    The explicit :class:`ObservationCatalogState` supplied to :meth:`setup`
     owns the coordinates updated between nonlinear iterations.
     """
 
@@ -34,7 +35,7 @@ class ReflectorPositionParametrization(Parametrization):
         self.keys: List[str] = []
         self._index_by_key: Dict[str, int] = {}
         self._names: List[ParameterName] = []
-        self._model_state: ObservationModelState | None = None
+        self._model_state: ObservationCatalogState | None = None
 
     @classmethod
     def from_config(cls, config: dict, context) -> "ReflectorPositionParametrization":
@@ -43,12 +44,10 @@ class ReflectorPositionParametrization(Parametrization):
     def setup(
         self,
         equations: Sequence[ObservationEquation],
-        model_state: ObservationModelState,
+        model_state: ObservationCatalogState,
     ) -> None:
-        if not isinstance(model_state, ObservationModelState):
-            raise TypeError(
-                "reflectorPosition requires an ObservationModelState."
-            )
+        if not isinstance(model_state, ObservationCatalogState):
+            raise TypeError("reflectorPosition requires an ObservationCatalogState.")
         self._model_state = model_state
         catalog = model_state.reflector_catalog
         observed = sorted({eq.reflector_key for eq in equations})
@@ -66,7 +65,7 @@ class ReflectorPositionParametrization(Parametrization):
         j = self._index_by_key.get(eq.reflector_key)
         if j is None:
             return None, None
-        block = eq.partials.get("reflector_position_pa")
+        block = eq.design_partials.get("reflector_position_pa")
         if block is None:
             raise KeyError(
                 "Observation equation lacks the 'reflector_position_pa' partial "
@@ -96,18 +95,13 @@ class ReflectorPositionParametrization(Parametrization):
             record = self._model_state.reflector_catalog[key]
             self._model_state.reflector_catalog[key] = replace(
                 record,
-                moon_fixed_xyz_m=(
-                    np.asarray(record.moon_fixed_xyz_m, dtype=float)
-                    + delta[3 * j : 3 * j + 3]
-                ),
+                moon_fixed_xyz_m=(np.asarray(record.moon_fixed_xyz_m, dtype=float) + delta[3 * j : 3 * j + 3]),
             )
 
     def max_update_norm(self, delta: np.ndarray) -> float:
         if not len(delta):
             return 0.0
-        return max(
-            float(np.linalg.norm(delta[3 * j : 3 * j + 3])) for j in range(len(self.keys))
-        )
+        return max(float(np.linalg.norm(delta[3 * j : 3 * j + 3])) for j in range(len(self.keys)))
 
     def state(self) -> Dict[str, object]:
         if self._model_state is None:

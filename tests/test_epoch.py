@@ -40,9 +40,7 @@ def test_tt_tdb_conversion_uses_ephemeris_table_and_round_trips():
     tdb = converter.tt2tdb(tt)
     recovered = converter.tdb2tt(tdb)
 
-    assert tt.seconds_until(Epoch(tdb.jd1, tdb.jd2, TimeScale.TT)) == pytest.approx(
-        0.0015, abs=1.0e-10
-    )
+    assert tt.seconds_until(Epoch(tdb.jd1, tdb.jd2, TimeScale.TT)) == pytest.approx(0.0015, abs=1.0e-10)
     assert tt.seconds_until(recovered) == pytest.approx(0.0, abs=1.0e-10)
     assert ephemeris.source_file_path is None
 
@@ -59,6 +57,7 @@ def test_epoch_rejects_implicit_scale_mixing():
         tdb.isot(TimeScaleConverter(_ConstantOffsetEphemeris()), scale=TimeScale.TDB)
     with pytest.raises(ValueError, match="comparisons require matching time scales"):
         _ = utc == tdb
+
 
 def test_tdb_civil_construction_and_direct_foreign_time_export_are_forbidden():
     tdb = Epoch(2451545.0, 0.0, TimeScale.TDB)
@@ -98,9 +97,7 @@ def test_utc_leap_second_label_round_trips_through_erfa():
     after = Epoch.from_isot("2017-01-01T00:00:00", scale=TimeScale.UTC)
 
     assert leap.isot(scale=TimeScale.UTC, precision=3) == "2016-12-31T23:59:60.000"
-    assert leap_from_seconds.isot(scale=TimeScale.UTC, precision=3) == (
-        "2016-12-31T23:59:60.000"
-    )
+    assert leap_from_seconds.isot(scale=TimeScale.UTC, precision=3) == ("2016-12-31T23:59:60.000")
     assert before.seconds_until(leap) == pytest.approx(1.0, abs=1.0e-11)
     assert leap.seconds_until(after) == pytest.approx(1.0, abs=1.0e-11)
     assert leap.shifted(1.0).seconds_until(after) == pytest.approx(0.0, abs=1.0e-11)
@@ -121,6 +118,7 @@ def test_erfa_rejects_invalid_leap_labels_and_dubious_utc_years():
         Epoch.from_date_seconds("20161230", 86400.0, scale=TimeScale.UTC)
     with pytest.raises(ValueError, match="dubious year"):
         Epoch.from_isot("2500-01-01T00:00:00", scale=TimeScale.UTC)
+
 
 def test_utc_tt_and_tdb_isot_route_through_converter_without_astropy_dependency():
     converter = TimeScaleConverter(_ConstantOffsetEphemeris())

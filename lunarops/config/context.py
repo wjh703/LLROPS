@@ -5,12 +5,16 @@ backend, frame system, catalogs, IERS table) are declared once under
 ``globals:`` in the config and lazily constructed on first use; subsequent
 programs in the same run reuse the same instance.
 """
+
 from __future__ import annotations
 
 import json
 import hashlib
 from pathlib import Path
-from typing import Any, Dict, Mapping, MutableMapping, Optional
+from typing import TYPE_CHECKING, Any, Dict, Mapping, MutableMapping, Optional
+
+if TYPE_CHECKING:
+    from lunarops.parallel.mpi import MpiRuntime
 
 from .registry import create, normalize_class_config
 from lunarops.resource_lifecycle import close_resources
@@ -29,7 +33,7 @@ class RunContext:
         *,
         global_class_configs: Optional[Dict[str, Any]] = None,
         working_dir: Optional[str] = None,
-        runtime: object | None = None,
+        runtime: MpiRuntime | None = None,
         mpi_resources: Mapping[str, object] | None = None,
         class_cache: MutableMapping[str, Any] | None = None,
     ) -> None:
@@ -37,9 +41,7 @@ class RunContext:
         self.working_dir = Path(working_dir or ".").expanduser()
         self.runtime = runtime
         self.mpi_resources: Dict[str, object] = dict(mpi_resources or {})
-        self._cache: MutableMapping[str, Any] = (
-            class_cache if class_cache is not None else {}
-        )
+        self._cache: MutableMapping[str, Any] = class_cache if class_cache is not None else {}
         self._observation_spec_sequence = 0
 
     # -- class instantiation ------------------------------------------------

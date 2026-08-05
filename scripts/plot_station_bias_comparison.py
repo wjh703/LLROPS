@@ -16,14 +16,8 @@ import matplotlib.pyplot as plt
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_WITH_BIAS = (
-    PROJECT_ROOT / "output" / "oc_residuals_w_libration_correction.csv"
-)
-DEFAULT_WITHOUT_BIAS = (
-    PROJECT_ROOT
-    / "output"
-    / "oc_residuals_w_libration_correction_wo_bias.csv"
-)
+DEFAULT_WITH_BIAS = PROJECT_ROOT / "output" / "oc_residuals_w_libration_correction.csv"
+DEFAULT_WITHOUT_BIAS = PROJECT_ROOT / "output" / "oc_residuals_w_libration_correction_wo_bias.csv"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "output" / "station_bias_comparison"
 
 KEY_FIELDS = (
@@ -35,7 +29,7 @@ KEY_FIELDS = (
 REQUIRED_FIELDS = set(KEY_FIELDS) | {
     "station_name",
     "oc_one_way_m",
-    "converged",
+    "light_time_converged",
     "status",
 }
 
@@ -62,9 +56,7 @@ class StationPlot:
     y_tick_step_m: float
 
 
-STATION_PLOTS = (
-    StationPlot("McDonald", "mcdonald_station_bias_comparison.png", 2.0, 0.5),
-)
+STATION_PLOTS = (StationPlot("McDonald", "mcdonald_station_bias_comparison.png", 2.0, 0.5),)
 
 
 def parse_args() -> argparse.Namespace:
@@ -94,9 +86,7 @@ def parse_timestamp(value: str, *, path: Path, row_number: int) -> datetime:
     try:
         timestamp = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
     except ValueError as exc:
-        raise ValueError(
-            f"{path}:{row_number}: invalid obs_time_utc value {value!r}"
-        ) from exc
+        raise ValueError(f"{path}:{row_number}: invalid obs_time_utc value {value!r}") from exc
     if timestamp.tzinfo is None:
         return timestamp.replace(tzinfo=UTC)
     return timestamp.astimezone(UTC)
@@ -113,32 +103,21 @@ def load_residuals(path: Path) -> dict[tuple[str, ...], Residual]:
         reader = csv.DictReader(stream)
         missing_fields = REQUIRED_FIELDS - set(reader.fieldnames or ())
         if missing_fields:
-            raise ValueError(
-                f"{path} is missing required CSV fields: "
-                f"{', '.join(sorted(missing_fields))}"
-            )
+            raise ValueError(f"{path} is missing required CSV fields: {', '.join(sorted(missing_fields))}")
 
         for row_number, row in enumerate(reader, start=2):
             if row["status"].strip().lower() != "ok":
                 continue
-            if row["converged"].strip().lower() not in {"true", "1", "yes"}:
+            if row["light_time_converged"].strip().lower() not in {"true", "1", "yes"}:
                 continue
 
-            timestamp = parse_timestamp(
-                row["obs_time_utc"], path=path, row_number=row_number
-            )
+            timestamp = parse_timestamp(row["obs_time_utc"], path=path, row_number=row_number)
             try:
                 residual_m = float(row["oc_one_way_m"])
             except ValueError as exc:
-                raise ValueError(
-                    f"{path}:{row_number}: invalid oc_one_way_m value "
-                    f"{row['oc_one_way_m']!r}"
-                ) from exc
+                raise ValueError(f"{path}:{row_number}: invalid oc_one_way_m value {row['oc_one_way_m']!r}") from exc
             if not math.isfinite(residual_m):
-                raise ValueError(
-                    f"{path}:{row_number}: non-finite oc_one_way_m value "
-                    f"{row['oc_one_way_m']!r}"
-                )
+                raise ValueError(f"{path}:{row_number}: non-finite oc_one_way_m value {row['oc_one_way_m']!r}")
 
             key = tuple(row[field] for field in KEY_FIELDS)
             if key in residuals:
@@ -190,22 +169,21 @@ def render_station(
     plot_data = [
         item
         for item in comparisons
-        if abs(item.with_bias_m) <= station_plot.y_limit_m
-        and abs(item.without_bias_m) <= station_plot.y_limit_m
+        if abs(item.with_bias_m) <= station_plot.y_limit_m and abs(item.without_bias_m) <= station_plot.y_limit_m
     ]
     if not plot_data:
         raise ValueError(
-            f"No matched {station_plot.station_name} observations remain within "
-            f"+/-{station_plot.y_limit_m:g} m."
+            f"No matched {station_plot.station_name} observations remain within +/-{station_plot.y_limit_m:g} m."
         )
 
     timestamps = [item.timestamp for item in plot_data]
     with_bias_m = [item.with_bias_m for item in plot_data]
     without_bias_m = [item.without_bias_m for item in plot_data]
+    plot_dates = mdates.date2num(timestamps)
 
     fig, ax = plt.subplots(figsize=(8, 5), constrained_layout=True)
     ax.scatter(
-        timestamps,
+        plot_dates,
         without_bias_m,
         s=15,
         alpha=1,
@@ -213,7 +191,7 @@ def render_station(
         color="k",
     )
     ax.scatter(
-        timestamps,
+        plot_dates,
         with_bias_m,
         s=15,
         alpha=1,
@@ -226,12 +204,7 @@ def render_station(
     ax.tick_params(axis="both", labelsize=18)
     ax.set_ylim(-station_plot.y_limit_m, station_plot.y_limit_m)
     tick_count = round(2 * station_plot.y_limit_m / station_plot.y_tick_step_m)
-    ax.set_yticks(
-        [
-            -station_plot.y_limit_m + index * station_plot.y_tick_step_m
-            for index in range(tick_count + 1)
-        ]
-    )
+    ax.set_yticks([-station_plot.y_limit_m + index * station_plot.y_tick_step_m for index in range(tick_count + 1)])
     ax.xaxis.set_major_locator(mdates.YearLocator(base=2))
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
     ax.margins(x=0.01)

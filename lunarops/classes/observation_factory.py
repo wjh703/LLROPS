@@ -20,6 +20,7 @@ immutable/heavy backends such as CALCEPH and Earth-orientation sources.  Mutable
 (catalog coordinates, station-bias values, future EOP/orbit corrections) stays
 inside the returned ``LlrObservationProcessor`` instance.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
     from lunarops.classes.ephemerides import Ephemeris
     from lunarops.classes.frames import EarthOrientationProvider, ReferenceFrameSystem
     from lunarops.config.context import RunContext
+    from lunarops.fileio.catalogs import ReflectorRecord, StationRecord
 
 
 _REMOVED_UNCERTAINTY_CONFIG_KEYS = frozenset({"uncertainty", "uncertaintyModel"})
@@ -51,8 +53,8 @@ class ObservationAssembly:
     """Resolved model configuration and catalogs shared by serial and MPI."""
 
     program_config: dict
-    station_catalog: Mapping[str, object]
-    reflector_catalog: Mapping[str, object]
+    station_catalog: Mapping[str, "StationRecord"]
+    reflector_catalog: Mapping[str, "ReflectorRecord"]
 
 
 class _PathResolver(Protocol):
@@ -192,17 +194,14 @@ def _register_all() -> None:
         if isinstance(components_cfg, (str, dict)):
             components_cfg = [components_cfg]
         components = tuple(
-            ctx.create_class("stationDisplacement", component, cache=True)
-            for component in components_cfg
+            ctx.create_class("stationDisplacement", component, cache=True) for component in components_cfg
         )
         return CompositeStationDisplacement(components)
 
     def _station_ocean_pole_tide(cfg: dict, ctx) -> Iers2010OceanPoleTide:
         coefficient_file = _resolve_optional_path(ctx, cfg.get("coefficientFile"))
         if coefficient_file is None:
-            raise ValueError(
-                "stationDisplacement/iers2010OceanPoleTide requires 'coefficientFile'."
-            )
+            raise ValueError("stationDisplacement/iers2010OceanPoleTide requires 'coefficientFile'.")
         return Iers2010OceanPoleTide(
             grid=OceanPoleTideGrid(coefficient_file),
             earth_orientation_provider=_required_earth_orientation(ctx),
@@ -211,9 +210,7 @@ def _register_all() -> None:
     def _station_ocean_tidal_loading(cfg: dict, ctx) -> Iers2010OceanTidalLoading:
         coefficient_file = _resolve_optional_path(ctx, cfg.get("coefficientFile"))
         if coefficient_file is None:
-            raise ValueError(
-                "stationDisplacement/iers2010OceanTidalLoading requires 'coefficientFile'."
-            )
+            raise ValueError("stationDisplacement/iers2010OceanTidalLoading requires 'coefficientFile'.")
         catalog = OceanTidalLoadingCatalog(coefficient_file)
         expected_model = cfg.get("model")
         actual_model = catalog.info.tidal_model
@@ -240,9 +237,7 @@ def _register_all() -> None:
     register_factory(
         "stationDisplacement",
         "iers2010poletide",
-        lambda cfg, ctx: Iers2010SolidEarthPoleTide(
-            earth_orientation_provider=_required_earth_orientation(ctx)
-        ),
+        lambda cfg, ctx: Iers2010SolidEarthPoleTide(earth_orientation_provider=_required_earth_orientation(ctx)),
     )
     register_factory(
         "stationDisplacement",
@@ -284,7 +279,9 @@ def _register_all() -> None:
 
     register_factory("rangeBias", "none", lambda cfg, ctx: ZeroRangeBiasModel())
     register_factory("rangeBias", "inpop21", lambda cfg, ctx: TableRangeBiasModel(builtin_range_bias_table("inpop21")))
-    register_factory("rangeBias", "inpop21a", lambda cfg, ctx: TableRangeBiasModel(builtin_range_bias_table("inpop21a")))
+    register_factory(
+        "rangeBias", "inpop21a", lambda cfg, ctx: TableRangeBiasModel(builtin_range_bias_table("inpop21a"))
+    )
     register_factory("rangeBias", "table", _range_bias_table)
 
     # Parametrizations register themselves on import.
@@ -325,15 +322,9 @@ def resolve_observation_assembly(
             return context.resolve_path(value)
         return value
 
-    stations = (
-        load_station_catalog(catalog_source("stationCatalog"))
-        if station_catalog is None
-        else station_catalog
-    )
+    stations = load_station_catalog(catalog_source("stationCatalog")) if station_catalog is None else station_catalog
     reflectors = (
-        load_reflector_catalog(catalog_source("reflectorCatalog"))
-        if reflector_catalog is None
-        else reflector_catalog
+        load_reflector_catalog(catalog_source("reflectorCatalog")) if reflector_catalog is None else reflector_catalog
     )
     return ObservationAssembly(merged, stations, reflectors)
 
@@ -363,9 +354,9 @@ def build_observation_processor(
     from lunarops.classes.frames import ReferenceFrameSystem
     from lunarops.classes.observation import (
         LightTimeSolver,
-        LlrMeasurement,
+        LlrObservationModel,
         LlrObservationProcessor,
-        ObservationModelState,
+        ObservationCatalogState,
         ObservationResolver,
     )
 
@@ -409,17 +400,13 @@ def build_observation_processor(
         cache=True,
     )
     solver = LightTimeSolver(
-        frames,
-        gravitational_delay=factory_context.create_class(
-            "relativity", cfg("relativity"), cache=False
-        ),
-        troposphere_delay=factory_context.create_class(
-            "troposphere", cfg("troposphere"), cache=True
-        ),
-        station_displacement=station_displacement,
-        reflector_displacement=reflector_displacement,
+        frame_system=frames,
+        gravitational_delay_model=factory_context.create_class("relativity", cfg("relativity"), cache=False),
+        troposphere_delay_model=factory_context.create_class("troposphere", cfg("troposphere"), cache=True),
+        station_displacement_model=station_displacement,
+        reflector_displacement_model=reflector_displacement,
     )
-    model_state = ObservationModelState(
+    model_state = ObservationCatalogState(
         assembly.station_catalog,
         assembly.reflector_catalog,
     )
@@ -432,10 +419,14 @@ def build_observation_processor(
         normalize_class_config(range_bias_cfg),
         cache=True,
     )
-    measurement = LlrMeasurement(frames, solver, range_bias)
+    observation_model = LlrObservationModel(
+        frame_system=frames,
+        light_time_solver=solver,
+        range_bias_model=range_bias,
+    )
     processor = LlrObservationProcessor(
         resolver,
-        measurement,
+        observation_model,
     )
     return processor
 

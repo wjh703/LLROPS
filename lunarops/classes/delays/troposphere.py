@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from lunarops import _iers2010
+import lunarops._iers2010 as _iers2010
 from lunarops.classes.delays.base import TroposphereDelay, TroposphereInput
 
 

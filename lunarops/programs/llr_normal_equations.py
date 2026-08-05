@@ -41,16 +41,13 @@ def llr_normal_equations(config: dict, context: RunContext):
         parametrization,
         parameter_names=names,
         sources=sorted(datasets),
-        ephemeris=processor.ephemeris_file,
+        ephemeris=processor.ephemeris_file_path,
         compatibility=model_compatibility_fingerprint(config, context),
     )
 
     out = context.resolve_path(config["outputFileNormalEquations"])
     normals.save(out)
-    print(
-        f"[LlrNormalEquations] {normals.obs_count} obs, "
-        f"{len(names)} parameters -> {out}"
-    )
+    print(f"[LlrNormalEquations] {normals.obs_count} obs, {len(names)} parameters -> {out}")
     return normals
 
 

@@ -1,4 +1,5 @@
 """LCRS solid-tide displacement of lunar retroreflectors."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -86,23 +87,9 @@ class LunarSolidTide:
                 raise RuntimeError("Ephemeris returned a zero Moon-to-body vector.")
             body_direction = body_lcrs_m / distance_m
             cosine = float(np.dot(body_direction, reflector_direction))
-            radial = (
-                0.5
-                * self.h2
-                * (3.0 * cosine * cosine - 1.0)
-                * reflector_direction
-            )
-            tangential = (
-                3.0
-                * self.l2
-                * cosine
-                * (body_direction - cosine * reflector_direction)
-            )
-            scale = (
-                body_gm_m3_s2
-                * self.moon_radius_m**4
-                / (self.moon_gm_m3_s2 * distance_m**3)
-            )
+            radial = 0.5 * self.h2 * (3.0 * cosine * cosine - 1.0) * reflector_direction
+            tangential = 3.0 * self.l2 * cosine * (body_direction - cosine * reflector_direction)
+            scale = body_gm_m3_s2 * self.moon_radius_m**4 / (self.moon_gm_m3_s2 * distance_m**3)
             return scale * (radial + tangential)
 
         return body_term(earth_lcrs, self.earth_gm_m3_s2) + body_term(

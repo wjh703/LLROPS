@@ -1,9 +1,11 @@
 """Relativistic BCRS/GCRS/LCRS spatial transformations."""
+
 from __future__ import annotations
 
-from typing import Iterable, Sequence
+from typing import Iterable
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 from lunarops.base.constants import C2
 from lunarops.classes.relativistic.constants import (
@@ -44,41 +46,31 @@ class RelativisticFrameTransform:
             center_body_name,
             parameter_name="center_body_name",
         )
+        raw_names: tuple[str, ...]
         if isinstance(perturbing_body_names, str):
             raw_names = (perturbing_body_names,)
         else:
             raw_names = tuple(perturbing_body_names)
         names = tuple(
-            dict.fromkeys(
-                self._normalize_body_name(name, parameter_name="perturbing_body_names")
-                for name in raw_names
-            )
+            dict.fromkeys(self._normalize_body_name(name, parameter_name="perturbing_body_names") for name in raw_names)
         )
         if center_name in names:
-            raise ValueError(
-                "center_body_name must not also appear in perturbing_body_names."
-            )
+            raise ValueError("center_body_name must not also appear in perturbing_body_names.")
         center_position = self.ephemeris.body_position_bcrs(center_name, epoch)
         total = 0.0
         for body_name in names:
             try:
                 gm = GM_BY_BODY[body_name]
             except KeyError:
-                raise KeyError(
-                    "No gravitational parameter configured for body "
-                    f"{body_name!r}."
-                ) from None
+                raise KeyError(f"No gravitational parameter configured for body {body_name!r}.") from None
             displacement = self.ephemeris.body_position_bcrs(body_name, epoch) - center_position
             distance = float(np.linalg.norm(displacement))
             if distance <= 0.0:
-                raise RuntimeError(
-                    "Ephemeris returned coincident positions for "
-                    f"{center_name!r} and {body_name!r}."
-                )
+                raise RuntimeError(f"Ephemeris returned coincident positions for {center_name!r} and {body_name!r}.")
             total += gm / distance
         return float(total)
 
-    def gcrs2bcrs(self, position_gcrs_m: Sequence[float], epoch_tdb: Epoch) -> np.ndarray:
+    def gcrs2bcrs(self, position_gcrs_m: ArrayLike, epoch_tdb: Epoch) -> np.ndarray:
         epoch = require_tdb_epoch(epoch_tdb, name="epoch_tdb")
         earth = self.ephemeris.body_state_bcrs("EARTH", epoch)
         position = vector3(position_gcrs_m, name="position_gcrs_m")
@@ -88,13 +80,10 @@ class RelativisticFrameTransform:
             EARTH_EXTERNAL_POTENTIAL_BODIES,
         )
         scale = 1.0 - L_B_MINUS_L_G - potential / C2
-        tdb_position = (
-            scale * position
-            - 0.5 * (np.dot(earth.velocity_mps, position) / C2) * earth.velocity_mps
-        )
+        tdb_position = scale * position - 0.5 * (np.dot(earth.velocity_mps, position) / C2) * earth.velocity_mps
         return earth.position_m + tdb_position
 
-    def bcrs2gcrs(self, position_bcrs_m: Sequence[float], epoch_tdb: Epoch) -> np.ndarray:
+    def bcrs2gcrs(self, position_bcrs_m: ArrayLike, epoch_tdb: Epoch) -> np.ndarray:
         epoch = require_tdb_epoch(epoch_tdb, name="epoch_tdb")
         earth = self.ephemeris.body_state_bcrs("EARTH", epoch)
         relative = vector3(position_bcrs_m, name="position_bcrs_m") - earth.position_m
@@ -104,12 +93,9 @@ class RelativisticFrameTransform:
             EARTH_EXTERNAL_POTENTIAL_BODIES,
         )
         scale = 1.0 + L_B_MINUS_L_G + potential / C2
-        return (
-            scale * relative
-            + 0.5 * (np.dot(earth.velocity_mps, relative) / C2) * earth.velocity_mps
-        )
+        return scale * relative + 0.5 * (np.dot(earth.velocity_mps, relative) / C2) * earth.velocity_mps
 
-    def lcrs2bcrs(self, position_lcrs_m: Sequence[float], epoch_tdb: Epoch) -> np.ndarray:
+    def lcrs2bcrs(self, position_lcrs_m: ArrayLike, epoch_tdb: Epoch) -> np.ndarray:
         epoch = require_tdb_epoch(epoch_tdb, name="epoch_tdb")
         moon = self.ephemeris.body_state_bcrs("MOON", epoch)
         position = vector3(position_lcrs_m, name="position_lcrs_m")
@@ -119,13 +105,10 @@ class RelativisticFrameTransform:
             MOON_EXTERNAL_POTENTIAL_BODIES,
         )
         scale = 1.0 - self.ephemeris.l_b_minus_l_l - potential / C2
-        tdb_position = (
-            scale * position
-            - 0.5 * (np.dot(moon.velocity_mps, position) / C2) * moon.velocity_mps
-        )
+        tdb_position = scale * position - 0.5 * (np.dot(moon.velocity_mps, position) / C2) * moon.velocity_mps
         return moon.position_m + tdb_position
 
-    def bcrs2lcrs(self, position_bcrs_m: Sequence[float], epoch_tdb: Epoch) -> np.ndarray:
+    def bcrs2lcrs(self, position_bcrs_m: ArrayLike, epoch_tdb: Epoch) -> np.ndarray:
         epoch = require_tdb_epoch(epoch_tdb, name="epoch_tdb")
         moon = self.ephemeris.body_state_bcrs("MOON", epoch)
         relative = vector3(position_bcrs_m, name="position_bcrs_m") - moon.position_m
@@ -135,15 +118,12 @@ class RelativisticFrameTransform:
             MOON_EXTERNAL_POTENTIAL_BODIES,
         )
         scale = 1.0 + self.ephemeris.l_b_minus_l_l + potential / C2
-        return (
-            scale * relative
-            + 0.5 * (np.dot(moon.velocity_mps, relative) / C2) * moon.velocity_mps
-        )
+        return scale * relative + 0.5 * (np.dot(moon.velocity_mps, relative) / C2) * moon.velocity_mps
 
-    def lcrs2gcrs(self, position_lcrs_m: Sequence[float], epoch_tdb: Epoch) -> np.ndarray:
+    def lcrs2gcrs(self, position_lcrs_m: ArrayLike, epoch_tdb: Epoch) -> np.ndarray:
         return self.bcrs2gcrs(self.lcrs2bcrs(position_lcrs_m, epoch_tdb), epoch_tdb)
 
-    def gcrs2lcrs(self, position_gcrs_m: Sequence[float], epoch_tdb: Epoch) -> np.ndarray:
+    def gcrs2lcrs(self, position_gcrs_m: ArrayLike, epoch_tdb: Epoch) -> np.ndarray:
         return self.bcrs2lcrs(self.gcrs2bcrs(position_gcrs_m, epoch_tdb), epoch_tdb)
 
 

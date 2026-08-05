@@ -85,13 +85,8 @@ def test_native_text_round_trip_preserves_values(tmp_path, name):
     assert recovered.name == original.name
     assert recovered.n_input_records == original.n_input_records
     assert recovered.records[0].transmit_epoch == original.records[0].transmit_epoch
-    assert (
-        recovered.records[0].round_trip_time_s == original.records[0].round_trip_time_s
-    )
-    assert (
-        recovered.records[0].uncertainty_two_way_s
-        == original.records[0].uncertainty_two_way_s
-    )
+    assert recovered.records[0].round_trip_time_s == original.records[0].round_trip_time_s
+    assert recovered.records[0].uncertainty_two_way_s == original.records[0].uncertainty_two_way_s
     assert dispatched.records[0].station_code == "70610"
     assert dispatched.records[0].reflector_name == "Apollo15"
     if name.endswith(".gz"):
@@ -119,9 +114,7 @@ def test_normal_points_convert_is_repeatable_inside_input_directory(tmp_path):
     assert normal_points_convert(config, context) == target
 
     recovered = read_normal_point_file(target)
-    report = read_structured_text(
-        tmp_path / "importReport.txt.gz", "normalPointImportReport"
-    )
+    report = read_structured_text(tmp_path / "importReport.txt.gz", "normalPointImportReport")
     assert recovered.name == "campaign"
     assert len(recovered.records) == 1
     assert report["recordCount"] == 1
@@ -143,9 +136,7 @@ def test_mini_import_issues_are_published_without_an_implicit_log(tmp_path):
         },
         context,
     )
-    report = read_structured_text(
-        tmp_path / "importReport.txt.gz", "normalPointImportReport"
-    )
+    report = read_structured_text(tmp_path / "importReport.txt.gz", "normalPointImportReport")
 
     assert report["invalidRecordCount"] == 1
     assert report["sources"][0]["issues"][0]["line"] == 2

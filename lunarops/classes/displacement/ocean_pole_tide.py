@@ -1,12 +1,14 @@
 """IERS 2010 ocean pole-tide loading."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 import gzip
 from pathlib import Path
-from typing import Sequence, TextIO
+from typing import TextIO
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 from lunarops.base.array_validation import readonly_vector3
 from lunarops.classes.frames.earth_orientation import EarthOrientationProvider
@@ -217,7 +219,7 @@ class OceanPoleTideGrid:
 
     def coefficients_at(
         self,
-        reference_position_itrf_m: Sequence[float],
+        reference_position_itrf_m: ArrayLike,
     ) -> OceanPoleTideCoefficients:
         site = itrf2geodetic(reference_position_itrf_m)
         latitude_deg = site.latitude_deg
@@ -244,17 +246,12 @@ class Iers2010OceanPoleTide:
         if not isinstance(grid, OceanPoleTideGrid):
             raise TypeError("grid must be an OceanPoleTideGrid.")
         if not isinstance(earth_orientation_provider, EarthOrientationProvider):
-            raise TypeError(
-                "earth_orientation_provider must be an EarthOrientationProvider instance."
-            )
+            raise TypeError("earth_orientation_provider must be an EarthOrientationProvider instance.")
         try:
             load_love_combination = complex(load_love_combination)
         except (TypeError, ValueError) as exc:
             raise TypeError("load_love_combination must be a complex scalar.") from exc
-        if not (
-            np.isfinite(load_love_combination.real)
-            and np.isfinite(load_love_combination.imag)
-        ):
+        if not (np.isfinite(load_love_combination.real) and np.isfinite(load_love_combination.imag)):
             raise ValueError("load_love_combination must have finite real and imaginary parts.")
         pole_tide_height_m = (
             np.sqrt(8.0 * np.pi / 15.0)
@@ -285,9 +282,7 @@ class Iers2010OceanPoleTide:
         factor_imag = wobble.m2_rad * gamma_real - wobble.m1_rad * gamma_imag
 
         def displacement(coefficient: complex) -> float:
-            return self.scale_m * (
-                factor_real * coefficient.real + factor_imag * coefficient.imag
-            )
+            return self.scale_m * (factor_real * coefficient.real + factor_imag * coefficient.imag)
 
         enu_m = np.array(
             [
