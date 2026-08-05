@@ -65,12 +65,6 @@ class EarthOrientationSample:
                 raise ValueError(f"{name} must be finite.")
             object.__setattr__(self, name, value)
 
-    @property
-    def ut1_minus_utc_sec(self) -> float:
-        """Backward-compatible alias for :attr:`ut1_minus_utc_s`."""
-        return self.ut1_minus_utc_s
-
-
 DuplicateMjdPolicy = Literal["error", "first", "last", "mean"]
 
 
@@ -135,13 +129,9 @@ class EarthOrientationProvider(ABC):
     """Typed access to the Earth-orientation quantities used by LunarOps."""
 
     @property
+    @abstractmethod
     def source_file_path(self) -> Path | None:
-        return self.source_file
-
-    @property
-    def source_file(self) -> Path | None:
-        """Legacy source-path spelling retained for existing providers."""
-        return None
+        ...
 
     @abstractmethod
     def polar_motion(self, epoch_utc: Epoch) -> PolarMotion:
@@ -153,17 +143,9 @@ class EarthOrientationProvider(ABC):
         epoch_utc.require_scale(TimeScale.UTC, name="epoch_utc")
         return CelestialPoleOffsets(0.0, 0.0)
 
+    @abstractmethod
     def ut1_minus_utc_s(self, epoch_utc: Epoch) -> float:
-        legacy_method = type(self).__dict__.get("ut1_minus_utc_sec")
-        if legacy_method is not None:
-            return float(legacy_method(self, epoch_utc))
-        raise NotImplementedError(
-            f"{type(self).__name__} must implement ut1_minus_utc_s()."
-        )
-
-    def ut1_minus_utc_sec(self, epoch_utc: Epoch) -> float:
-        """Backward-compatible alias for :meth:`ut1_minus_utc_s`."""
-        return self.ut1_minus_utc_s(epoch_utc)
+        ...
 
     def close(self) -> None:
         """Release resources; the default implementation owns none."""
@@ -189,7 +171,6 @@ class TabulatedEarthOrientation(EarthOrientationProvider):
         samples: Sequence[EarthOrientationSample],
         *,
         source_file_path: str | Path | None = None,
-        source_file: str | Path | None = None,
         duplicate_mjd_policy: DuplicateMjdPolicy = "error",
     ) -> None:
         if not samples:
@@ -219,10 +200,7 @@ class TabulatedEarthOrientation(EarthOrientationProvider):
             if not np.all(np.isfinite(values)):
                 raise ValueError(f"EOP column {name} contains non-finite values.")
             values.setflags(write=False)
-        if source_file_path is not None and source_file is not None:
-            raise ValueError("Specify only one of source_file_path or source_file.")
-        selected_source = source_file_path if source_file_path is not None else source_file
-        self._source_file_path = Path(selected_source).expanduser() if selected_source else None
+        self._source_file_path = Path(source_file_path).expanduser() if source_file_path else None
         self._duplicate_mjd_policy = policy
 
     @classmethod
@@ -236,7 +214,6 @@ class TabulatedEarthOrientation(EarthOrientationProvider):
         dy_arcsec: ArrayLike | None = None,
         *,
         source_file_path: str | Path | None = None,
-        source_file: str | Path | None = None,
         duplicate_mjd_policy: DuplicateMjdPolicy = "error",
     ) -> "TabulatedEarthOrientation":
         """Construct directly from already parsed EOP columns.
@@ -285,37 +262,9 @@ class TabulatedEarthOrientation(EarthOrientationProvider):
             copied = np.array(values, dtype=float, copy=True, order="C")
             copied.setflags(write=False)
             setattr(self, name, copied)
-        if source_file_path is not None and source_file is not None:
-            raise ValueError("Specify only one of source_file_path or source_file.")
-        selected_source = source_file_path if source_file_path is not None else source_file
-        self._source_file_path = Path(selected_source).expanduser() if selected_source else None
+        self._source_file_path = Path(source_file_path).expanduser() if source_file_path else None
         self._duplicate_mjd_policy = policy
         return self
-
-    @classmethod
-    def from_arrays(
-        cls,
-        mjd_utc: ArrayLike,
-        xp_arcsec: ArrayLike,
-        yp_arcsec: ArrayLike,
-        ut1_minus_utc_sec: ArrayLike,
-        dx_arcsec: ArrayLike | None = None,
-        dy_arcsec: ArrayLike | None = None,
-        *,
-        source_file: str | Path | None = None,
-        duplicate_mjd_policy: DuplicateMjdPolicy = "error",
-    ) -> "TabulatedEarthOrientation":
-        """Backward-compatible alias for :meth:`from_columns`."""
-        return cls.from_columns(
-            mjd_utc,
-            xp_arcsec,
-            yp_arcsec,
-            ut1_minus_utc_sec,
-            dx_arcsec,
-            dy_arcsec,
-            source_file=source_file,
-            duplicate_mjd_policy=duplicate_mjd_policy,
-        )
 
     def to_mpi_payload(self) -> dict[str, object]:
         """Return the compact, picklable columns broadcast to worker ranks."""
@@ -354,22 +303,12 @@ class TabulatedEarthOrientation(EarthOrientationProvider):
         return self._source_file_path
 
     @property
-    def source_file(self) -> Path | None:
-        """Backward-compatible alias for :attr:`source_file_path`."""
-        return self.source_file_path
-
-    @property
     def duplicate_mjd_policy(self) -> DuplicateMjdPolicy:
         return self._duplicate_mjd_policy
 
     @property
     def mjd_utc_range(self) -> tuple[float, float]:
         return float(self._mjd[0]), float(self._mjd[-1])
-
-    @property
-    def mjd_range(self) -> tuple[float, float]:
-        """Backward-compatible alias for :attr:`mjd_utc_range`."""
-        return self.mjd_utc_range
 
     @property
     def samples(self) -> tuple[EarthOrientationSample, ...]:
@@ -438,10 +377,6 @@ class TabulatedEarthOrientation(EarthOrientationProvider):
             column_name="UT1-TAI",
         )
         return ut1_minus_tai + self._tai_minus_utc_at_epoch(epoch_utc)
-
-    def ut1_minus_utc_sec(self, epoch_utc: Epoch) -> float:
-        """Backward-compatible alias for :meth:`ut1_minus_utc_s`."""
-        return self.ut1_minus_utc_s(epoch_utc)
 
     def celestial_pole_offsets(self, epoch_utc: Epoch) -> CelestialPoleOffsets:
         return CelestialPoleOffsets(
@@ -645,34 +580,13 @@ def load_iers_eop(
     )
 
 
-# Compatibility aliases for clients migrating from the original C04-specific API.
-EarthOrientation = EarthOrientationProvider
-C04EarthOrientation = TabulatedEarthOrientation
-
-
-def read_iers_c04(file: str | Path) -> tuple[EarthOrientationSample, ...]:
-    return read_iers_eop(file)
-
-
-def load_iers_c04(
-    file: str | Path,
-    *,
-    duplicate_mjd_policy: DuplicateMjdPolicy = "error",
-) -> TabulatedEarthOrientation:
-    return load_iers_eop(file, duplicate_mjd_policy=duplicate_mjd_policy)
-
-
 __all__ = [
     "CelestialPoleOffsets",
-    "C04EarthOrientation",
-    "EarthOrientation",
     "EarthOrientationProvider",
     "DuplicateMjdPolicy",
     "EarthOrientationSample",
     "PolarMotion",
     "TabulatedEarthOrientation",
-    "load_iers_c04",
     "load_iers_eop",
-    "read_iers_c04",
     "read_iers_eop",
 ]

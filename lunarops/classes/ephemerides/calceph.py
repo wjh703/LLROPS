@@ -104,7 +104,7 @@ class CalcephEphemeris(Ephemeris):
         self._angle_units = Constants.UNIT_RAD + Constants.UNIT_SEC
 
     @property
-    def source_file(self) -> Path:
+    def source_file_path(self) -> Path:
         return self._source_file
 
     @property

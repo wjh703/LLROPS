@@ -88,26 +88,12 @@ def polar_wobble(
 class Iers2010SolidEarthPoleTide:
     """Solid-Earth pole tide using an explicitly supplied IERS table."""
 
-    def __init__(
-        self,
-        earth_orientation_provider: EarthOrientationProvider | None = None,
-        *,
-        earth_orientation: EarthOrientationProvider | None = None,
-    ) -> None:
-        if earth_orientation_provider is not None and earth_orientation is not None:
-            raise ValueError(
-                "Specify only one of earth_orientation_provider or earth_orientation."
-            )
-        if earth_orientation_provider is None:
-            earth_orientation_provider = earth_orientation
-        if earth_orientation_provider is None:
-            raise TypeError("earth_orientation_provider is required.")
+    def __init__(self, earth_orientation_provider: EarthOrientationProvider) -> None:
         if not isinstance(earth_orientation_provider, EarthOrientationProvider):
             raise TypeError(
                 "earth_orientation_provider must be an EarthOrientationProvider instance."
             )
         self.earth_orientation_provider = earth_orientation_provider
-        self.earth_orientation = earth_orientation_provider
 
     def evaluate(self, data: StationDisplacementInput) -> PoleTideResult:
         latitude_rad, longitude_rad = itrf2geocentric(data.reference_position_itrf_m)

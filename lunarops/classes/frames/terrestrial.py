@@ -16,26 +16,12 @@ _ARCSEC_TO_RAD = np.deg2rad(1.0 / 3600.0)
 
 
 class TerrestrialFrameTransform:
-    def __init__(
-        self,
-        earth_orientation_provider: EarthOrientationProvider | None = None,
-        *,
-        earth_orientation: EarthOrientationProvider | None = None,
-    ) -> None:
-        if earth_orientation_provider is not None and earth_orientation is not None:
-            raise ValueError(
-                "Specify only one of earth_orientation_provider or earth_orientation."
-            )
-        if earth_orientation_provider is None:
-            earth_orientation_provider = earth_orientation
-        if earth_orientation_provider is None:
-            raise TypeError("earth_orientation_provider is required.")
+    def __init__(self, earth_orientation_provider: EarthOrientationProvider) -> None:
         if not isinstance(earth_orientation_provider, EarthOrientationProvider):
             raise TypeError(
                 "earth_orientation_provider must be an EarthOrientationProvider instance."
             )
         self.earth_orientation_provider = earth_orientation_provider
-        self.earth_orientation = earth_orientation_provider
 
     @staticmethod
     def _require_utc_epoch(epoch_utc: Epoch) -> Epoch:
@@ -77,16 +63,12 @@ class TerrestrialFrameTransform:
             raise RuntimeError("ERFA returned an invalid celestial-to-terrestrial matrix.")
         return readonly_matrix3x3(matrix, name="gcrs2itrf_matrix")
 
-    def celestial_to_terrestrial_matrix(self, epoch_utc: Epoch) -> np.ndarray:
-        """Backward-compatible alias for :meth:`gcrs2itrf_matrix`."""
-        return self.gcrs2itrf_matrix(epoch_utc)
-
     def gcrs2itrf(self, position_gcrs_m: Sequence[float], epoch_utc: Epoch) -> np.ndarray:
-        matrix = self.celestial_to_terrestrial_matrix(epoch_utc)
+        matrix = self.gcrs2itrf_matrix(epoch_utc)
         return matrix @ vector3(position_gcrs_m, name="position_gcrs_m")
 
     def itrf2gcrs(self, position_itrf_m: Sequence[float], epoch_utc: Epoch) -> np.ndarray:
-        matrix = self.celestial_to_terrestrial_matrix(epoch_utc)
+        matrix = self.gcrs2itrf_matrix(epoch_utc)
         return matrix.T @ vector3(position_itrf_m, name="position_itrf_m")
 
 

@@ -56,32 +56,6 @@ class HighFrequencyEopCorrection:
     def delta_ut1_s(self) -> float:
         return self.ocean_delta_ut1_s + self.libration_delta_ut1_s
 
-    # Deprecated component spellings retained as read-only aliases.
-    @property
-    def ocean_delta_ut1_sec(self) -> float:
-        return self.ocean_delta_ut1_s
-
-    @property
-    def libration_delta_ut1_sec(self) -> float:
-        return self.libration_delta_ut1_s
-
-    @property
-    def libration_delta_lod_sec_per_day(self) -> float:
-        return self.libration_delta_lod_s_per_day
-
-    @property
-    def xp_arcsec(self) -> float:
-        return self.delta_xp_arcsec
-
-    @property
-    def yp_arcsec(self) -> float:
-        return self.delta_yp_arcsec
-
-    @property
-    def ut1_sec(self) -> float:
-        return self.delta_ut1_s
-
-
 def _require_utc_epoch(epoch_utc: Epoch) -> Epoch:
     if not isinstance(epoch_utc, Epoch):
         raise TypeError("High-frequency EOP requires an Epoch.")
@@ -144,16 +118,9 @@ def earth_rotation_libration_eop_correction(
 def high_frequency_eop_correction(
     epoch_utc: Epoch,
     *,
-    background_ut1_minus_utc_s: float = 0.0,
-    ut1_minus_utc_sec: float | None = None,
+    background_ut1_minus_utc_s: float,
 ) -> HighFrequencyEopCorrection:
     """Return combined EOP corrections for an explicit UTC observation epoch."""
-    if ut1_minus_utc_sec is not None:
-        if background_ut1_minus_utc_s != 0.0:
-            raise ValueError(
-                "Specify only one of background_ut1_minus_utc_s or ut1_minus_utc_sec."
-            )
-        background_ut1_minus_utc_s = ut1_minus_utc_sec
     epoch_utc = _require_utc_epoch(epoch_utc)
     ocean = ocean_tide_eop_correction(
         epoch_utc,
@@ -171,28 +138,9 @@ def high_frequency_eop_correction(
     )
 
 
-def ocean_tide_correction(
-    epoch_utc: Epoch,
-    *,
-    ut1_minus_utc_sec: float = 0.0,
-) -> HighFrequencyEopCorrection:
-    """Deprecated alias for :func:`ocean_tide_eop_correction`."""
-    return ocean_tide_eop_correction(
-        epoch_utc,
-        background_ut1_minus_utc_s=ut1_minus_utc_sec,
-    )
-
-
-def libration_correction(epoch_tt: Epoch) -> HighFrequencyEopCorrection:
-    """Deprecated alias for :func:`earth_rotation_libration_eop_correction`."""
-    return earth_rotation_libration_eop_correction(epoch_tt)
-
-
 __all__ = [
     "HighFrequencyEopCorrection",
     "earth_rotation_libration_eop_correction",
     "high_frequency_eop_correction",
     "ocean_tide_eop_correction",
-    "libration_correction",
-    "ocean_tide_correction",
 ]

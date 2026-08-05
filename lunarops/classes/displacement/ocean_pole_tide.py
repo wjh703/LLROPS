@@ -238,21 +238,11 @@ class Iers2010OceanPoleTide:
     def __init__(
         self,
         grid: OceanPoleTideGrid,
-        earth_orientation_provider: EarthOrientationProvider | None = None,
+        earth_orientation_provider: EarthOrientationProvider,
         load_love_combination: complex = _LOAD_LOVE_COMBINATION,
-        *,
-        earth_orientation: EarthOrientationProvider | None = None,
     ) -> None:
         if not isinstance(grid, OceanPoleTideGrid):
             raise TypeError("grid must be an OceanPoleTideGrid.")
-        if earth_orientation_provider is not None and earth_orientation is not None:
-            raise ValueError(
-                "Specify only one of earth_orientation_provider or earth_orientation."
-            )
-        if earth_orientation_provider is None:
-            earth_orientation_provider = earth_orientation
-        if earth_orientation_provider is None:
-            raise TypeError("earth_orientation_provider is required.")
         if not isinstance(earth_orientation_provider, EarthOrientationProvider):
             raise TypeError(
                 "earth_orientation_provider must be an EarthOrientationProvider instance."
@@ -283,7 +273,6 @@ class Iers2010OceanPoleTide:
         )
         self.grid = grid
         self.earth_orientation_provider = earth_orientation_provider
-        self.earth_orientation = earth_orientation_provider
         self.load_love_combination = load_love_combination
         self.scale_m = float(scale_m)
 

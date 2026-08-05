@@ -7,6 +7,10 @@ from lunarops.classes.ephemerides import BodyState, Ephemeris
 
 
 class _ConstantOffsetEphemeris(Ephemeris):
+    @property
+    def source_file_path(self):
+        return None
+
     def body_state_bcrs(self, body_name: str, epoch_tdb: Epoch) -> BodyState:
         return BodyState(np.zeros(3), np.zeros(3))
 
@@ -40,7 +44,7 @@ def test_tt_tdb_conversion_uses_ephemeris_table_and_round_trips():
         0.0015, abs=1.0e-10
     )
     assert tt.seconds_until(recovered) == pytest.approx(0.0, abs=1.0e-10)
-    assert ephemeris.source_file is None
+    assert ephemeris.source_file_path is None
 
 
 def test_epoch_rejects_implicit_scale_mixing():

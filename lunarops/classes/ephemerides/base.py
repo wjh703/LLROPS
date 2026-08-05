@@ -59,13 +59,9 @@ class Ephemeris(ABC):
     """Abstract ephemeris used by the LLR physical models."""
 
     @property
-    def source_file(self) -> Path | None:
-        return None
-
-    @property
+    @abstractmethod
     def source_file_path(self) -> Path | None:
-        """Return the source path using the explicit path-oriented API."""
-        return self.source_file
+        ...
 
     @abstractmethod
     def body_state_bcrs(self, body_name: str, epoch_tdb: Epoch) -> BodyState:

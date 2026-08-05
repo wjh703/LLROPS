@@ -214,7 +214,6 @@ class LightTimeSolver:
             raise ValueError("tolerance_s must be positive.")
         self.frames = frames
         self.time_scale_converter = frames.time_scale_converter
-        self.time_converter = self.time_scale_converter
         self.gravitational_delay = gravitational_delay or ZeroGravitationalDelay()
         self.troposphere_delay = troposphere_delay
         self.station_displacement = station_displacement or ZeroStationDisplacement()

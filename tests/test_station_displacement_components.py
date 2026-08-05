@@ -23,7 +23,7 @@ from lunarops.classes.displacement import (
 from lunarops.config.context import RunContext
 from lunarops.base.epoch import Epoch, TimeScale
 from lunarops.classes.ephemerides import BodyState, Ephemeris
-from lunarops.classes.frames import EarthOrientation, PolarMotion, ReferenceFrameSystem
+from lunarops.classes.frames import EarthOrientationProvider, PolarMotion, ReferenceFrameSystem
 from lunarops.classes.displacement.terrestrial_geometry import enu2itrf
 
 
@@ -80,7 +80,7 @@ def test_zero_displacement_models_return_three_component_vectors():
 def test_solid_earth_tide_uses_native_single_epoch_call():
     frames = ReferenceFrameSystem(
         ephemeris=_FakeEphemeris(),
-        earth_orientation=_FakeEarthOrientation(),
+        earth_orientation_provider=_FakeEarthOrientation(),
     )
     displacement = Iers2010SolidEarthTide(frames).displacement_itrf_m(_station_input())
     assert displacement.shape == (3,)
@@ -127,21 +127,21 @@ def test_registered_station_sum_and_context_cache():
     assert first is second
 
 
-class _FakeEarthOrientation(EarthOrientation):
+class _FakeEarthOrientation(EarthOrientationProvider):
     @property
-    def source_file(self):
+    def source_file_path(self):
         return None
 
     def polar_motion(self, epoch_utc):
         return PolarMotion(0.1, 0.2)
 
-    def ut1_minus_utc_sec(self, epoch_utc):
+    def ut1_minus_utc_s(self, epoch_utc):
         return 0.0
 
 
 class _FakeEphemeris(Ephemeris):
     @property
-    def source_file(self):
+    def source_file_path(self):
         from pathlib import Path
         return Path("fake.eph")
 
@@ -169,7 +169,9 @@ class _FakeEphemeris(Ephemeris):
 
 
 def test_pole_tide_exposes_typed_evaluation_result():
-    model = Iers2010SolidEarthPoleTide(earth_orientation=_FakeEarthOrientation())
+    model = Iers2010SolidEarthPoleTide(
+        earth_orientation_provider=_FakeEarthOrientation()
+    )
     result = model.evaluate(_station_input())
     assert result.displacement_itrf_m.shape == (3,)
     assert result.displacement_enu_m.shape == (3,)
@@ -243,7 +245,10 @@ def test_ocean_pole_tide_grid_and_model(tmp_path):
         "180 90 1 0 2 0 3 0\n"
     )
     grid = OceanPoleTideGrid(coefficient_file)
-    model = Iers2010OceanPoleTide(grid=grid, earth_orientation=_FakeEarthOrientation())
+    model = Iers2010OceanPoleTide(
+        grid=grid,
+        earth_orientation_provider=_FakeEarthOrientation(),
+    )
     result = model.evaluate(_station_input())
     assert grid.info.latitude_nodes == 2
     assert grid.info.longitude_nodes == 2
@@ -260,7 +265,7 @@ def test_ocean_pole_tide_grid_and_model(tmp_path):
     with pytest.raises(ValueError, match="finite real and imaginary"):
         Iers2010OceanPoleTide(
             grid=grid,
-            earth_orientation=_FakeEarthOrientation(),
+            earth_orientation_provider=_FakeEarthOrientation(),
             load_love_combination=complex(np.nan, 0.0),
         )
 
@@ -299,7 +304,7 @@ def test_ocean_pole_tide_matches_official_test_vectors(
 
     model = Iers2010OceanPoleTide(
         grid=grid,
-        earth_orientation=_OfficialTestEarthOrientation(),
+        earth_orientation_provider=_OfficialTestEarthOrientation(),
     )
     latitude_rad = np.deg2rad(-43.75)
     longitude_rad = np.deg2rad(232.25)

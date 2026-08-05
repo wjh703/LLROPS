@@ -8,7 +8,7 @@ from lunarops.base.epoch import Epoch, TimeScale
 from lunarops.classes.delays import Iers2010MendesPavlisTroposphere, ZeroTroposphereDelay
 from lunarops.classes.displacement import Iers2010SolidEarthTide
 from lunarops.classes.ephemerides import BodyState, Ephemeris
-from lunarops.classes.frames import EarthOrientation, PolarMotion, ReferenceFrameSystem
+from lunarops.classes.frames import EarthOrientationProvider, PolarMotion, ReferenceFrameSystem
 from lunarops.classes.observation import (
     LlrMeasurement,
     LlrObservationProcessor,
@@ -41,7 +41,7 @@ class _Ephemeris(Ephemeris):
     }
 
     @property
-    def source_file(self) -> Path:
+    def source_file_path(self) -> Path:
         return Path("test.eph")
 
     def body_state_bcrs(self, body_name: str, epoch_tdb: Epoch) -> BodyState:
@@ -57,15 +57,15 @@ class _Ephemeris(Ephemeris):
         return 0.0
 
 
-class _EarthOrientation(EarthOrientation):
+class _EarthOrientation(EarthOrientationProvider):
     @property
-    def source_file(self) -> Path:
+    def source_file_path(self) -> Path:
         return Path("test.eop")
 
     def polar_motion(self, epoch_utc: Epoch) -> PolarMotion:
         return PolarMotion(0.0, 0.0)
 
-    def ut1_minus_utc_sec(self, epoch_utc: Epoch) -> float:
+    def ut1_minus_utc_s(self, epoch_utc: Epoch) -> float:
         return 0.0
 
 
@@ -174,7 +174,7 @@ def test_light_time_starts_from_fixed_round_trip_time(monkeypatch):
 
     request, initial_receive_tdb = calls[0]
     transmit_station = solver._station_state_at_utc(request, request.transmit_epoch)
-    transmit_tdb = solver.time_converter.convert(
+    transmit_tdb = solver.time_scale_converter.convert(
         request.transmit_epoch,
         TimeScale.TDB,
         station_gcrs_m=transmit_station.position_gcrs_m,

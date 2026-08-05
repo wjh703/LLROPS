@@ -78,19 +78,6 @@ class RelativisticFrameTransform:
             total += gm / distance
         return float(total)
 
-    def external_potential(
-        self,
-        center: str,
-        epoch_tdb: Epoch,
-        bodies: Iterable[str],
-    ) -> float:
-        """Backward-compatible alias for the explicit potential API."""
-        return self.external_gravitational_potential_m2_s2(
-            center,
-            epoch_tdb,
-            bodies,
-        )
-
     def gcrs2bcrs(self, position_gcrs_m: Sequence[float], epoch_tdb: Epoch) -> np.ndarray:
         epoch = require_tdb_epoch(epoch_tdb, name="epoch_tdb")
         earth = self.ephemeris.body_state_bcrs("EARTH", epoch)

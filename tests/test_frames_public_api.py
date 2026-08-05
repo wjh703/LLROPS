@@ -18,7 +18,7 @@ from lunarops.classes.relativistic.constants import GM_SUN
 
 class _Ephemeris(Ephemeris):
     @property
-    def source_file(self) -> Path:
+    def source_file_path(self) -> Path:
         return Path("fake.eph")
 
     def body_state_bcrs(self, body_name: str, epoch_tdb: Epoch) -> BodyState:

@@ -15,13 +15,13 @@ from lunarops.classes.ephemerides import (
     normalize_longitude_libration_correction_type,
 )
 from lunarops.classes.frames import (
-    C04EarthOrientation,
-    EarthOrientation,
     EarthOrientationSample,
+    EarthOrientationProvider,
     LunarFrameTransform,
     PolarMotion,
     ReferenceFrameSystem,
     RelativisticFrameTransform,
+    TabulatedEarthOrientation,
 )
 
 
@@ -30,7 +30,7 @@ class _FakeEphemeris(Ephemeris):
         self.closed = False
 
     @property
-    def source_file(self) -> Path:
+    def source_file_path(self) -> Path:
         return Path("fake.eph")
 
     @property
@@ -77,18 +77,18 @@ class _FakeEphemeris(Ephemeris):
         self.closed = True
 
 
-class _FakeEarthOrientation(EarthOrientation):
+class _FakeEarthOrientation(EarthOrientationProvider):
     def __init__(self):
         self.installed = False
 
     @property
-    def source_file(self):
+    def source_file_path(self):
         return Path("fake.eop")
 
     def polar_motion(self, epoch_utc) -> PolarMotion:
         return PolarMotion(0.1, 0.2)
 
-    def ut1_minus_utc_sec(self, epoch_utc) -> float:
+    def ut1_minus_utc_s(self, epoch_utc) -> float:
         return 0.0
 
 
@@ -142,13 +142,13 @@ def test_reference_frame_system_owns_one_time_converter():
     earth_orientation = _FakeEarthOrientation()
     system = ReferenceFrameSystem(
         ephemeris=ephemeris,
-        earth_orientation=earth_orientation,
+        earth_orientation_provider=earth_orientation,
     )
 
     assert not earth_orientation.installed
-    assert system.ephemeris_file == Path("fake.eph")
-    assert isinstance(system.time_converter, TimeScaleConverter)
-    assert system.time_converter.ephemeris is ephemeris
+    assert system.ephemeris_file_path == Path("fake.eph")
+    assert isinstance(system.time_scale_converter, TimeScaleConverter)
+    assert system.time_scale_converter.ephemeris is ephemeris
     assert np.allclose(system.pa2lcrs([1.0, 0.0, 0.0], _tdb()), [0.0, 1.0, 0.0])
     lunar_bcrs = system.lcrs2bcrs([1.0, 2.0, 3.0], _tdb())
     assert np.allclose(system.bcrs2lcrs(lunar_bcrs, _tdb()), [1.0, 2.0, 3.0])
@@ -226,18 +226,18 @@ def test_c04_duplicate_mjd_policy_is_explicit():
         EarthOrientationSample(60001.0, 1.0, 1.1, 1.2),
     )
     with pytest.raises(ValueError, match="duplicateMjdPolicy"):
-        C04EarthOrientation(samples)
+        TabulatedEarthOrientation(samples)
 
-    eop = C04EarthOrientation(samples, duplicate_mjd_policy="last")
+    eop = TabulatedEarthOrientation(samples, duplicate_mjd_policy="last")
     assert eop.duplicate_mjd_policy == "last"
     assert [sample.xp_arcsec for sample in eop.samples] == [0.4, 1.0]
 
-    eop_mean = C04EarthOrientation(samples, duplicate_mjd_policy="mean")
+    eop_mean = TabulatedEarthOrientation(samples, duplicate_mjd_policy="mean")
     assert [sample.xp_arcsec for sample in eop_mean.samples] == [0.25, 1.0]
 
 
 def test_parse_eop_c04_and_finals_rows(tmp_path):
-    from lunarops.classes.frames.earth_orientation import read_iers_c04
+    from lunarops.classes.frames.earth_orientation import read_iers_eop
 
     path = tmp_path / "eop.txt"
     path.write_text(
@@ -251,22 +251,22 @@ def test_parse_eop_c04_and_finals_rows(tmp_path):
         ),
         encoding="utf-8",
     )
-    samples = read_iers_c04(path)
+    samples = read_iers_eop(path)
     assert [sample.mjd_utc for sample in samples] == [37665.0, 41684.0, 58849.0]
     assert samples[0].xp_arcsec == 0.123
     assert samples[1].xp_arcsec == 0.120733
     assert samples[1].yp_arcsec == 0.136966
-    assert samples[1].ut1_minus_utc_sec == 0.8084176
-    assert samples[2].ut1_minus_utc_sec == -0.177
+    assert samples[1].ut1_minus_utc_s == 0.8084176
+    assert samples[2].ut1_minus_utc_s == -0.177
 
 
 def test_eop_parse_error_includes_preview(tmp_path):
-    from lunarops.classes.frames.earth_orientation import read_iers_c04
+    from lunarops.classes.frames.earth_orientation import read_iers_eop
 
     path = tmp_path / "bad_eop.txt"
     path.write_text("not an eop row\nstill not eop\n", encoding="utf-8")
     with pytest.raises(ValueError, match="First non-comment rows"):
-        read_iers_c04(path)
+        read_iers_eop(path)
 
 
 def test_c04_mpi_payload_roundtrip_uses_arrays():
@@ -274,12 +274,12 @@ def test_c04_mpi_payload_roundtrip_uses_arrays():
         EarthOrientationSample(60000.0, 0.1, 0.2, 0.3),
         EarthOrientationSample(60001.0, 0.4, 0.5, 0.6),
     )
-    original = C04EarthOrientation(samples, source_file="eop.txt")
+    original = TabulatedEarthOrientation(samples, source_file_path="eop.txt")
     payload = original.to_mpi_payload()
-    restored = C04EarthOrientation.from_mpi_payload(payload)
+    restored = TabulatedEarthOrientation.from_mpi_payload(payload)
 
-    assert restored.source_file == original.source_file
-    assert restored.mjd_range == original.mjd_range
+    assert restored.source_file_path == original.source_file_path
+    assert restored.mjd_utc_range == original.mjd_utc_range
     assert restored.samples == original.samples
     assert payload["mjdUtc"].shape == (2,)
 
@@ -294,7 +294,7 @@ def test_terrestrial_transform_gcrs_itrf_round_trip(monkeypatch):
     )
     monkeypatch.setattr(
         TerrestrialFrameTransform,
-        "celestial_to_terrestrial_matrix",
+        "gcrs2itrf_matrix",
         lambda self, epoch_utc: matrix,
     )
     gcrs = np.array([1.0, 2.0, 3.0])
