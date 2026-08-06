@@ -234,6 +234,10 @@ class LlrObservationModel:
                 "longitude_libration_correction_type": str(self.ephemeris.longitude_libration_correction_type),
                 "longitude_libration_correction_mas": float(np.rad2deg(libration_rad) * 3_600_000.0),
                 "longitude_libration_correction_rad": libration_rad,
+                "lunar_relativistic_scale_convention": (
+                    self.ephemeris.lunar_relativistic_scale_convention.value
+                ),
+                "l_b_minus_l_l": self.ephemeris.l_b_minus_l_l,
                 "transmit_jd1": solution.transmit_epoch_tdb.jd1,
                 "transmit_jd2": solution.transmit_epoch_tdb.jd2,
                 "transmit_scale": solution.transmit_epoch_tdb.scale.value,

@@ -26,9 +26,14 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from threading import RLock
 from typing import TYPE_CHECKING, Protocol
 
-from lunarops.config.registry import normalize_class_config, register_factory
+from lunarops.config.registry import (
+    _registration_transaction,
+    normalize_class_config,
+    register_factory,
+)
 
 if TYPE_CHECKING:
     from lunarops.classes.ephemerides import Ephemeris
@@ -53,7 +58,7 @@ _MODEL_CATEGORIES = (
 class ObservationAssembly:
     """Resolved model configuration and catalogs shared by serial and MPI."""
 
-    program_config: dict
+    model_configs: dict
     station_catalog: Mapping[str, StationRecord]
     reflector_catalog: Mapping[str, ReflectorRecord]
 
@@ -124,6 +129,17 @@ def _reject_unknown_keys(config: Mapping[str, object], allowed: set[str], *, nam
         raise ValueError(f"{name} has unknown key(s) {sorted(unknown)}.")
 
 
+def _required_observation_dependency(ctx: object, attribute: str):
+    value = getattr(ctx, attribute, None)
+    if value is None:
+        raise RuntimeError(
+            "This model requires an assembled observation context with "
+            f"{attribute!r}. Use build_observation_processor() instead of "
+            "RunContext.create_class() for models that depend on observation services."
+        )
+    return value
+
+
 def _register_all() -> None:
     # Imports are local so that merely importing the registry does not load
     # CALCEPH or optional physical-model backends.
@@ -157,13 +173,25 @@ def _register_all() -> None:
     def _calceph(cfg: dict, ctx):
         _reject_unknown_keys(
             cfg,
-            {"type", "file", "longitudeLibrationCorrection"},
+            {
+                "type",
+                "file",
+                "longitudeLibrationCorrection",
+                "lunarRelativisticScaleConvention",
+            },
             name="ephemerides/calceph",
         )
         if "file" not in cfg:
             raise ValueError("ephemerides/calceph requires 'file'.")
+        if "lunarRelativisticScaleConvention" not in cfg:
+            raise ValueError(
+                "ephemerides/calceph requires explicit "
+                "'lunarRelativisticScaleConvention' "
+                "(tdbCompatibleLunarSurface or alreadyScaled)."
+            )
         return load_calceph_ephemeris(
             _resolve_required_path(ctx, cfg["file"], name="ephemerides/calceph file"),
+            lunar_relativistic_scale_convention=cfg["lunarRelativisticScaleConvention"],
             longitude_libration_correction_type=cfg.get(
                 "longitudeLibrationCorrection",
                 "none",
@@ -217,13 +245,13 @@ def _register_all() -> None:
     )
 
     def _required_earth_orientation(ctx):
-        return ctx.earth_orientation_provider
+        return _required_observation_dependency(ctx, "earth_orientation_provider")
 
     def _required_ephemeris(ctx):
-        return ctx.ephemeris
+        return _required_observation_dependency(ctx, "ephemeris")
 
     def _required_frames(ctx):
-        return ctx.frames
+        return _required_observation_dependency(ctx, "frames")
 
     def _station_sum(cfg: dict, ctx) -> CompositeStationDisplacement:
         _reject_unknown_keys(cfg, {"type", "components"}, name="stationDisplacement/sum")
@@ -280,7 +308,7 @@ def _register_all() -> None:
 
     def _solid_earth_tide(cfg: dict, ctx):
         _reject_unknown_keys(cfg, {"type"}, name="stationDisplacement/iers2010SolidEarthTide")
-        return Iers2010SolidEarthTide(frames=_required_frames(ctx))
+        return Iers2010SolidEarthTide(frame_system=_required_frames(ctx))
 
     def _solid_earth_pole_tide(cfg: dict, ctx):
         _reject_unknown_keys(cfg, {"type"}, name="stationDisplacement/iers2010PoleTide")
@@ -366,12 +394,16 @@ def _register_all() -> None:
 
 
 _REGISTERED = False
+_REGISTRATION_LOCK = RLock()
 
 
 def ensure_registered() -> None:
     global _REGISTERED
-    if not _REGISTERED:
-        _register_all()
+    with _REGISTRATION_LOCK:
+        if _REGISTERED:
+            return
+        with _registration_transaction():
+            _register_all()
         _REGISTERED = True
 
 
@@ -416,7 +448,8 @@ def build_observation_processor(
 
     Expected class configs (program entry overrides ``globals:``)::
 
-        ephemerides:           {type: calceph, file: ..., longitudeLibrationCorrection: none}
+        ephemerides:           {type: calceph, file: ..., lunarRelativisticScaleConvention: alreadyScaled,
+                                longitudeLibrationCorrection: none}
         earthRotation:         {type: iersC04, file: ..., duplicateMjdPolicy: error|first|last|mean}
         troposphere:           mendesPavlis
         relativity:            iersShapiro
@@ -427,7 +460,7 @@ def build_observation_processor(
     Observation uncertainty is read directly from each normal-point record.
     """
     ensure_registered()
-    from lunarops.classes.frames import ReferenceFrameSystem
+    from lunarops.classes.frames import EarthOrientationProvider, ReferenceFrameSystem
     from lunarops.classes.observation import (
         LightTimeSolver,
         LlrObservationModel,
@@ -442,18 +475,28 @@ def build_observation_processor(
         station_catalog=station_catalog,
         reflector_catalog=reflector_catalog,
     )
-    program_config = assembly.program_config
+    model_configs = assembly.model_configs
 
     def cfg(category: str):
-        return normalize_class_config(context.class_config(category, program_config))
+        return normalize_class_config(context.class_config(category, model_configs))
 
     eph_cfg = cfg("ephemerides")
-    if eph_cfg["type"].lower() != "calceph":
-        raise ValueError(f"Only ephemerides type 'calceph' is available, got {eph_cfg['type']!r}")
     eop_cfg = cfg("earthRotation")
 
+    from lunarops.classes.ephemerides import Ephemeris
+
     ephemeris = context.create_class("ephemerides", eph_cfg, cache=True)
+    if not isinstance(ephemeris, Ephemeris):
+        raise TypeError(
+            "ephemerides factory must return an Ephemeris implementation, "
+            f"got {type(ephemeris).__name__}."
+        )
     earth_orientation_provider = context.create_class("earthRotation", eop_cfg, cache=True)
+    if not isinstance(earth_orientation_provider, EarthOrientationProvider):
+        raise TypeError(
+            "earthRotation factory must return an EarthOrientationProvider implementation, "
+            f"got {type(earth_orientation_provider).__name__}."
+        )
     frames = ReferenceFrameSystem(
         ephemeris=ephemeris,
         earth_orientation_provider=earth_orientation_provider,
@@ -463,11 +506,11 @@ def build_observation_processor(
         ephemeris=ephemeris,
         earth_orientation_provider=earth_orientation_provider,
         frames=frames,
-        cache_namespace=f"observation:{id(ephemeris)}:{id(earth_orientation_provider)}",
+        cache_namespace=f"observation:{context.next_observation_spec_id()}",
     )
     station_displacement = factory_context.create_class(
         "stationDisplacement",
-        normalize_class_config(context.class_config("stationDisplacement", program_config)),
+        normalize_class_config(context.class_config("stationDisplacement", model_configs)),
         cache=True,
     )
     reflector_displacement = factory_context.create_class(
@@ -487,7 +530,7 @@ def build_observation_processor(
         assembly.reflector_catalog,
     )
     resolver = ObservationResolver(model_state)
-    range_bias_cfg = context.class_config("rangeBias", program_config)
+    range_bias_cfg = context.class_config("rangeBias", model_configs)
     if range_bias_cfg is None:
         raise KeyError("Observation processing requires explicit 'rangeBias' in the program or globals config.")
     range_bias = factory_context.create_class(

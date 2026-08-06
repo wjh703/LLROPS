@@ -358,6 +358,8 @@ def test_measurement_marks_geometry_below_requested_elevation():
     assert row["range_bias_model_label"] == "none"
     assert row["range_bias_lookup_status"] == "explicit_zero"
     assert row["range_bias_correction_two_way_cm"] == 0.0
+    assert row["lunar_relativistic_scale_convention"] == "alreadyScaled"
+    assert row["l_b_minus_l_l"] == 0.0
 
     options = ObservationProcessingOptions(min_elevation_deg=91.0)
     dataset = NptDataset([_record()])

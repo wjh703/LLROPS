@@ -135,6 +135,24 @@ def test_registered_station_sum_and_context_cache():
     assert first is second
 
 
+def test_calceph_factory_requires_explicit_lunar_scale_convention(tmp_path):
+    ensure_registered()
+    context = RunContext(working_dir=str(tmp_path))
+
+    with pytest.raises(ValueError, match="lunarRelativisticScaleConvention"):
+        context.create_class(
+            "ephemerides",
+            {"type": "calceph", "file": "renamed_kernel.bsp"},
+            cache=False,
+        )
+
+
+def test_dependent_factories_require_an_assembled_observation_context():
+    ensure_registered()
+    with pytest.raises(RuntimeError, match="build_observation_processor"):
+        RunContext().create_class("relativity", "iersShapiro", cache=False)
+
+
 class _FakeEarthOrientation(EarthOrientationProvider):
     @property
     def source_file_path(self):

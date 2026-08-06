@@ -1,5 +1,7 @@
 from dataclasses import FrozenInstanceError
 from pathlib import Path
+import sys
+from types import SimpleNamespace
 from typing import Any, cast
 
 import numpy as np
@@ -9,11 +11,14 @@ from lunarops.base.epoch import Epoch, TimeScale
 from lunarops.classes.delays.shapiro import Iers2010ShapiroDelay
 from lunarops.classes.ephemerides import (
     BodyState,
+    CalcephEphemeris,
     Ephemeris,
     LongitudeLibrationCorrectionModel,
     LongitudeLibrationCorrectionType,
+    LunarRelativisticScaleConvention,
     make_longitude_libration_correction_model,
     normalize_longitude_libration_correction_type,
+    normalize_lunar_relativistic_scale_convention,
 )
 from lunarops.classes.frames import (
     EarthOrientationProvider,
@@ -24,6 +29,7 @@ from lunarops.classes.frames import (
     RelativisticFrameTransform,
     TabulatedEarthOrientation,
 )
+from lunarops.classes.relativistic.constants import L_B_MINUS_L_L_LUNAR_SURFACE
 from lunarops.classes.time_scale_converter import TimeScaleConverter
 
 
@@ -181,6 +187,73 @@ def test_longitude_libration_correction_type_normalization_is_explicit():
 def test_ephemeris_exposes_libration_selection_as_enum():
     ephemeris = _FakeEphemeris()
     assert ephemeris.longitude_libration_correction_type is LongitudeLibrationCorrectionType.NONE
+
+
+def test_lunar_relativistic_scale_convention_is_explicit_and_normalized():
+    assert (
+        normalize_lunar_relativistic_scale_convention(" tdbCompatibleLunarSurface ")
+        is LunarRelativisticScaleConvention.TDB_COMPATIBLE_LUNAR_SURFACE
+    )
+    assert (
+        normalize_lunar_relativistic_scale_convention("alreadyscaled")
+        is LunarRelativisticScaleConvention.ALREADY_SCALED
+    )
+    with pytest.raises(ValueError, match="expected one of"):
+        normalize_lunar_relativistic_scale_convention("inferredFromFilename")
+    with pytest.raises(ValueError, match="expected one of"):
+        normalize_lunar_relativistic_scale_convention("de440")
+
+
+def test_calceph_lunar_scale_does_not_depend_on_filename(tmp_path, monkeypatch):
+    class _FakeHandle:
+        def close(self):
+            return None
+
+    class _FakeCalcephBin:
+        @staticmethod
+        def open(path):
+            return _FakeHandle()
+
+    class _FakeConstants:
+        UNIT_KM = 1
+        UNIT_SEC = 2
+        USE_NAIFID = 4
+        UNIT_RAD = 8
+
+    monkeypatch.setitem(
+        sys.modules,
+        "calcephpy",
+        SimpleNamespace(CalcephBin=_FakeCalcephBin, Constants=_FakeConstants),
+    )
+    de440_named_file = tmp_path / "de440.bsp"
+    renamed_file = tmp_path / "renamed_kernel.bsp"
+    de440_named_file.touch()
+    renamed_file.touch()
+
+    native_with_de440_name = CalcephEphemeris(
+        de440_named_file,
+        lunar_relativistic_scale_convention="alreadyScaled",
+    )
+    lunar_surface_scale_with_generic_name = CalcephEphemeris(
+        renamed_file,
+        lunar_relativistic_scale_convention="tdbCompatibleLunarSurface",
+    )
+
+    assert native_with_de440_name.l_b_minus_l_l == 0.0
+    assert (
+        lunar_surface_scale_with_generic_name.l_b_minus_l_l
+        == L_B_MINUS_L_L_LUNAR_SURFACE
+    )
+    assert (
+        native_with_de440_name.lunar_relativistic_scale_convention
+        is LunarRelativisticScaleConvention.ALREADY_SCALED
+    )
+    assert (
+        lunar_surface_scale_with_generic_name.lunar_relativistic_scale_convention
+        is LunarRelativisticScaleConvention.TDB_COMPATIBLE_LUNAR_SURFACE
+    )
+    native_with_de440_name.close()
+    lunar_surface_scale_with_generic_name.close()
 
 
 def test_shapiro_validates_positions():
