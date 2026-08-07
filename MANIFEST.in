@@ -1,0 +1,9 @@
+include setup.py
+include pyproject.toml
+recursive-include docs *.md
+include scripts/verify_distribution.py
+recursive-include tests *.py *.npz
+recursive-include lunarops *.py *.pyi *.pyx *.pxi
+include lunarops/_external/iers2010/LICENSE
+include lunarops/_external/iers2010/README.md
+global-exclude __pycache__ *.py[cod] *.so *.pyd

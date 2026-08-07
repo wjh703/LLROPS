@@ -2,62 +2,62 @@
 
 ## Build
 
-The project uses `meson-python`, NumPy f2py, and one private extension named
-`lunarops._iers2010`. Official IERS Conventions v1.3.0 Fortran sources are kept
-unchanged under `lunarops/_external/iers2010/src`; project-specific signatures and
-wrappers live under `lunarops/_external/iers2010/bindings`.
-
-The pinned archive is `iersconventions_v1_3_0.tar.gz`, retrieved from the IERS
-Conventions Center. Its size is 63,646,900 bytes and its SHA-256 is
-`5f6215b74d22cf53c5f8c40804db091f5ea2cafdaa5e131b8a9ca87c0fb43ea1`.
-Do not mix live chapter files with this packaged source set. The vendored
-source inventory and call graph are documented in `lunarops/_external/iers2010/README.md`.
+The project uses setuptools and Cython to build the private extension
+`lunarops._iers2010_core`. The stable Python facade is
+`lunarops._iers2010`. No Fortran compiler or f2py step is required.
 
 ```bash
 uv sync --extra build --extra test --extra mpi
 uv pip install --no-build-isolation --editable .
 python -m pytest
 uv run -m build
+python scripts/verify_distribution.py dist/*.tar.gz dist/*.whl
 ```
 
-The non-isolated editable install is intentional: it keeps Meson/Ninja paths in
-the persistent development environment. Standard distribution builds use
-isolation.
+The non-isolated editable install keeps Cython, NumPy, and setuptools available
+in the persistent development environment. Standard distribution builds use
+the isolated requirements declared in `pyproject.toml`. `setup.py` only
+describes the Cython extension; use the PEP 517 commands above instead of
+running `python setup.py install` directly.
 
-## Native scope
+## Backend boundary
 
-The extension exposes selected routines for optical atmospheric delay,
-high-frequency Earth orientation, solid-Earth tide, and ocean tidal loading:
-`FCUL_A`, `FCUL_ZD_HPA`, `ORTHO_EOP`, `PMSDNUT2`, `UTLIBR`, `FUNDARG`,
-`DEHANTTIDEINEL`, and `HARDISP`.
+`lunarops/_iers2010.py` validates inputs and delegates UTC/TAI/TT conversion,
+leap seconds, and IAU 2003 fundamental arguments to ERFA. The compiled Cython
+core implements FCUL, orthotide EOP, libration corrections, DEHANT solid-Earth
+tides, and HARDISP ocean-loading synthesis.
 
-The Python facade owns validation, unit conversion, C04 interpolation, BLQ
-parsing, coordinate conversion, and model composition. Solid-Earth pole tide,
-ocean pole-tide grid interpolation, C04 interpolation, and ERFA frame matrices
-remain Python implementations by design because no complete official replacement
-routine is available or because ERFA is the reference implementation.
+The application layer continues to own C04 interpolation, BLQ parsing,
+coordinate conversion, units, and model composition. Solid-Earth pole tide,
+ocean pole-tide grid interpolation, and ERFA frame matrices remain Python
+implementations by design.
 
 ## Conventions that must not drift
 
-- C04 is treated as the observed Earth-orientation series. `RG_ZONT2` is not
-  applied, and observed `dX/dY` is not augmented with `FCNNUT`.
+- C04 is the observed Earth-orientation series. `RG_ZONT2` is not applied, and
+  observed `dX/dY` is not augmented with `FCNNUT`.
 - Native boundaries document time scale, frame, units, and signs explicitly.
-- `FCUL_ZD_HPA` receives pressure and water-vapour pressure in hPa; official
-  micro-units are converted to SI at the facade.
-- `HARDISP` production calls use irregular scalar light-time epochs (`N=1`);
-  its regular-series API remains available for genuine regular grids.
-- Atmospheric loading is intentionally outside the current native scope.
+- `FCUL_ZD_HPA` receives pressure and water-vapour pressure in hPa.
+- Production HARDISP calls use irregular scalar light-time epochs (`n=1`).
+- A regular HARDISP series cannot cross a UTC offset transition.
+- Atmospheric loading is outside the current backend scope.
+
+## Source and licensing
+
+The algorithms and tables are derived from IERS Conventions v1.3.0. The pinned
+upstream archive had size 63,646,900 bytes and SHA-256
+`5f6215b74d22cf53c5f8c40804db091f5ea2cafdaa5e131b8a9ca87c0fb43ea1`.
+The repository retains the complete IERS license, not the former source tree.
+Derived routine names use the `lunarops_` prefix. Wheels include the `.pyx`,
+`.pxi`, and license so the notice and modified source remain available.
 
 ## Verification
 
-Tests cover official source vectors, installed-source hashes, leap-second and
-date-validity boundaries, native/Python differential values, signs and frames,
-end-to-end light-time effects, MPI worker imports, and source/wheel contents.
-Detailed benchmark logs belong in release notes or CI artifacts rather than the
-user-facing reference.
+Tests cover published source vectors, the frozen pre-removal differential grid,
+leap and validity boundaries, signs and frames, end-to-end light-time effects,
+MPI imports, and distribution contents. `scripts/verify_distribution.py`
+requires the Cython sources and license and rejects Fortran/f2py files.
 
-When adding a routine, pin its source and checksum, preserve the upstream
-header/license, add a thin validated facade, add official and differential
-tests, and update this scope list. A native replacement is production-ready
-only after official vectors, end-to-end regressions, and performance checks
-pass.
+The numerical comparison and accepted differences are recorded in
+[IERS_CYTHON_MIGRATION.md](IERS_CYTHON_MIGRATION.md). A model change is ready
+only after its source vector, differential, end-to-end, and packaging tests pass.

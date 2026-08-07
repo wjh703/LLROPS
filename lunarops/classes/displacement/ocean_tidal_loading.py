@@ -20,11 +20,9 @@ from .terrestrial_geometry import enu2itrf, itrf2geodetic
 
 BLQ_TIDE_NAMES = ("M2", "S2", "N2", "K2", "K1", "O1", "P1", "Q1", "MF", "MM", "SSA")
 BLQ_NATIVE_COMPONENT_NAMES = ("up", "west", "south")
-HARDISP_MIN_UTC = (1700, 1, 1, 0, 0, 0)
-# ETUTC's final table entry remains valid while UTC-TAI stays at -37 s. IERS
-# Bulletin C 72 confirms no leap second through the end of December 2026;
-# the next possible UTC step is therefore at the end of June 2027.
-HARDISP_VALID_UNTIL_UTC_EXCLUSIVE = (2027, 7, 1, 0, 0, 0)
+HARDISP_MIN_UTC = _iers2010.HARDISP_MIN_UTC
+# This application policy is kept in the ERFA facade, not the Cython core.
+HARDISP_VALID_UNTIL_UTC_EXCLUSIVE = _iers2010.HARDISP_VALID_UNTIL_UTC_EXCLUSIVE
 _MODEL_LINE = re.compile(r"^\s*\$+\s*([A-Za-z][A-Za-z0-9_.-]*)\s*:\s*M2\b", re.IGNORECASE)
 _CMC_LINE = re.compile(r"\bCMC\s*:\s*(YES|NO)\b", re.IGNORECASE)
 _COLUMN_ORDER_LINE = re.compile(r"\bCOLUMN\s+ORDER\s*:\s*(.*)$", re.IGNORECASE)
@@ -276,9 +274,9 @@ class OceanTidalLoadingCatalog:
 
 
 class Iers2010OceanTidalLoading:
-    """Evaluate one arbitrary UTC epoch with the native IERS ``HARDISP`` routine.
+    """Evaluate one arbitrary UTC epoch with the Cython IERS ``HARDISP`` model.
 
-    ``HARDISP`` also supports a regularly sampled native series, but LLR
+    ``HARDISP`` also supports a regularly sampled series, but LLR
     transmit times are irregular and receive times are resolved iteratively.
     The production displacement interface therefore deliberately uses one
     ``n=1`` call per event instead of forcing those epochs onto a grid.
@@ -294,14 +292,14 @@ class Iers2010OceanTidalLoading:
         epoch_utc.require_scale(TimeScale.UTC, name="epoch_utc")
         # HARDISP has an integer UTC-second interface. ERFA formatting rounds
         # across minute/day boundaries and retains a leap-second label as 60 so
-        # the caller can reject the native interface's ambiguous representation.
+        # the caller can reject the scalar interface's ambiguous representation.
         date_text, time_text = epoch_utc.isot(precision=0).split("T", maxsplit=1)
         year, month, day = (int(value) for value in date_text.split("-"))
         hour, minute, second = (int(value) for value in time_text.split(":"))
         return year, month, day, hour, minute, second
 
     @staticmethod
-    def _native_up_south_west_m(
+    def _hardisp_up_south_west_m(
         coefficients: OceanTidalLoadingCoefficients,
         epoch_utc: Epoch,
     ) -> np.ndarray:
@@ -316,10 +314,10 @@ class Iers2010OceanTidalLoading:
         if calendar < HARDISP_MIN_UTC or calendar >= HARDISP_VALID_UNTIL_UTC_EXCLUSIVE:
             raise ValueError(
                 "Iers2010OceanTidalLoading supports UTC epochs only from "
-                "1700-01-01T00:00:00 through 2027-06-30T23:59:59; "
+                "1960-01-01T00:00:00 through 2027-06-30T23:59:59; "
                 f"got {year:04d}-{month:02d}-{day:02d}T{hour:02d}:{minute:02d}:{second:02d}."
             )
-        # The native N-series interface is valid only on a fixed UTC-sampled
+        # The N-series interface is valid only on a fixed UTC-sampled
         # grid. Production light-time events are arbitrary, so use one sample.
         up, south, west = _iers2010.hardisp(
             year,
@@ -339,7 +337,7 @@ class Iers2010OceanTidalLoading:
         if data.station_id is None:
             raise ValueError("Iers2010OceanTidalLoading requires StationDisplacementInput.station_id.")
         coefficients = self.catalog.coefficients_for(data.station_id)
-        up_south_west_m = self._native_up_south_west_m(coefficients, data.epoch_utc)
+        up_south_west_m = self._hardisp_up_south_west_m(coefficients, data.epoch_utc)
         # HARDISP returns positive Up, South, West.  LunarOps uses East, North, Up.
         enu_m = np.array(
             [-up_south_west_m[2], -up_south_west_m[1], up_south_west_m[0]],

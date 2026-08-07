@@ -289,7 +289,7 @@ def test_end_to_end_contribution_changes_rtt_and_oc_separately():
     )
 
 
-def test_fortran_troposphere_contributes_to_both_light_time_legs(monkeypatch):
+def test_cython_troposphere_contributes_to_both_light_time_legs(monkeypatch):
     transmit_epoch = _record().transmit_epoch
 
     def controlled_elevation(

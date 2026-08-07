@@ -16,6 +16,8 @@ build/
 dist/
 wheels/
 *.egg-info/
+*.so
+*.pyd
 
 # Generated LLR products and local diagnostics
 output/
