@@ -289,7 +289,7 @@ def test_end_to_end_contribution_changes_rtt_and_oc_separately():
     )
 
 
-def test_fortran_troposphere_contributes_to_both_light_time_legs(monkeypatch):
+def test_cython_troposphere_contributes_to_both_light_time_legs(monkeypatch):
     transmit_epoch = _record().transmit_epoch
 
     def controlled_elevation(
@@ -358,6 +358,8 @@ def test_measurement_marks_geometry_below_requested_elevation():
     assert row["range_bias_model_label"] == "none"
     assert row["range_bias_lookup_status"] == "explicit_zero"
     assert row["range_bias_correction_two_way_cm"] == 0.0
+    assert row["lunar_relativistic_scale_convention"] == "alreadyScaled"
+    assert row["l_b_minus_l_l"] == 0.0
 
     options = ObservationProcessingOptions(min_elevation_deg=91.0)
     dataset = NptDataset([_record()])

@@ -19,10 +19,10 @@ class Iers2010SolidEarthTide:
     and the same frame system used by the observation model.
     """
 
-    def __init__(self, frames: ReferenceFrameSystem) -> None:
-        if not isinstance(frames, ReferenceFrameSystem):
-            raise TypeError("frames must be a ReferenceFrameSystem.")
-        self.frames = frames
+    def __init__(self, frame_system: ReferenceFrameSystem) -> None:
+        if not isinstance(frame_system, ReferenceFrameSystem):
+            raise TypeError("frame_system must be a ReferenceFrameSystem.")
+        self.frame_system = frame_system
 
     @staticmethod
     def _utc_calendar(epoch: Epoch) -> tuple[int, int, int, float]:
@@ -39,9 +39,9 @@ class Iers2010SolidEarthTide:
         return year, month, day, fractional_hour
 
     def _body_itrf_m(self, body: str, epoch_utc: Epoch, epoch_tdb: Epoch) -> np.ndarray:
-        position_bcrs_m = self.frames.ephemeris.body_position_bcrs(body, epoch_tdb)
-        position_gcrs_m = self.frames.bcrs2gcrs(position_bcrs_m, epoch_tdb)
-        position_itrf_m = self.frames.gcrs2itrf(position_gcrs_m, epoch_utc)
+        position_bcrs_m = self.frame_system.ephemeris.body_position_bcrs(body, epoch_tdb)
+        position_gcrs_m = self.frame_system.bcrs2gcrs(position_bcrs_m, epoch_tdb)
+        position_itrf_m = self.frame_system.gcrs2itrf(position_gcrs_m, epoch_utc)
         value = np.asarray(position_itrf_m, dtype=float).reshape(3)
         if not np.all(np.isfinite(value)):
             raise RuntimeError(f"Ephemeris/frame conversion returned non-finite {body} coordinates.")
@@ -49,7 +49,7 @@ class Iers2010SolidEarthTide:
 
     def displacement_itrf_m(self, data: StationDisplacementInput) -> np.ndarray:
         epoch_utc = data.epoch_utc.require_scale(TimeScale.UTC, name="epoch_utc")
-        epoch_tdb = self.frames.time_scale_converter.convert(epoch_utc, TimeScale.TDB)
+        epoch_tdb = self.frame_system.time_scale_converter.convert(epoch_utc, TimeScale.TDB)
         sun_itrf_m = self._body_itrf_m("SUN", epoch_utc, epoch_tdb)
         moon_itrf_m = self._body_itrf_m("MOON", epoch_utc, epoch_tdb)
         year, month, day, fractional_hour = self._utc_calendar(epoch_utc)

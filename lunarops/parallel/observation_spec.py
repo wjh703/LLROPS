@@ -61,12 +61,12 @@ def make_observation_spec(
     )
     return {
         "specId": context.next_observation_spec_id(),
-        "programConfig": assembly.program_config,
+        "programConfig": assembly.model_configs,
         "workingDir": str(context.working_dir),
         "stationCatalog": assembly.station_catalog,
         "reflectorCatalog": assembly.reflector_catalog,
         "sharedResources": _prepare_shared_resources(
-            assembly.program_config,
+            assembly.model_configs,
             context,
         ),
     }

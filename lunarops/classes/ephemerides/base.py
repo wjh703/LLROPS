@@ -12,6 +12,7 @@ import numpy as np
 
 from lunarops.base.array_validation import finite_array
 from lunarops.base.epoch import Epoch, TimeScale
+from lunarops.classes.relativistic import LunarRelativisticScaleConvention
 
 
 def require_tdb_epoch(epoch: Epoch, *, name: str = "epoch") -> Epoch:
@@ -96,6 +97,12 @@ class Ephemeris(ABC):
     @property
     def l_b_minus_l_l(self) -> float:
         return 0.0
+
+    @property
+    def lunar_relativistic_scale_convention(
+        self,
+    ) -> LunarRelativisticScaleConvention:
+        return LunarRelativisticScaleConvention.ALREADY_SCALED
 
     def close(self) -> None:
         """Release resources; the default implementation owns none."""

@@ -1,7 +1,10 @@
-"""Type declarations for the f2py-generated IERS 2010 extension."""
+"""Type declarations for the ERFA/Cython IERS 2010 facade."""
 
 from numpy import float64
 from numpy.typing import ArrayLike, NDArray
+
+HARDISP_MIN_UTC: tuple[int, int, int, int, int, int]
+HARDISP_VALID_UNTIL_UTC_EXCLUSIVE: tuple[int, int, int, int, int, int]
 
 def fcul_a(latitude: float, height_m: float, t_k: float, elev_deg: float) -> float: ...
 def fculzd_hpa(

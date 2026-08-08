@@ -7,7 +7,7 @@ A YAML run config mirrors a GROOPS scenario file::
       ephemeris: "{dataDir}/inpop21a.dat"
 
     globals:                      # shared class configs, built once per run
-      ephemerides:   {type: calceph, file: "{ephemeris}"}
+      ephemerides:   {type: calceph, file: "{ephemeris}", lunarRelativisticScaleConvention: alreadyScaled}
       earthRotation: {type: iersC04, file: "{dataDir}/eopc04.1962-now"}
 
     programs:

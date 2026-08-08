@@ -13,7 +13,8 @@ estimation.
 | Configure reflector and station-bias adjustment | [ADJUSTMENT.md](ADJUSTMENT.md) |
 | Understand module boundaries and extension points | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Review the GROOPS-aligned file and program contract | [GROOPS_FILE_PROGRAM_DESIGN.md](GROOPS_FILE_PROGRAM_DESIGN.md) |
-| Build and validate the IERS native extension | [DEVELOPMENT.md](DEVELOPMENT.md) |
+| Build and validate the IERS Cython extension | [DEVELOPMENT.md](DEVELOPMENT.md) |
+| Review the completed ERFA/Cython migration | [IERS_CYTHON_MIGRATION.md](IERS_CYTHON_MIGRATION.md) |
 
 ## Minimal command line
 

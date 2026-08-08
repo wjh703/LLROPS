@@ -37,13 +37,16 @@ def llr_observation_equations(config: dict, context: RunContext):
     source_by_identity = {
         int(record.index): source for source, dataset in datasets.items() for record in dataset.records
     }
+    ephemeris = processor.observation_model.ephemeris
     frozen = FrozenObservationEquations.from_equations(
         equations,
         parametrization,
         source_by_identity=source_by_identity,
         metadata={
             "sources": sorted(datasets),
-            "ephemeris": str(processor.observation_model.ephemeris.source_file_path),
+            "ephemeris": str(ephemeris.source_file_path),
+            "lunar_relativistic_scale_convention": ephemeris.lunar_relativistic_scale_convention.value,
+            "l_b_minus_l_l": ephemeris.l_b_minus_l_l,
             "compatibility": model_compatibility_fingerprint(config, context),
         },
     )

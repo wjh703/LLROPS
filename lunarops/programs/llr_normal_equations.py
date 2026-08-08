@@ -31,6 +31,7 @@ def llr_normal_equations(config: dict, context: RunContext):
     datasets = load_datasets(config, context)
     parametrization = build_parametrization(config, context)
     processor = build_processor(config, context)
+    ephemeris = processor.observation_model.ephemeris
 
     equation_source = build_equation_source(config, context, datasets, processor)
     equations = equation_source(1)
@@ -41,7 +42,9 @@ def llr_normal_equations(config: dict, context: RunContext):
         parametrization,
         parameter_names=names,
         sources=sorted(datasets),
-        ephemeris=processor.observation_model.ephemeris.source_file_path,
+        ephemeris=ephemeris.source_file_path,
+        lunar_relativistic_scale_convention=ephemeris.lunar_relativistic_scale_convention.value,
+        l_b_minus_l_l=ephemeris.l_b_minus_l_l,
         compatibility=model_compatibility_fingerprint(config, context),
     )
 

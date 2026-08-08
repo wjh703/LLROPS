@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify that built distributions contain the native IERS payload."""
+"""Verify that built distributions contain only the Cython IERS payload."""
 
 from __future__ import annotations
 
@@ -9,9 +9,18 @@ import zipfile
 from pathlib import Path
 
 
-SOURCE_NAMES = {
-    path.name for path in Path(__file__).parents[1].joinpath("lunarops", "_external", "iers2010", "src").glob("*.F")
+PACKAGE_REQUIRED = {
+    "lunarops/_iers2010.py",
+    "lunarops/_iers2010.pyi",
+    "lunarops/_iers2010_core.pyx",
+    "lunarops/_iers2010_tables.pxi",
+    "lunarops/_external/iers2010/LICENSE",
 }
+FORTRAN_SUFFIXES = (".f", ".for", ".f77", ".f90", ".f95", ".f03", ".f08", ".pyf")
+
+
+def _fortran_members(names: set[str]) -> list[str]:
+    return sorted(name for name in names if name.lower().endswith(FORTRAN_SUFFIXES))
 
 
 def _check_sdist(path: Path) -> None:
@@ -21,28 +30,31 @@ def _check_sdist(path: Path) -> None:
     if len(roots) != 1:
         raise SystemExit(f"{path}: expected one sdist root, found {sorted(roots)}")
     root = next(iter(roots))
-    required = {
-        f"{root}/lunarops/_external/iers2010/LICENSE",
-        *(f"{root}/lunarops/_external/iers2010/src/{name}" for name in SOURCE_NAMES),
-    }
+    required = {f"{root}/{name}" for name in PACKAGE_REQUIRED}
     missing = sorted(required - names)
     if missing:
         raise SystemExit(f"{path}: missing {', '.join(missing)}")
+    forbidden = _fortran_members(names)
+    if forbidden:
+        raise SystemExit(f"{path}: contains forbidden Fortran/f2py files: {', '.join(forbidden)}")
 
 
 def _check_wheel(path: Path) -> None:
     with zipfile.ZipFile(path) as archive:
         names = set(archive.namelist())
-    required = {
-        "lunarops/_external/iers2010/LICENSE",
-        *(f"lunarops/_external/iers2010/src/{name}" for name in SOURCE_NAMES),
-    }
-    missing = sorted(required - names)
-    extensions = sorted(name for name in names if name.startswith("lunarops/_iers2010") and name.endswith(".so"))
+    missing = sorted(PACKAGE_REQUIRED - names)
     if missing:
         raise SystemExit(f"{path}: missing {', '.join(missing)}")
+    extensions = sorted(
+        name
+        for name in names
+        if name.startswith("lunarops/_iers2010_core.") and name.endswith((".so", ".pyd"))
+    )
     if not extensions:
-        raise SystemExit(f"{path}: missing compiled lunarops/_iers2010 extension")
+        raise SystemExit(f"{path}: missing compiled lunarops/_iers2010_core extension")
+    forbidden = _fortran_members(names)
+    if forbidden:
+        raise SystemExit(f"{path}: contains forbidden Fortran/f2py files: {', '.join(forbidden)}")
 
 
 def main() -> None:

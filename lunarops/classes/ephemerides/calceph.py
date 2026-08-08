@@ -8,7 +8,11 @@ import numpy as np
 
 from lunarops.base.array_validation import readonly_matrix3x3
 from lunarops.base.epoch import Epoch, TimeScale
-from lunarops.classes.relativistic.constants import l_b_minus_l_l_for_ephemeris
+from lunarops.classes.relativistic import (
+    LunarRelativisticScaleConvention,
+    l_b_minus_l_l_for_convention,
+    normalize_lunar_relativistic_scale_convention,
+)
 from lunarops.classes.time_scale_converter import TimeScaleConverter
 
 from .base import (
@@ -70,6 +74,7 @@ class CalcephEphemeris(Ephemeris):
         self,
         ephemeris_file: str | Path,
         *,
+        lunar_relativistic_scale_convention: LunarRelativisticScaleConvention | str,
         longitude_libration_correction_type: (LongitudeLibrationCorrectionType | str | None) = None,
     ) -> None:
         path = Path(ephemeris_file).expanduser()
@@ -83,7 +88,12 @@ class CalcephEphemeris(Ephemeris):
             ) from exc
 
         self._source_file = path
-        self._l_b_minus_l_l = float(l_b_minus_l_l_for_ephemeris(path))
+        self._lunar_relativistic_scale_convention = normalize_lunar_relativistic_scale_convention(
+            lunar_relativistic_scale_convention
+        )
+        self._l_b_minus_l_l = l_b_minus_l_l_for_convention(
+            self._lunar_relativistic_scale_convention
+        )
         self._longitude_libration_correction_type = normalize_longitude_libration_correction_type(
             longitude_libration_correction_type
         )
@@ -102,6 +112,12 @@ class CalcephEphemeris(Ephemeris):
     @property
     def l_b_minus_l_l(self) -> float:
         return self._l_b_minus_l_l
+
+    @property
+    def lunar_relativistic_scale_convention(
+        self,
+    ) -> LunarRelativisticScaleConvention:
+        return self._lunar_relativistic_scale_convention
 
     @property
     def longitude_libration_correction_type(
@@ -215,10 +231,12 @@ class CalcephEphemeris(Ephemeris):
 def load_calceph_ephemeris(
     ephemeris_file: str | Path,
     *,
+    lunar_relativistic_scale_convention: LunarRelativisticScaleConvention | str,
     longitude_libration_correction_type: (LongitudeLibrationCorrectionType | str | None) = None,
 ) -> CalcephEphemeris:
     ephemeris = CalcephEphemeris(
         ephemeris_file,
+        lunar_relativistic_scale_convention=lunar_relativistic_scale_convention,
         longitude_libration_correction_type=longitude_libration_correction_type,
     )
     try:
